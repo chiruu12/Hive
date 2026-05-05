@@ -15,7 +15,6 @@ from hive.models.router import create_provider
 logger = logging.getLogger(__name__)
 
 _running_agents: dict[str, AgentState] = {}
-_tasks: dict[str, asyncio.Task] = {}
 
 
 def _hive_dir() -> Path:
@@ -71,13 +70,9 @@ def spawn_agent(
             event_log=event_log,
         )
 
-        async def _run() -> None:
-            await loop.run(task, cwd=workspace)
-            state.status = AgentStatus.IDLE
-            state.current_task = None
-
-        asyncio_task = asyncio.ensure_future(_run())
-        _tasks[agent_id] = asyncio_task
+        asyncio.run(loop.run(task, cwd=workspace))
+        state.status = AgentStatus.IDLE
+        state.current_task = None
 
     return state
 
@@ -88,13 +83,15 @@ def kill_agent(name_or_id: str) -> None:
     if not agent_id:
         raise ValueError(f"Agent not found: {name_or_id}")
 
-    if agent_id in _tasks:
-        _tasks[agent_id].cancel()
-        del _tasks[agent_id]
-
     if agent_id in _running_agents:
         _running_agents[agent_id].status = AgentStatus.DEAD
         del _running_agents[agent_id]
+
+    hive_dir = _hive_dir()
+    db_path = hive_dir / "hive.db"
+    if db_path.exists():
+        store = HiveStore(db_path)
+        asyncio.run(store.update_agent_status(agent_id, AgentStatus.DEAD))
 
 
 def get_all_agents() -> list[AgentState]:

@@ -47,23 +47,23 @@ def spawn(
         console.print("[red]No .hive directory. Run `hive init` first.[/red]")
         raise typer.Exit(1)
 
-    with console.status(f"[bold blue]Spawning {agent}...[/bold blue]"):
-        result = spawn_agent(agent, task=task, model_override=model)
+    if task:
+        console.print(f"[bold blue]Spawning {agent}...[/bold blue] task: {task}\n")
+    else:
+        console.print(f"[bold blue]Spawning {agent}...[/bold blue]")
+
+    result = spawn_agent(agent, task=task, model_override=model)
 
     console.print(
         Panel(
-            f"[green]✓ Spawned[/green] [bold]{result.name}[/bold]\n"
+            f"[green]✓[/green] [bold]{result.name}[/bold]\n"
             f"  Model: {result.model}\n"
             f"  ID: [dim]{result.agent_id}[/dim]\n"
-            + (f"  Task: {task}" if task else "  Status: idle"),
+            + ("  Task: completed" if task else "  Status: idle"),
             title="Agent Ready",
             border_style="green",
         )
     )
-
-    if task:
-        aid = result.agent_id[:20]
-        console.print(f"\n[dim]Agent is working. Use `hive logs {aid}` to watch progress.[/dim]")
 
 
 @app.command()

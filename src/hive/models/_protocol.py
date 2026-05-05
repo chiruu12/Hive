@@ -126,7 +126,7 @@ def parse_ndjson_line(line: str) -> InboundMessage | None:
         return ResultMessage(
             session_id=data.get("session_id", ""),
             subtype=data.get("subtype", "success"),
-            cost_usd=data.get("cost_usd"),
+            cost_usd=data.get("total_cost_usd") or data.get("cost_usd"),
             duration_ms=data.get("duration_ms"),
             num_turns=data.get("num_turns"),
             input_tokens=usage.get("input_tokens"),
