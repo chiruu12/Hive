@@ -1,0 +1,69 @@
+[project]
+name = "hive-agents"
+version = "0.1.0"
+description = "Local-first agent OS. Spawn persistent AI agents that collaborate, write code, and use tools autonomously."
+authors = [{ name = "chiruu12" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["ai-agents", "multi-agent", "autonomous", "claude", "codex", "local-llm", "agent-os"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.0",
+    "anthropic>=0.40",
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+hive = "hive.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/chiruu12/Hive"
+Repository = "https://github.com/chiruu12/Hive"
+Issues = "https://github.com/chiruu12/Hive/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hive"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
