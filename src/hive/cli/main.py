@@ -72,7 +72,12 @@ def start(
         except FileNotFoundError:
             console.print(f"  [red]✗[/red] Profile not found: {name}")
 
-    daemon = HiveDaemon(hive_dir, heartbeat=heartbeat)
+    daemon = HiveDaemon(
+        hive_dir,
+        heartbeat=heartbeat,
+        logs_dir=Path.cwd() / "logs",
+        profiles=profile_names,
+    )
 
     console.print(
         Panel(
@@ -294,6 +299,84 @@ def replay(session_id: str = typer.Argument(help="Session ID to replay")) -> Non
     from hive.memory.events import replay_session
 
     replay_session(session_id)
+
+
+@app.command()
+def runs() -> None:
+    """List all recorded runs with summary stats."""
+    from hive.logging.reader import LogReader
+
+    logs_dir = Path.cwd() / "logs"
+    reader = LogReader(logs_dir)
+    all_runs = reader.list_runs()
+
+    if not all_runs:
+        console.print("[dim]No runs recorded yet. Start the hive to create a run.[/dim]")
+        return
+
+    table = Table(title="Recorded Runs")
+    table.add_column("Run ID", style="cyan")
+    table.add_column("Started", style="dim")
+    table.add_column("Heartbeat")
+    table.add_column("Agents", style="green")
+    table.add_column("Profiles")
+
+    for r in all_runs:
+        table.add_row(
+            r.run_id,
+            r.started_at.strftime("%Y-%m-%d %H:%M"),
+            f"{r.heartbeat}s",
+            str(len(r.agents_spawned)),
+            ", ".join(r.profiles),
+        )
+
+    console.print(table)
+
+
+@app.command()
+def inspect(run_id: str = typer.Argument(help="Run ID to inspect")) -> None:
+    """Show detailed summary of a recorded run."""
+    from hive.logging.reader import LogReader
+
+    logs_dir = Path.cwd() / "logs"
+    reader = LogReader(logs_dir)
+    summary = reader.get_summary(run_id)
+
+    if not summary:
+        console.print(f"[red]Run not found: {run_id}[/red]")
+        raise typer.Exit(1)
+
+    console.print(
+        Panel(
+            f"[bold]Run:[/bold] {summary['run_id']}\n"
+            f"  Started: {summary['started_at']}\n"
+            f"  Heartbeat: {summary['heartbeat']}s\n"
+            f"  Agents: {summary['agents']}\n\n"
+            f"[bold]Goals:[/bold]\n"
+            f"  Generated: {summary['goals_generated']}\n"
+            f"  Completed: {summary['goals_completed']}\n"
+            f"  Abandoned: {summary['goals_abandoned']}\n\n"
+            f"[bold]Activity:[/bold]\n"
+            f"  Tool calls: {summary['tool_calls']}\n"
+            f"  Total tokens: {summary['total_tokens']:,}\n"
+            f"  Total cost: ${summary['total_cost_usd']:.4f}",
+            title="Run Summary",
+            border_style="blue",
+        )
+    )
+
+    for aid in summary["agent_ids"]:
+        goals = reader.get_agent_goals(run_id, aid)
+        decisions = reader.get_agent_decisions(run_id, aid)
+        tools = reader.get_agent_tools(run_id, aid)
+
+        console.print(f"\n  [cyan]{aid}[/cyan]:")
+        console.print(f"    Goals: {len(goals)}, Decisions: {len(decisions)}, Tools: {len(tools)}")
+
+        for g in goals[:5]:
+            status_icon = {"generated": "🎯", "completed": "✓", "abandoned": "✗"}.get(g.event, "·")
+            obj = (g.objective or "")[:60]
+            console.print(f"    {status_icon} [{g.event}] {obj}")
 
 
 if __name__ == "__main__":

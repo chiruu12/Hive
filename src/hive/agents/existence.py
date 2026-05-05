@@ -7,6 +7,8 @@ from uuid import uuid4
 from hive.agents.profile import AgentProfile
 from hive.agents.suffering import SufferingState
 from hive.execution.registry import ToolRegistry
+from hive.logging.models import DecisionLog, GoalLog
+from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.models.claude import ClaudeCLIProvider
@@ -25,6 +27,7 @@ class ExistenceLoop:
         registry: ToolRegistry,
         store: HiveStore,
         event_log: EventLog,
+        log_writer: LogWriter | None = None,
         session_id: str = "",
     ):
         self._agent_id = agent_id
@@ -33,6 +36,7 @@ class ExistenceLoop:
         self._registry = registry
         self._store = store
         self._events = event_log
+        self._log = log_writer
         self._session_id = session_id or f"sess-{agent_id}"
 
     async def generate_goal(
@@ -53,11 +57,45 @@ class ExistenceLoop:
         )
 
         goal_text = self._parse_goal(response.content)
+        reasoning = self._parse_reasoning(response.content)
+
+        if self._log:
+            parsed = None
+            try:
+                parsed = json.loads(response.content.strip())
+            except (json.JSONDecodeError, ValueError):
+                pass
+            self._log.log_decision(
+                DecisionLog(
+                    agent_id=self._agent_id,
+                    decision_type="existence",
+                    model=response.model,
+                    input_tokens=response.input_tokens,
+                    output_tokens=response.output_tokens,
+                    cost_usd=response.cost_usd,
+                    duration_ms=response.duration_ms,
+                    response_raw=response.content,
+                    response_parsed=parsed if isinstance(parsed, dict) else None,
+                    success=goal_text is not None,
+                )
+            )
+
         if not goal_text:
             return None
 
         goal_id = f"goal-{uuid4().hex[:8]}"
         await self._store.save_goal(goal_id, self._agent_id, goal_text)
+
+        if self._log:
+            self._log.log_goal(
+                GoalLog(
+                    agent_id=self._agent_id,
+                    goal_id=goal_id,
+                    event="generated",
+                    objective=goal_text,
+                    reasoning=reasoning,
+                )
+            )
 
         await self._emit(
             EventType.GOAL_SET,
@@ -117,15 +155,23 @@ class ExistenceLoop:
         return "\n".join(sections)
 
     def _parse_goal(self, text: str) -> str | None:
+        data = self._parse_json(text)
+        return data.get("goal") if data else None
+
+    def _parse_reasoning(self, text: str) -> str | None:
+        data = self._parse_json(text)
+        return data.get("reasoning") if data else None
+
+    def _parse_json(self, text: str) -> dict | None:
         text = text.strip()
         if text.startswith("```"):
             lines = text.splitlines()
             text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
         try:
             data = json.loads(text)
-            return data.get("goal")
+            return data if isinstance(data, dict) else None
         except json.JSONDecodeError:
-            logger.warning("Failed to parse existence response: %s", text[:200])
+            logger.warning("Failed to parse JSON response: %s", text[:200])
             return None
 
     async def _emit(self, event_type: EventType, data: dict) -> None:

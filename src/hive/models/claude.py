@@ -60,6 +60,8 @@ class ClaudeCLIProvider:
         full_text = ""
         input_tokens = 0
         output_tokens = 0
+        cost_usd: float | None = None
+        duration_ms: int | None = None
 
         async for event in self.run_task(last_message, system_prompt=system or ""):
             if isinstance(event, AssistantMessage):
@@ -67,6 +69,8 @@ class ClaudeCLIProvider:
             elif isinstance(event, ResultMessage):
                 input_tokens = event.input_tokens or 0
                 output_tokens = event.output_tokens or 0
+                cost_usd = event.cost_usd
+                duration_ms = event.duration_ms
 
         return ModelResponse(
             content=full_text,
@@ -74,6 +78,8 @@ class ClaudeCLIProvider:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             stop_reason="end_turn",
+            cost_usd=cost_usd,
+            duration_ms=duration_ms,
         )
 
     async def plan(
