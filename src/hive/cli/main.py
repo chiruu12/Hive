@@ -14,10 +14,19 @@ console = Console()
 @app.command()
 def init() -> None:
     """Initialize a new hive in the current directory."""
+    from pathlib import Path
+
     from hive.daemon.setup import initialize_hive
 
+    hive_dir = Path.cwd() / ".hive"
+    if hive_dir.exists():
+        console.print("[dim]Hive already initialized.[/dim]")
+        return
+
     initialize_hive()
-    console.print("[green]Hive initialized.[/green] Run `hive spawn coder` to create your first agent.")
+    console.print(
+        "[green]✓ Hive initialized.[/green] Run `hive spawn coder` to create your first agent."
+    )
 
 
 @app.command()
@@ -27,12 +36,34 @@ def spawn(
     model: str | None = typer.Option(None, "--model", "-m", help="Override default model"),
 ) -> None:
     """Spawn a new agent (from preset or custom profile)."""
+    from pathlib import Path
+
+    from rich.panel import Panel
+
     from hive.daemon.lifecycle import spawn_agent
 
-    result = spawn_agent(agent, task=task, model_override=model)
-    console.print(f"[green]Spawned[/green] {result.name} ({result.model})")
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]No .hive directory. Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    with console.status(f"[bold blue]Spawning {agent}...[/bold blue]"):
+        result = spawn_agent(agent, task=task, model_override=model)
+
+    console.print(
+        Panel(
+            f"[green]✓ Spawned[/green] [bold]{result.name}[/bold]\n"
+            f"  Model: {result.model}\n"
+            f"  ID: [dim]{result.agent_id}[/dim]\n"
+            + (f"  Task: {task}" if task else "  Status: idle"),
+            title="Agent Ready",
+            border_style="green",
+        )
+    )
+
     if task:
-        console.print(f"  Task: {task}")
+        aid = result.agent_id[:20]
+        console.print(f"\n[dim]Agent is working. Use `hive logs {aid}` to watch progress.[/dim]")
 
 
 @app.command()
@@ -54,8 +85,18 @@ def status() -> None:
     table.add_column("Status")
     table.add_column("Current Task", style="dim")
 
+    status_styles = {
+        "idle": "[dim]idle[/dim]",
+        "working": "[bold yellow]working[/bold yellow]",
+        "waiting_approval": "[blue]waiting[/blue]",
+        "error": "[red]error[/red]",
+        "dead": "[dim strikethrough]dead[/dim strikethrough]",
+    }
+
     for a in agents:
-        table.add_row(a.name, a.role, a.model, a.status, a.current_task or "-")
+        status_val = a.status.value if hasattr(a.status, "value") else a.status
+        styled_status = status_styles.get(status_val, status_val)
+        table.add_row(a.name, a.role, a.model, styled_status, a.current_task or "-")
 
     console.print(table)
 

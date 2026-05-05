@@ -1,12 +1,12 @@
 """Agent state - runtime state for a living agent."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class AgentStatus(str, Enum):
+class AgentStatus(StrEnum):
     """Possible agent states."""
 
     IDLE = "idle"
