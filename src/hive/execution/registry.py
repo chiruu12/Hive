@@ -43,7 +43,7 @@ class ToolRegistry:
         logger.debug("Registered tool: %s", tool_name)
 
     async def execute(self, tool_name: str, agent_id: str, **params: Any) -> ToolResult:
-        """Execute a tool by name."""
+        """Execute a tool by name, filtering params to match the function signature."""
         func = self._tools.get(tool_name)
         if not func:
             return ToolResult(
@@ -52,7 +52,11 @@ class ToolRegistry:
                 error="tool_not_found",
             )
         try:
-            return await func(agent_id=agent_id, **params)
+            sig = inspect.signature(func)
+            valid_params = {
+                k: v for k, v in params.items() if k in sig.parameters and k != "agent_id"
+            }
+            return await func(agent_id=agent_id, **valid_params)
         except Exception as e:
             logger.error("Tool %s failed: %s", tool_name, e)
             return ToolResult(success=False, output=str(e), error="execution_error")
