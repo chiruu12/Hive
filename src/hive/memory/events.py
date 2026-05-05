@@ -19,6 +19,13 @@ class EventType(StrEnum):
     ASSISTANT_MESSAGE = "assistant_message"
     TASK_COMPLETED = "task_completed"
     ERROR = "error"
+    GOAL_SET = "goal_set"
+    GOAL_COMPLETED = "goal_completed"
+    GOAL_ABANDONED = "goal_abandoned"
+    SUFFERING_CHANGED = "suffering_changed"
+    NUDGE_RECEIVED = "nudge_received"
+    EXISTENCE_CYCLE = "existence_cycle"
+    DAEMON_CYCLE = "daemon_cycle"
 
 
 class HiveEvent(BaseModel):

@@ -35,6 +35,27 @@ CREATE TABLE IF NOT EXISTS sessions (
     duration_ms INTEGER DEFAULT 0,
     FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
 );
+
+CREATE TABLE IF NOT EXISTS goals (
+    goal_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    priority INTEGER DEFAULT 4,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    steps_completed INTEGER DEFAULT 0,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
+);
+
+CREATE TABLE IF NOT EXISTS nudges (
+    nudge_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    delivered INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
+);
 """
 
 
@@ -137,6 +158,76 @@ class HiveStore:
                 ),
             )
             await db.commit()
+
+    async def save_goal(
+        self, goal_id: str, agent_id: str, objective: str, priority: int = 4
+    ) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """INSERT OR REPLACE INTO goals
+                   (goal_id, agent_id, objective, status, priority, created_at)
+                   VALUES (?, ?, ?, 'active', ?, ?)""",
+                (goal_id, agent_id, objective, priority, datetime.now(UTC).isoformat()),
+            )
+            await db.commit()
+
+    async def get_active_goal(self, agent_id: str) -> dict | None:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM goals WHERE agent_id = ? AND status = 'active' LIMIT 1",
+                (agent_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def complete_goal(self, goal_id: str) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE goals SET status = 'completed', completed_at = ? WHERE goal_id = ?",
+                (datetime.now(UTC).isoformat(), goal_id),
+            )
+            await db.commit()
+
+    async def abandon_goal(self, goal_id: str) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE goals SET status = 'abandoned', completed_at = ? WHERE goal_id = ?",
+                (datetime.now(UTC).isoformat(), goal_id),
+            )
+            await db.commit()
+
+    async def list_agent_goals(self, agent_id: str, limit: int = 10) -> list[dict]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM goals WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?",
+                (agent_id, limit),
+            ) as cursor:
+                return [dict(row) async for row in cursor]
+
+    async def save_nudge(self, nudge_id: str, agent_id: str, message: str) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "INSERT INTO nudges (nudge_id, agent_id, message, created_at) VALUES (?, ?, ?, ?)",
+                (nudge_id, agent_id, message, datetime.now(UTC).isoformat()),
+            )
+            await db.commit()
+
+    async def get_pending_nudges(self, agent_id: str) -> list[str]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT message FROM nudges WHERE agent_id = ? AND delivered = 0",
+                (agent_id,),
+            ) as cursor:
+                messages = [row["message"] async for row in cursor]
+            await db.execute(
+                "UPDATE nudges SET delivered = 1 WHERE agent_id = ? AND delivered = 0",
+                (agent_id,),
+            )
+            await db.commit()
+            return messages
 
     def _row_to_state(self, row: aiosqlite.Row) -> AgentState:
         return AgentState(

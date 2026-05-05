@@ -25,6 +25,9 @@ class AgentState(BaseModel):
     model: str
     status: AgentStatus = AgentStatus.IDLE
     current_task: str | None = None
+    current_goal: str | None = None
+    suffering_load: float = 0.0
+    goals_completed: int = 0
     steps_completed: int = 0
     steps_total: int = 0
     spawned_at: datetime = Field(default_factory=datetime.now)
