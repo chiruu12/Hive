@@ -4,12 +4,15 @@ import asyncio
 import logging
 from pathlib import Path
 
+from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
 from hive.agents.identity import IdentityManager
 from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
+from hive.agents.specialization import SpecializationTracker
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import SufferingState, assess_conditions
+from hive.agents.swarm import SwarmLearning
 from hive.checkpoint import CheckpointManager
 from hive.config import get_config, load_config
 from hive.execution.context import ExecutionContext
@@ -53,6 +56,9 @@ class HiveDaemon:
         self._log = LogWriter(logs_dir or (hive_dir.parent / "logs"))
         self._identity = IdentityManager(hive_dir)
         self._checkpoint = CheckpointManager(hive_dir)
+        self._delegation = DelegationEngine(self._store)
+        self._specialization = SpecializationTracker()
+        self._swarm = SwarmLearning(self._store, self._specialization)
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._cycle_count = 0
@@ -106,6 +112,17 @@ class HiveDaemon:
                     )
 
             self._process_payday(alive)
+
+            if self._cycle_count % 5 == 0 and alive:
+                agent_ids = [a.agent_id for a in alive]
+                report = await self._swarm.run_cycle(agent_ids)
+                logger.info(
+                    "Swarm learning cycle %d: success=%.0f%% patterns=%d recs=%d",
+                    report.cycle_id,
+                    report.swarm_success_rate * 100,
+                    report.pattern_count,
+                    len(report.recommendations),
+                )
 
             self._log.log_cycle(
                 CycleLog(
@@ -205,6 +222,13 @@ class HiveDaemon:
                     self._ctx,
                     goals_snap,
                 )
+                self._specialization.record(
+                    agent.agent_id,
+                    "goal_pursuit",
+                    True,
+                    0,
+                    "autonomy_loop",
+                )
             elif outcome.steps_failed > outcome.steps_done:
                 await self._store.abandon_goal(active_goal["goal_id"])
                 self._log.log_goal(
@@ -225,6 +249,13 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "reason": outcome.summary},
                 )
                 result = "abandoned"
+                self._specialization.record(
+                    agent.agent_id,
+                    "goal_pursuit",
+                    False,
+                    0,
+                    "autonomy_loop",
+                )
 
             await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
 
