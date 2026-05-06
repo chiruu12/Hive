@@ -27,6 +27,7 @@ dependencies = [
     "pydantic>=2.5",
     "anthropic>=0.40",
     "openai>=1.30",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,7 @@ dev = [
 
 [project.scripts]
 hive = "hive.cli.main:app"
+hive-mcp = "hive.mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/chiruu12/Hive"

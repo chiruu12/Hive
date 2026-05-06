@@ -31,6 +31,11 @@ def create_provider(model_name: str):  # noqa: ANN201
 
         return OpenAIProvider(model=model_name)
 
+    if model_name.startswith("lmstudio:"):
+        from hive.models.lmstudio import LMStudioProvider
+
+        return LMStudioProvider(model=model_name.removeprefix("lmstudio:"))
+
     from hive.models.ollama import OllamaProvider
 
     return OllamaProvider(model=model_name)
@@ -43,11 +48,9 @@ def get_routine_provider():  # noqa: ANN201
         if p.available:
             return p
 
-    from hive.models.ollama import OllamaProvider
-
-    fallback = OllamaProvider()
-    if fallback.available:
-        return fallback
+    for local_provider in _local_providers():
+        if local_provider.available:
+            return local_provider
 
     return create_provider(ROUTINE_PREFERENCE[0])
 
@@ -59,6 +62,13 @@ def get_planning_provider():  # noqa: ANN201
         if p.available:
             return p
     return get_routine_provider()
+
+
+def _local_providers() -> list:
+    from hive.models.lmstudio import LMStudioProvider
+    from hive.models.ollama import OllamaProvider
+
+    return [LMStudioProvider(), OllamaProvider()]
 
 
 def detect_models() -> dict[str, list[ModelInfo]]:
@@ -73,13 +83,19 @@ def detect_models() -> dict[str, list[ModelInfo]]:
     has_openai = bool(os.environ.get("OPENAI_API_KEY"))
     providers["OpenAI"] = [ModelInfo(m, "openai", has_openai) for m in sorted(OPENAI_MODELS)]
 
+    from hive.models.lmstudio import LMStudioProvider
+
+    lms = LMStudioProvider()
+    providers["LM Studio (local)"] = [
+        ModelInfo("lmstudio:auto", "lmstudio", lms.available),
+    ]
+
     from hive.models.ollama import OllamaProvider
 
     ollama = OllamaProvider()
     providers["Ollama (local)"] = [
         ModelInfo("llama3.2", "ollama", ollama.available),
         ModelInfo("mistral", "ollama", ollama.available),
-        ModelInfo("qwen2.5", "ollama", ollama.available),
     ]
 
     return providers
