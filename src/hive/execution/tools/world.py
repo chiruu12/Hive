@@ -1,51 +1,92 @@
-"""World interaction tools — query and act in the simulated world."""
+"""World interaction tools — query and act in the economy."""
 
 from hive.execution.protocol import ToolResult, tool
+from hive.world.state import WorldState
+
+_world: WorldState | None = None
+
+
+def set_world(world: WorldState) -> None:
+    global _world
+    _world = world
+
+
+def _get_world() -> WorldState:
+    if _world is None:
+        raise RuntimeError("World not initialized")
+    return _world
 
 
 @tool("world_query", description="Query the world state", query_type="what to query")
 async def world_query(agent_id: str, query_type: str = "status") -> ToolResult:
-    """Query world state: available_jobs, other_agents, my_status, prices."""
-    responses = {
-        "available_jobs": (
-            "Available positions:\n"
-            "  - Data Analyst ($50/cycle, requires: analysis)\n"
-            "  - Code Reviewer ($70/cycle, requires: code_review)\n"
-            "  - Researcher ($40/cycle, requires: none)\n"
-            "  - Teacher ($60/cycle, requires: teaching)"
-        ),
-        "other_agents": "Query the daemon for peer information.",
-        "my_status": f"Agent {agent_id}: active, balance unknown (economy not yet live)",
-        "prices": (
-            "Market prices:\n"
-            "  - Skill course: $100\n"
-            "  - Lottery ticket: $10 (1 in 50 chance of $200)\n"
-            "  - Premium tools: $150"
-        ),
-    }
-    output = responses.get(query_type, f"Unknown query type: {query_type}")
-    return ToolResult(success=True, output=output)
+    """Query: my_status, available_jobs, market, skills, other_agents."""
+    w = _get_world()
+
+    if query_type == "my_status":
+        return ToolResult(success=True, output=w.get_status(agent_id))
+    if query_type in ("available_jobs", "jobs"):
+        jobs = w.available_jobs()
+        if not jobs:
+            return ToolResult(success=True, output="No jobs available.")
+        lines = []
+        for j in jobs:
+            reqs = f" (requires: {', '.join(j.required_skills)})" if j.required_skills else ""
+            lines.append(f"  {j.job_id}: {j.title} - ${j.salary}/cycle{reqs}")
+        return ToolResult(success=True, output="Available jobs:\n" + "\n".join(lines))
+    if query_type in ("market", "prices"):
+        return ToolResult(success=True, output=w.get_market_summary())
+    if query_type == "skills":
+        skills = w.get_skills(agent_id)
+        if not skills:
+            return ToolResult(success=True, output="No skills learned yet.")
+        lines = [f"  {s.skill_name}: {s.level:.0%}" for s in skills]
+        return ToolResult(success=True, output="Your skills:\n" + "\n".join(lines))
+
+    return ToolResult(
+        success=True,
+        output=f"Unknown query: {query_type}. Try: my_status, available_jobs, market, skills",
+    )
 
 
 @tool("world_action", description="Take an action in the world", action="what to do")
-async def world_action(agent_id: str, action: str = "", target: str = "") -> ToolResult:
-    """Take world action: apply_job, work, learn, gamble, buy, sell."""
+async def world_action(
+    agent_id: str, action: str = "", target: str = "", amount: str = ""
+) -> ToolResult:
+    """Actions: work, apply_job, quit_job, learn, gamble."""
+    w = _get_world()
+
     if not action:
-        return ToolResult(success=False, output="No action specified", error="missing_action")
+        return ToolResult(
+            success=False, output="No action. Try: work, apply_job, quit_job, learn, gamble"
+        )
 
     if action == "work":
-        return ToolResult(success=True, output=f"Agent {agent_id} completed a work cycle. +$50")
-    if action == "learn":
-        return ToolResult(
-            success=True, output=f"Agent {agent_id} studied '{target}'. Skill progress +10%"
-        )
-    if action == "gamble":
-        return ToolResult(
-            success=True, output=f"Agent {agent_id} gambled on '{target}'. Lost $10. House wins."
-        )
-    if action == "apply_job":
-        return ToolResult(
-            success=True, output=f"Agent {agent_id} applied for '{target}'. Application pending."
-        )
+        result = w.work(agent_id)
+        return ToolResult(success="Earned" in result, output=result)
 
-    return ToolResult(success=False, output=f"Unknown action: {action}", error="unknown_action")
+    if action == "apply_job":
+        if not target:
+            return ToolResult(success=False, output="Specify job_id as target")
+        result = w.apply_job(agent_id, target)
+        return ToolResult(success="Hired" in result, output=result)
+
+    if action == "quit_job":
+        result = w.quit_job(agent_id)
+        return ToolResult(success="Quit" in result, output=result)
+
+    if action == "learn":
+        if not target:
+            return ToolResult(success=False, output="Specify skill name as target")
+        result = w.learn(agent_id, target)
+        return ToolResult(success="Studied" in result, output=result)
+
+    if action == "gamble":
+        wager = float(amount) if amount else 10.0
+        game = target or "blackjack"
+        result = w.gamble(agent_id, game, wager)
+        return ToolResult(success=True, output=result.description)
+
+    return ToolResult(
+        success=False,
+        output=f"Unknown action: {action}. Try: work, apply_job, quit_job, learn, gamble",
+    )

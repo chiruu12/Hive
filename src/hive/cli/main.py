@@ -240,42 +240,136 @@ def nudge(
 
 @app.command()
 def watch() -> None:
-    """Live stream of agent activity."""
-    from hive.memory.events import EventLog
+    """Live TUI dashboard showing agent activity."""
+    from collections import deque
+
+    from rich.layout import Layout
+    from rich.live import Live
+
+    from hive.memory.events import EventType, HiveEvent
+    from hive.memory.store import HiveStore
 
     hive_dir = Path.cwd() / ".hive"
     if not hive_dir.exists():
         console.print("[red]Run `hive init` first.[/red]")
         raise typer.Exit(1)
 
-    console.print("[bold]Watching hive activity...[/bold] (Ctrl+C to stop)\n")
+    store = HiveStore(hive_dir / "hive.db")
+    feed: deque[str] = deque(maxlen=20)
 
-    event_log = EventLog(hive_dir)
-    store_path = hive_dir / "hive.db"
+    def _build_dashboard() -> Layout:
+        agents = asyncio.run(store.list_agents())
+        alive = [a for a in agents if a.is_alive()]
 
-    from hive.memory.store import HiveStore
+        agent_table = Table(title="Agents", box=None, show_edge=False, pad_edge=False)
+        agent_table.add_column("Name", style="cyan", width=12)
+        agent_table.add_column("Status", width=10)
+        agent_table.add_column("Goal", style="dim", max_width=50)
 
-    store = HiveStore(store_path)
-    agents = asyncio.run(store.list_agents())
+        status_styles = {
+            "idle": "[dim]idle[/dim]",
+            "working": "[bold yellow]working[/bold yellow]",
+            "error": "[red]error[/red]",
+        }
 
-    if not agents:
-        console.print("[dim]No agents found.[/dim]")
-        return
+        for a in alive:
+            goal = asyncio.run(store.get_active_goal(a.agent_id))
+            goal_text = goal["objective"][:50] if goal else "-"
+            sv = a.status.value if hasattr(a.status, "value") else a.status
+            agent_table.add_row(a.name, status_styles.get(sv, sv), goal_text)
 
-    from hive.memory.events import _print_event
+        feed_text = "\n".join(feed) if feed else "[dim]Waiting for events...[/dim]"
 
-    async def _watch_all() -> None:
-        tasks = []
-        for a in agents:
-            tasks.append(_watch_agent(event_log, a.agent_id))
-        await asyncio.gather(*tasks)
+        layout = Layout()
+        layout.split_column(
+            Layout(
+                Panel(agent_table, title="Hive Agents", border_style="green"),
+                name="top",
+                size=len(alive) + 5,
+            ),
+            Layout(
+                Panel(feed_text, title="Activity Feed", border_style="blue"),
+                name="bottom",
+            ),
+        )
+        return layout
 
-    async def _watch_agent(elog: EventLog, agent_id: str) -> None:
-        async for event in elog.stream(agent_id):
-            _print_event(console, event)
+    def _format_event(event: HiveEvent) -> str:
+        ts = event.ts.strftime("%H:%M:%S")
+        name = event.agent_id.split("-")[0]
+        et = event.event_type
+
+        if et == EventType.TOOL_USED:
+            tool = event.data.get("tool", "?")
+            return f"[cyan]{ts}[/cyan] {name} [dim]⚡[/dim] {tool}"
+        if et == EventType.GOAL_SET:
+            obj = (event.data.get("objective") or "")[:50]
+            return f"[blue]{ts}[/blue] {name} [bold]🎯[/bold] {obj}"
+        if et == EventType.GOAL_COMPLETED:
+            return f"[green]{ts}[/green] {name} [bold]✓[/bold] goal completed"
+        if et == EventType.GOAL_ABANDONED:
+            return f"[red]{ts}[/red] {name} [bold]✗[/bold] goal abandoned"
+        if et == EventType.SUFFERING_CHANGED:
+            load = event.data.get("load", 0)
+            if load > 0:
+                bar_len = int(load * 10)
+                bar = "█" * bar_len + "░" * (10 - bar_len)
+                return f"[yellow]{ts}[/yellow] {name} [{bar}] {load:.0%}"
+            return ""
+        if et == EventType.ERROR:
+            msg = (event.data.get("message") or "")[:60]
+            return f"[red]{ts}[/red] {name} ✗ {msg}"
+        if et == EventType.ASSISTANT_MESSAGE:
+            text = (event.data.get("text") or "")[:60]
+            return f"[white]{ts}[/white] {name} 💬 {text}"
+        return ""
+
+    async def _poll_events() -> None:
+        agents = asyncio.run(store.list_agents())
+        offsets: dict[str, int] = {}
+
+        while True:
+            for a in agents:
+                if not a.is_alive():
+                    continue
+                agent_dir = hive_dir / "sessions" / a.agent_id
+                if not agent_dir.exists():
+                    continue
+                sessions = sorted(
+                    agent_dir.glob("*.jsonl"),
+                    key=lambda p: p.stat().st_mtime,
+                )
+                if not sessions:
+                    continue
+                path = sessions[-1]
+                offset = offsets.get(a.agent_id, 0)
+                text = path.read_text()
+                new_lines = text[offset:].strip().splitlines()
+                for line in new_lines:
+                    if line.strip():
+                        try:
+                            ev = HiveEvent.from_jsonl(line)
+                            formatted = _format_event(ev)
+                            if formatted:
+                                feed.append(formatted)
+                        except Exception:
+                            pass
+                offsets[a.agent_id] = len(text)
+            await asyncio.sleep(0.5)
 
     try:
-        asyncio.run(_watch_all())
+        with Live(_build_dashboard(), console=console, refresh_per_second=2) as live:
+
+            async def _run() -> None:
+                poll_task = asyncio.create_task(_poll_events())
+                try:
+                    while True:
+                        live.update(_build_dashboard())
+                        await asyncio.sleep(0.5)
+                finally:
+                    poll_task.cancel()
+
+            asyncio.run(_run())
     except KeyboardInterrupt:
         pass
 

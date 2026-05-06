@@ -12,11 +12,13 @@ from hive.agents.suffering import SufferingState, assess_conditions
 from hive.execution.registry import ToolRegistry
 from hive.execution.tools.comms import set_comms_dir
 from hive.execution.tools.memory_tools import set_memory_dir
+from hive.execution.tools.world import set_world
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.models.router import create_provider
+from hive.world.state import WorldState
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ class HiveDaemon:
         await self._store.initialize()
         set_memory_dir(self._hive_dir)
         set_comms_dir(self._hive_dir)
+        set_world(WorldState(self._hive_dir))
         self._registry.discover()
 
         agents = await self._store.list_agents()
