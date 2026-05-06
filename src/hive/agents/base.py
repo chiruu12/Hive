@@ -3,13 +3,13 @@
 import json
 import logging
 from abc import ABC
+from typing import Any
 
 from hive.agents.profile import AgentProfile
 from hive.execution.context import ExecutionContext
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
-from hive.models.claude import ClaudeCLIProvider
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class AgentLoopBase(ABC):
         self,
         agent_id: str,
         profile: AgentProfile,
-        provider: ClaudeCLIProvider,
+        provider: Any,
         ctx: ExecutionContext,
         store: HiveStore,
         event_log: EventLog,
