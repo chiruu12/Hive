@@ -189,6 +189,15 @@ class HiveStore:
             )
             await db.commit()
 
+    async def update_goal_progress(self, goal_id: str, steps_done: int, steps_failed: int) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """UPDATE goals SET steps_completed = ?, last_worked_on = ?
+                   WHERE goal_id = ?""",
+                (steps_done, datetime.now(UTC).isoformat(), goal_id),
+            )
+            await db.commit()
+
     async def abandon_goal(self, goal_id: str) -> None:
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(

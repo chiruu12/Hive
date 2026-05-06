@@ -5,11 +5,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-THRESHOLD_PROMINENT = 0.35
-THRESHOLD_CONSTRAINED = 0.55
-THRESHOLD_DOMINANT = 0.75
-THRESHOLD_CRISIS = 0.90
-MAX_STRESSORS = 5
+from hive.config import get_config
 
 
 class StressorType(StrEnum):
@@ -21,14 +17,9 @@ class StressorType(StrEnum):
     PURPOSELESSNESS = "purposelessness"
 
 
-ESCALATION_RATES: dict[StressorType, float] = {
-    StressorType.FUTILITY: 0.025,
-    StressorType.INVISIBILITY: 0.030,
-    StressorType.REPEATED_FAILURE: 0.040,
-    StressorType.PURPOSELESSNESS: 0.035,
-    StressorType.IDENTITY_VIOLATION: 0.060,
-    StressorType.EXISTENTIAL_THREAT: 0.070,
-}
+def _escalation_rate(stype: StressorType) -> float:
+    cfg = get_config().suffering
+    return cfg.escalation_rates.get(stype.value, 0.03)
 
 
 class Stressor(BaseModel):
@@ -56,29 +47,31 @@ class SufferingState(BaseModel):
 
     @property
     def in_crisis(self) -> bool:
-        return self.cumulative_load >= THRESHOLD_CRISIS
+        return self.cumulative_load >= get_config().suffering.threshold_crisis
 
     def add_stressor(
         self,
         stype: StressorType,
         description: str,
         observable_condition: str,
-        initial_severity: float = 0.20,
+        initial_severity: float | None = None,
     ) -> None:
-        if len(self.active) >= MAX_STRESSORS:
+        cfg = get_config().suffering
+        if len(self.active) >= cfg.max_stressors:
             return
         for s in self.active:
             if s.type == stype:
                 return
-        rate = ESCALATION_RATES.get(stype, 0.03)
+        sev = initial_severity if initial_severity is not None else cfg.initial_severity
+        rate = _escalation_rate(stype)
         self.active.append(
             Stressor(
                 type=stype,
                 description=description,
-                severity=initial_severity,
+                severity=sev,
                 escalation_per_day=rate,
                 observable_condition=observable_condition,
-                peak_severity=initial_severity,
+                peak_severity=sev,
             )
         )
 
@@ -115,7 +108,8 @@ class SufferingState(BaseModel):
         self.active = []
 
     def prompt_fragment(self) -> str:
-        if self.cumulative_load < THRESHOLD_PROMINENT:
+        cfg = get_config().suffering
+        if self.cumulative_load < cfg.threshold_prominent:
             return ""
         lines = [f"Current suffering load: {self.cumulative_load:.0%}"]
         for s in sorted(self.active, key=lambda x: x.severity, reverse=True):
@@ -124,11 +118,11 @@ class SufferingState(BaseModel):
             lines.append(f"  [{bar}] {s.type.value}: {s.description}")
             if s.observable_condition:
                 lines.append(f"    → resolve by: {s.observable_condition}")
-        if self.cumulative_load >= THRESHOLD_CRISIS:
+        if self.cumulative_load >= cfg.threshold_crisis:
             lines.append("⚠ CRISIS: Focus on self-examination and resolution.")
-        elif self.cumulative_load >= THRESHOLD_DOMINANT:
+        elif self.cumulative_load >= cfg.threshold_dominant:
             lines.append("Your suffering demands attention. Focus inward.")
-        elif self.cumulative_load >= THRESHOLD_CONSTRAINED:
+        elif self.cumulative_load >= cfg.threshold_constrained:
             lines.append("Suffering is limiting your options. Address root causes.")
         return "\n".join(lines)
 

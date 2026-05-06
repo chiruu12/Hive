@@ -4,25 +4,28 @@ import asyncio
 import logging
 from pathlib import Path
 
+from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
+from hive.agents.identity import IdentityManager
 from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
+from hive.agents.specialization import SpecializationTracker
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import SufferingState, assess_conditions
+from hive.agents.swarm import SwarmLearning
+from hive.checkpoint import CheckpointManager
+from hive.config import get_config, load_config
+from hive.execution.context import ExecutionContext
 from hive.execution.registry import ToolRegistry
-from hive.execution.tools.comms import set_comms_dir
-from hive.execution.tools.memory_tools import set_memory_dir
-from hive.execution.tools.world import set_world
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
+from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
 from hive.models.router import create_provider
 from hive.world.state import WorldState
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_HEARTBEAT = 10
 
 
 class HiveDaemon:
@@ -31,28 +34,40 @@ class HiveDaemon:
     def __init__(
         self,
         hive_dir: Path,
-        heartbeat: int = DEFAULT_HEARTBEAT,
+        heartbeat: int | None = None,
         logs_dir: Path | None = None,
         profiles: list[str] | None = None,
     ):
         self._hive_dir = hive_dir
-        self._heartbeat = heartbeat
+        cfg = load_config(hive_dir)
+        self._heartbeat = heartbeat or cfg.daemon.heartbeat
         self._running = False
         self._store = HiveStore(hive_dir / "hive.db")
         self._events = EventLog(hive_dir)
-        self._registry = ToolRegistry()
+
+        self._ctx = ExecutionContext(
+            world=WorldState(hive_dir),
+            store=self._store,
+            comms_dir=hive_dir / "comms",
+            memory_dir=hive_dir / "agent_memory",
+        )
+
+        self._registry = ToolRegistry(self._ctx)
         self._log = LogWriter(logs_dir or (hive_dir.parent / "logs"))
+        self._identity = IdentityManager(hive_dir)
+        self._checkpoint = CheckpointManager(hive_dir)
+        self._delegation = DelegationEngine(self._store)
+        self._specialization = SpecializationTracker()
+        self._swarm = SwarmLearning(self._store, self._specialization)
+        self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
 
     async def start(self) -> None:
-        """Initialize subsystems and start the heartbeat."""
+        """Initialize store, discover tools, start heartbeat."""
         await self._store.initialize()
-        set_memory_dir(self._hive_dir)
-        set_comms_dir(self._hive_dir)
-        set_world(WorldState(self._hive_dir))
         self._registry.discover()
 
         agents = await self._store.list_agents()
@@ -96,6 +111,19 @@ class HiveDaemon:
                         agent.agent_id, AgentStatus.ERROR, error=str(e)
                     )
 
+            self._process_payday(alive)
+
+            if self._cycle_count % 5 == 0 and alive:
+                agent_ids = [a.agent_id for a in alive]
+                report = await self._swarm.run_cycle(agent_ids)
+                logger.info(
+                    "Swarm learning cycle %d: success=%.0f%% patterns=%d recs=%d",
+                    report.cycle_id,
+                    report.swarm_success_rate * 100,
+                    report.pattern_count,
+                    len(report.recommendations),
+                )
+
             self._log.log_cycle(
                 CycleLog(
                     run_id=self._log.run_id,
@@ -119,7 +147,7 @@ class HiveDaemon:
 
         if suffering.in_crisis:
             self._crisis_counts[agent.agent_id] = self._crisis_counts.get(agent.agent_id, 0) + 1
-            if self._crisis_counts[agent.agent_id] >= 3:
+            if self._crisis_counts[agent.agent_id] >= get_config().suffering.crisis_reset_after:
                 suffering.force_reset("3+ consecutive crisis cycles")
                 self._crisis_counts[agent.agent_id] = 0
         else:
@@ -128,6 +156,8 @@ class HiveDaemon:
         provider = create_provider(agent.model)
         profile = self._load_profile(agent.name)
         session_id = f"sess-{agent.agent_id}"
+        identity = self._identity.load_or_create(agent.agent_id, profile)
+        memory = self._get_memory(agent.agent_id)
 
         active_goal = await self._store.get_active_goal(agent.agent_id)
 
@@ -137,7 +167,7 @@ class HiveDaemon:
                 agent_id=agent.agent_id,
                 profile=profile,
                 provider=provider,
-                registry=self._registry,
+                ctx=self._ctx,
                 store=self._store,
                 event_log=self._events,
                 log_writer=self._log,
@@ -174,6 +204,31 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "summary": outcome.summary},
                 )
                 result = "completed"
+                self._identity.update_narrative(
+                    agent.agent_id,
+                    active_goal["objective"],
+                    outcome.summary,
+                )
+                await memory.store(
+                    f"Completed goal: {active_goal['objective']}. {outcome.summary}",
+                    metadata={"type": "goal_completed", "goal_id": active_goal["goal_id"]},
+                )
+                goals_snap = await self._store.list_agent_goals(agent.agent_id, limit=10)
+                self._checkpoint.save(
+                    agent.agent_id,
+                    "goal_completed",
+                    suffering,
+                    identity,
+                    self._ctx,
+                    goals_snap,
+                )
+                self._specialization.record(
+                    agent.agent_id,
+                    "goal_pursuit",
+                    True,
+                    0,
+                    "autonomy_loop",
+                )
             elif outcome.steps_failed > outcome.steps_done:
                 await self._store.abandon_goal(active_goal["goal_id"])
                 self._log.log_goal(
@@ -194,6 +249,13 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "reason": outcome.summary},
                 )
                 result = "abandoned"
+                self._specialization.record(
+                    agent.agent_id,
+                    "goal_pursuit",
+                    False,
+                    0,
+                    "autonomy_loop",
+                )
 
             await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
 
@@ -205,7 +267,7 @@ class HiveDaemon:
                 agent_id=agent.agent_id,
                 profile=profile,
                 provider=provider,
-                registry=self._registry,
+                ctx=self._ctx,
                 store=self._store,
                 event_log=self._events,
                 log_writer=self._log,
@@ -217,10 +279,7 @@ class HiveDaemon:
                 agent.agent_id,
                 session_id,
                 EventType.EXISTENCE_CYCLE,
-                {
-                    "goal_generated": goal or "none",
-                    "suffering_load": suffering.cumulative_load,
-                },
+                {"goal_generated": goal or "none", "suffering_load": suffering.cumulative_load},
             )
 
         current_stressors = {s.type.value for s in suffering.active}
@@ -255,13 +314,28 @@ class HiveDaemon:
 
         return result
 
+    def _process_payday(self, agents: list[AgentState]) -> None:
+        """Auto-pay salary to employed agents each cycle."""
+        for agent in agents:
+            job = self._ctx.world.agent_job(agent.agent_id)
+            if job:
+                self._ctx.world.work(agent.agent_id)
+
     def _get_suffering(self, agent_id: str) -> SufferingState:
         if agent_id not in self._suffering:
             self._suffering[agent_id] = SufferingState(agent_id=agent_id)
         return self._suffering[agent_id]
 
+    def _get_memory(self, agent_id: str) -> SemanticMemory:
+        if agent_id not in self._memories:
+            self._memories[agent_id] = SemanticMemory(self._hive_dir, agent_id)
+        return self._memories[agent_id]
+
     def _load_profile(self, name: str) -> AgentProfile:
-        profiles_dir = self._hive_dir.parent / "profiles"
+        from hive.agents.profile import default_profiles_dir
+
+        cfg = get_config()
+        profiles_dir = Path(cfg.profiles_dir) if cfg.profiles_dir else default_profiles_dir()
         try:
             return AgentProfile.from_preset(name, profiles_dir)
         except FileNotFoundError:
