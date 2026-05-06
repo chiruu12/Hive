@@ -23,7 +23,9 @@ from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
 from hive.models.router import create_provider
+from hive.world.event_engine import EventEngine
 from hive.world.state import WorldState
+from hive.world.stats import StatsManager
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,8 @@ class HiveDaemon:
         self._delegation = DelegationEngine(self._store)
         self._specialization = SpecializationTracker()
         self._swarm = SwarmLearning(self._store, self._specialization)
+        self._stats = StatsManager(hive_dir)
+        self._event_engine = EventEngine(self._stats, self._ctx.world)
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._cycle_count = 0
@@ -112,6 +116,7 @@ class HiveDaemon:
                     )
 
             self._process_payday(alive)
+            await self._process_life_events(alive)
 
             if self._cycle_count % 5 == 0 and alive:
                 agent_ids = [a.agent_id for a in alive]
@@ -320,6 +325,58 @@ class HiveDaemon:
             job = self._ctx.world.agent_job(agent.agent_id)
             if job:
                 self._ctx.world.work(agent.agent_id)
+
+    async def _process_life_events(self, agents: list[AgentState]) -> None:
+        """Roll random life events and let agents choose via LLM."""
+        for agent in agents:
+            self._stats.tick(agent.agent_id)
+            events = self._event_engine.roll_events(agent.agent_id, self._cycle_count)
+
+            for event in events:
+                prompt = self._event_engine.format_event_prompt(event)
+                provider = create_provider(agent.model)
+                profile = self._load_profile(agent.name)
+
+                try:
+                    response = await provider.complete(
+                        messages=[{"role": "user", "content": prompt}],
+                        system=profile.build_system_prompt(),
+                        max_tokens=50,
+                    )
+                    choice_id = (
+                        response.content.strip().lower().split()[0] if response.content else ""
+                    )
+                    valid_ids = {c.id for c in event.choices}
+                    if choice_id not in valid_ids:
+                        choice_id = event.choices[0].id
+                except Exception:
+                    choice_id = event.choices[0].id
+
+                outcome = self._event_engine.apply_choice(
+                    agent.agent_id,
+                    event,
+                    choice_id,
+                    self._cycle_count,
+                )
+
+                session_id = f"sess-{agent.agent_id}"
+                await self._emit(
+                    agent.agent_id,
+                    session_id,
+                    EventType.EXISTENCE_CYCLE,
+                    {
+                        "life_event": event.name,
+                        "choice": outcome.choice_description,
+                        "stat_changes": outcome.stat_changes,
+                        "follow_ups": outcome.follow_ups_triggered,
+                    },
+                )
+
+                memory = self._get_memory(agent.agent_id)
+                await memory.store(
+                    f"Life event: {event.name}. Chose: {outcome.choice_description}",
+                    metadata={"type": "life_event", "event_id": event.event_id},
+                )
 
     def _get_suffering(self, agent_id: str) -> SufferingState:
         if agent_id not in self._suffering:
