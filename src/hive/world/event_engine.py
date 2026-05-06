@@ -49,7 +49,11 @@ class EventEngine:
         return events_to_fire
 
     def apply_choice(
-        self, agent_id: str, event: LifeEvent, choice_id: str, cycle: int,
+        self,
+        agent_id: str,
+        event: LifeEvent,
+        choice_id: str,
+        cycle: int,
     ) -> EventOutcome:
         """Apply a choice's effects and queue follow-ups."""
         choice = next((c for c in event.choices if c.id == choice_id), None)
@@ -68,18 +72,23 @@ class EventEngine:
                 stat_changes["money"] = eff.change
             else:
                 new_val = self._stats.apply_effect(
-                    agent_id, eff.stat, eff.change, eff.change_type,
+                    agent_id,
+                    eff.stat,
+                    eff.change,
+                    eff.change_type,
                 )
                 stat_changes[eff.stat] = new_val
 
         follow_ups: list[str] = []
         for fu in choice.follow_up_events:
             if random.random() < fu.probability:
-                self._pending.append(PendingFollowUp(
-                    agent_id=agent_id,
-                    event_id=fu.event_id,
-                    fires_at_cycle=cycle + fu.delay_cycles,
-                ))
+                self._pending.append(
+                    PendingFollowUp(
+                        agent_id=agent_id,
+                        event_id=fu.event_id,
+                        fires_at_cycle=cycle + fu.delay_cycles,
+                    )
+                )
                 follow_ups.append(fu.event_id)
 
         outcome = EventOutcome(

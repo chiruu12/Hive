@@ -24,6 +24,7 @@ from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
 from hive.models.router import create_provider
 from hive.world.event_engine import EventEngine
+from hive.world.life_summary import LifeDirectoryWriter
 from hive.world.state import WorldState
 from hive.world.stats import StatsManager
 
@@ -63,6 +64,7 @@ class HiveDaemon:
         self._swarm = SwarmLearning(self._store, self._specialization)
         self._stats = StatsManager(hive_dir)
         self._event_engine = EventEngine(self._stats, self._ctx.world)
+        self._life_writer = LifeDirectoryWriter(hive_dir)
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._cycle_count = 0
@@ -422,3 +424,31 @@ class HiveDaemon:
 
     def stop(self) -> None:
         self._running = False
+        self._write_life_summaries()
+
+    def _write_life_summaries(self) -> None:
+        """Generate life directories for all agents on shutdown."""
+        import asyncio
+
+        try:
+            agents = asyncio.run(self._store.list_agents())
+        except RuntimeError:
+            return
+
+        for agent in agents:
+            if not agent.is_alive():
+                continue
+            try:
+                summary = self._life_writer.generate(
+                    agent.agent_id,
+                    self._identity,
+                    self._stats,
+                    self._ctx.world,
+                    self._event_engine,
+                    self._store,
+                    self._cycle_count,
+                )
+                path = self._life_writer.write(summary)
+                logger.info("Life summary written: %s", path)
+            except Exception as e:
+                logger.warning("Failed to write life summary for %s: %s", agent.agent_id, e)
