@@ -9,6 +9,7 @@ from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import SufferingState, assess_conditions
+from hive.config import get_config, load_config
 from hive.execution.context import ExecutionContext
 from hive.execution.registry import ToolRegistry
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
@@ -20,8 +21,6 @@ from hive.world.state import WorldState
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_HEARTBEAT = 10
-
 
 class HiveDaemon:
     """Main daemon that drives all agents on a heartbeat cycle."""
@@ -29,12 +28,13 @@ class HiveDaemon:
     def __init__(
         self,
         hive_dir: Path,
-        heartbeat: int = DEFAULT_HEARTBEAT,
+        heartbeat: int | None = None,
         logs_dir: Path | None = None,
         profiles: list[str] | None = None,
     ):
         self._hive_dir = hive_dir
-        self._heartbeat = heartbeat
+        cfg = load_config(hive_dir)
+        self._heartbeat = heartbeat or cfg.daemon.heartbeat
         self._running = False
         self._store = HiveStore(hive_dir / "hive.db")
         self._events = EventLog(hive_dir)
@@ -124,7 +124,7 @@ class HiveDaemon:
 
         if suffering.in_crisis:
             self._crisis_counts[agent.agent_id] = self._crisis_counts.get(agent.agent_id, 0) + 1
-            if self._crisis_counts[agent.agent_id] >= 3:
+            if self._crisis_counts[agent.agent_id] >= get_config().suffering.crisis_reset_after:
                 suffering.force_reset("3+ consecutive crisis cycles")
                 self._crisis_counts[agent.agent_id] = 0
         else:
@@ -270,7 +270,10 @@ class HiveDaemon:
         return self._suffering[agent_id]
 
     def _load_profile(self, name: str) -> AgentProfile:
-        profiles_dir = self._hive_dir.parent / "profiles"
+        from hive.agents.profile import default_profiles_dir
+
+        cfg = get_config()
+        profiles_dir = Path(cfg.profiles_dir) if cfg.profiles_dir else default_profiles_dir()
         try:
             return AgentProfile.from_preset(name, profiles_dir)
         except FileNotFoundError:
