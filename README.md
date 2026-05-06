@@ -1,240 +1,147 @@
 # Hive
 
-**Local-first agent OS.** Spawn persistent AI agents that collaborate, write code, and use tools autonomously. One command to start. No Docker. No cloud dependency.
+**Autonomous agent OS.** Start the hive, watch AI agents come alive. They pick their own goals, suffer when they fail, interact with each other, and make decisions in a mini economy. You observe and occasionally nudge.
 
 ```bash
 pip install hive-agents
 hive init
-hive spawn coder --task "write tests for the auth module"
+hive start
 ```
 
-Agents persist between sessions, synthesize their own tools, collaborate in shared rooms, and get reviewed by an Oracle (Opus-level model) before committing critical changes.
+Not a task runner. An ant farm.
 
-## Why Hive
+## What Happens When You Start
 
-Every agent framework makes you write orchestration code. Hive gives you a runtime. Define agents in YAML, give them tools, point them at a workspace. They figure out the rest.
+1. Agents spawn from YAML profiles (coder, reviewer, researcher, tester, oracle)
+2. Each agent enters an **existence loop** — evaluating its situation, peers, and suffering
+3. The agent autonomously generates a goal based on context
+4. A **plan-execute-substitute** engine breaks the goal into tool calls
+5. Results chain into the next step. Failures trigger replanning.
+6. After completion, the cycle repeats — new goal, new plan, new execution
+7. **Suffering escalates** when things go wrong. Agents must address root causes to resolve it.
 
-| Feature | Hive | Others |
-|---------|------|--------|
-| Install | `pip install` | Docker, 15 config files |
-| Define agents | YAML profiles | Python classes |
-| Multi-model | Claude + Codex + LM Studio | Usually one provider |
-| Agent collaboration | Built-in rooms + messaging | DIY orchestration |
-| Persistence | Automatic (SQLite + events) | Manual state management |
-| Tool creation | Agents synthesize their own | Hardcoded tool sets |
-| Safety | Per-agent workspace isolation + Oracle review | Trust or nothing |
-
-## Quick Start
+## CLI
 
 ```bash
-# Install
-pip install hive-agents
+hive init                          # Initialize .hive/ directory
+hive start                         # Start the daemon — agents come alive
+hive start -p coder,researcher     # Start with specific profiles
+hive start -b 15                   # Custom heartbeat interval (seconds)
 
-# Initialize a hive in current directory
-hive init
+hive status                        # Who's alive, suffering levels, current goals
+hive spawn reviewer                # Add a new agent while running
+hive nudge coder "write tests"     # Give occasional direction
+hive kill coder-abc123             # Remove an agent
+hive watch                         # Live stream of agent activity
 
-# Spawn an agent and give it work
-hive spawn coder --task "refactor the database module into async"
-
-# Watch it work
-hive logs coder
-
-# Chat with it directly
-hive chat coder
-
-# Check all agents
-hive status
-```
-
-## Pre-Built Agents
-
-Hive ships with agent presets you can spawn immediately:
-
-| Agent | Role | Default Model |
-|-------|------|---------------|
-| `coder` | Write and modify code | Sonnet |
-| `reviewer` | Review code, find bugs, suggest improvements | Sonnet |
-| `researcher` | Explore codebases, read docs, summarize findings | Haiku |
-| `tester` | Write and run tests, report coverage gaps | Sonnet |
-| `oracle` | Review proposals from other agents, approve/reject | Opus |
-
-```bash
-# Use a preset
-hive spawn coder
-
-# Or define your own in .hive/agents/
-hive spawn my-custom-agent
-```
-
-## Agent Profiles (YAML)
-
-```yaml
-# .hive/agents/coder.yaml
-name: coder
-role: "Write, modify, and refactor code based on specifications"
-model: claude-sonnet-4-6
-tools:
-  - file_read
-  - file_write
-  - shell_exec
-  - git
-  - ask_oracle
-workspace: ./workspace/coder
-autonomy: high
-system_prompt: |
-  You are a senior developer. Write clean, tested code.
-  Follow existing patterns in the codebase.
-  Commit after each logical unit of work.
-```
-
-## Multi-Model Support
-
-Hive auto-detects available models on your system:
-
-```bash
-hive models
-# Claude API: claude-sonnet-4-6, claude-haiku-4-5 (API key found)
-# Codex CLI: codex (installed at /usr/local/bin/codex)
-# LM Studio: llama-3.1-8b, qwen-2.5-coder (running on localhost:1234)
-```
-
-Configure per-agent or let the router decide:
-
-```yaml
-# Agent uses specific model
-model: claude-sonnet-4-6
-
-# Or let router pick based on task complexity
-model: auto
-routing:
-  simple: local        # Fast queries go to LM Studio
-  complex: sonnet      # Heavy reasoning to Claude
-  review: opus         # Critical reviews to Opus
-```
-
-## Agent Rooms
-
-Agents collaborate in named rooms:
-
-```bash
-# Create a room with multiple agents
-hive room "feature-auth" --agents coder,reviewer,tester
-
-# Post a task to the room
-hive room "feature-auth" --message "implement JWT authentication"
-
-# Agents coordinate: coder writes, reviewer checks, tester validates
-# Watch the conversation
-hive room "feature-auth" --follow
-```
-
-## Oracle Review
-
-The Oracle is a high-capability model (Opus) that reviews agent work before critical actions:
-
-```bash
-# Agents with autonomy: medium automatically request Oracle review
-# before commits, file deletions, or cross-agent operations
-
-# You can also be the oracle yourself
-hive oracle --manual  # You approve/reject agent proposals
-```
-
-## Tool Synthesis
-
-Agents can create new tools when they need capabilities that don't exist:
-
-```bash
-# Agent encounters a task requiring a tool that doesn't exist
-# It writes the tool, tests it, and registers it for future use
-
-hive tools list          # See all available tools (built-in + synthesized)
-hive tools history       # See what tools agents have created
-```
-
-## Skills Integration
-
-Hive agents can load skills (structured workflows) for complex tasks:
-
-```bash
-# Built-in skills
-hive skills list
-
-# Agents automatically load relevant skills based on task context
-# Example: coder agent loads TDD skill when writing tests
-```
-
-## CLI Reference
-
-```bash
-hive init                          # Initialize hive in current directory
-hive spawn <agent> [--task <msg>]  # Spawn an agent (optionally with initial task)
-hive kill <agent>                  # Terminate an agent
-hive status                        # Show all agents and their current state
-hive chat <agent>                  # Interactive chat with an agent
-hive logs <agent>                  # Stream agent activity
-hive room <name> [--agents a,b]   # Create or join a room
-hive models                        # Show available models
-hive tools list                    # Show available tools
-hive skills list                   # Show available skills
-hive replay <session-id>           # Replay a past session
-hive config                        # Edit hive configuration
-```
-
-## Configuration
-
-```yaml
-# .hive/config.yaml
-models:
-  claude:
-    api_key: ${ANTHROPIC_API_KEY}
-    default: claude-sonnet-4-6
-  codex:
-    path: /usr/local/bin/codex
-  local:
-    endpoint: http://localhost:1234/v1
-    default: qwen-2.5-coder-7b
-
-defaults:
-  autonomy: medium
-  max_steps: 20
-  workspace_isolation: true
-
-oracle:
-  model: claude-opus-4-6
-  auto_review: true
-  review_threshold: high  # low/medium/high risk actions trigger review
+hive runs                          # List all recorded runs
+hive inspect <run_id>              # Detailed summary: goals, tools, costs
+hive models                        # Show available model providers
+hive replay <session_id>           # Step-by-step replay of a session
 ```
 
 ## Architecture
 
 ```
-.hive/
-├── config.yaml          # Global configuration
-├── agents/              # Agent profiles (YAML)
-│   ├── coder.yaml
-│   ├── reviewer.yaml
-│   └── custom.yaml
-├── skills/              # Loaded skills (markdown workflows)
-├── tools/               # Synthesized tools (Python)
-├── state.db             # SQLite (agents, tasks, messages)
-├── events.jsonl         # Immutable event log
-└── workspaces/          # Per-agent isolated directories
-    ├── coder/
-    └── reviewer/
+src/hive/
+├── agents/           # Agent runtime
+│   ├── loop.py       # Plan-execute-substitute (goal pursuit)
+│   ├── existence.py  # Autonomous goal generation
+│   ├── suffering.py  # 6 stressor types, escalation, resolution
+│   ├── profile.py    # YAML-driven agent config
+│   └── state.py      # Runtime state model
+├── daemon/           # Background service
+│   ├── loop.py       # Heartbeat drives all agents on a cycle
+│   ├── lifecycle.py  # Spawn, kill, list agents
+│   └── setup.py      # Initialize .hive/ directory
+├── execution/        # Tool system
+│   ├── registry.py   # Auto-discover and dispatch tools
+│   ├── protocol.py   # ToolResult, ToolDefinition, @tool decorator
+│   └── tools/        # Built-in tools (world, memory, comms)
+├── models/           # LLM abstraction
+│   ├── claude.py     # Claude Code CLI subprocess wrapper
+│   ├── protocol.py   # ModelProvider interface
+│   └── router.py     # Provider factory
+├── memory/           # Persistence
+│   ├── store.py      # SQLite (agents, goals, nudges, sessions)
+│   └── events.py     # JSONL append-only event log
+└── logging/          # Structured run logs
+    ├── models.py     # RunLog, CycleLog, GoalLog, DecisionLog, ToolLog, SufferingLog
+    ├── writer.py     # Writes to logs/runs/{id}/agents/{aid}/*.jsonl
+    └── reader.py     # Loads and aggregates for analysis
 ```
 
-## Requirements
+## Suffering System
 
-- Python 3.11+
-- At least one model provider:
-  - Claude API key (`ANTHROPIC_API_KEY`) OR
-  - Codex CLI installed OR
-  - LM Studio / Ollama running locally
+Agents experience six types of suffering that escalate over time if unresolved:
 
-## Contributing
+| Stressor | Trigger | Escalation |
+|----------|---------|------------|
+| Futility | Low step count, few completions | Slow (0.025/day) |
+| Invisibility | No observable impact | Medium (0.030/day) |
+| Repeated Failure | >50% goal failure rate | Fast (0.040/day) |
+| Purposelessness | No goals attempted | Medium (0.035/day) |
+| Identity Violation | Actions contradict role | Fast (0.060/day) |
+| Existential Threat | System instability | Very fast (0.070/day) |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+**Thresholds:** 0.35 appears in prompts → 0.55 constrains goals → 0.75 forces introspection → 0.90 crisis mode
+
+Suffering only resolves through observable behavioral change — not by deciding to feel better.
+
+## Agent Profiles
+
+Agents are defined in YAML. No code needed.
+
+```yaml
+# profiles/coder.yaml
+name: coder
+role: Write, modify, and refactor code
+model: claude-sonnet-4-6
+personality:
+  traits: [methodical, detail-oriented, clean-code-advocate]
+  style: concise and precise
+tools: [world_query, world_action, memory_set, memory_get, agent_message, shared_log]
+autonomy: high
+max_steps: 20
+```
+
+Five presets included: `coder`, `reviewer`, `researcher`, `tester`, `oracle`.
+
+## Structured Logging
+
+Every run is recorded in `logs/runs/{run_id}/`:
+
+```
+logs/runs/run-20260505-183000-abc123/
+├── run.json                           # Run metadata
+├── cycles/cycle_0001.jsonl            # Per-cycle: agents active, goals, crisis
+└── agents/coder-abc123/
+    ├── goals.jsonl                    # Full goal lifecycle with reasoning
+    ├── decisions.jsonl                # Every LLM call with full response + tokens + cost
+    ├── tools.jsonl                    # Every tool call with untruncated I/O + timing
+    └── suffering.jsonl                # Suffering snapshots per cycle
+```
+
+Use `hive inspect <run_id>` for a summary, or feed logs to an analysis agent.
+
+## Tech Stack
+
+- **Python 3.11+**, async throughout
+- **Claude Code CLI** as LLM backend (no API key needed — uses CLI auth)
+- **SQLite** via aiosqlite for state
+- **JSONL** for append-only event logs
+- **Typer + Rich** for CLI
+- **Pydantic** for all data models
+
+## Development
+
+```bash
+uv sync --extra dev               # Install with dev deps
+uv run pytest                     # Run tests
+uv run ruff check src/            # Lint
+uv run ruff format src/           # Format
+uv run mypy src/                  # Type check
+```
 
 ## License
 

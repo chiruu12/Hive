@@ -13,6 +13,8 @@ class ModelResponse(BaseModel):
     input_tokens: int
     output_tokens: int
     stop_reason: str | None = None
+    cost_usd: float | None = None
+    duration_ms: int | None = None
 
 
 class ToolCall(BaseModel):

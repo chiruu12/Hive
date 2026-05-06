@@ -1,6 +1,5 @@
 """Agent profile - YAML-driven agent configuration."""
 
-from dataclasses import field
 from pathlib import Path
 
 import yaml

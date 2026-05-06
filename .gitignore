@@ -219,3 +219,4 @@ __marimo__/
 
 # Reference materials (never commit)
 tmp/
+.hive/
