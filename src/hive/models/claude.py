@@ -28,13 +28,16 @@ class ClaudeCLIProvider:
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-6",
-        max_turns: int = 10,
-        session_timeout: int = 300,
+        model: str = "",
+        max_turns: int | None = None,
+        session_timeout: int | None = None,
     ):
-        self._model = model
-        self._max_turns = max_turns
-        self._session_timeout = session_timeout
+        from hive.config import get_config
+
+        cfg = get_config().model
+        self._model = model or cfg.default_model
+        self._max_turns = max_turns or cfg.max_turns
+        self._session_timeout = session_timeout or cfg.session_timeout
         self._session_id: str | None = None
         self._cli_path = shutil.which("claude") or "claude"
 

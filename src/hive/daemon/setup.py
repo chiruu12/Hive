@@ -3,6 +3,7 @@
 import asyncio
 from pathlib import Path
 
+from hive.config import HiveConfig
 from hive.memory.store import HiveStore
 
 
@@ -16,6 +17,10 @@ def initialize_hive(target: Path | None = None) -> None:
     db_path = hive_dir / "hive.db"
     store = HiveStore(db_path)
     asyncio.run(store.initialize())
+
+    config_path = hive_dir / "config.yaml"
+    if not config_path.exists():
+        HiveConfig().save(hive_dir)
 
     gitignore = (target or Path.cwd()) / ".gitignore"
     _ensure_gitignore_entry(gitignore, ".hive/")

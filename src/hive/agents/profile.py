@@ -1,9 +1,22 @@
 """Agent profile - YAML-driven agent configuration."""
 
+import importlib.resources
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel
+
+
+def default_profiles_dir() -> Path:
+    """Find bundled profiles: check CWD first, then package data."""
+    cwd_profiles = Path.cwd() / "profiles"
+    if cwd_profiles.exists():
+        return cwd_profiles
+    try:
+        ref = importlib.resources.files("hive") / "profiles"
+        return Path(str(ref))
+    except (TypeError, FileNotFoundError):
+        return cwd_profiles
 
 
 class Personality(BaseModel):
@@ -18,7 +31,7 @@ class AgentProfile(BaseModel):
 
     name: str
     role: str
-    model: str = "claude-sonnet-4-6"
+    model: str = ""
     personality: Personality = Personality()
     tools: list[str] = []
     workspace: str = "./workspaces/{name}"
@@ -30,9 +43,14 @@ class AgentProfile(BaseModel):
     @classmethod
     def from_yaml(cls, path: Path) -> "AgentProfile":
         """Load agent profile from a YAML file."""
+        from hive.config import get_config
+
         with open(path) as f:
             data = yaml.safe_load(f)
-        return cls(**data)
+        profile = cls(**data)
+        if not profile.model:
+            profile.model = get_config().model.default_model
+        return profile
 
     @classmethod
     def from_preset(cls, preset_name: str, profiles_dir: Path) -> "AgentProfile":

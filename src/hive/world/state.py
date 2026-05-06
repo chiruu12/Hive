@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from hive.config import get_config
+
 
 class AgentFinances(BaseModel):
     agent_id: str
@@ -49,14 +51,9 @@ AVAILABLE_JOBS = [
     ),
 ]
 
-LEARNABLE_SKILLS = ["code_review", "teaching", "architecture", "analysis", "writing", "debugging"]
 
-SKILL_COURSE_COST = 80.0
-SKILL_INCREMENT = 0.25
-LOTTERY_COST = 10.0
-LOTTERY_WIN_CHANCE = 0.05
-LOTTERY_PAYOUT = 200.0
-BLACKJACK_HOUSE_EDGE = 0.48
+def _eco():  # noqa: ANN202
+    return get_config().economy
 
 
 class WorldState:
@@ -95,7 +92,10 @@ class WorldState:
 
     def get_finances(self, agent_id: str) -> AgentFinances:
         if agent_id not in self._finances:
-            self._finances[agent_id] = AgentFinances(agent_id=agent_id)
+            self._finances[agent_id] = AgentFinances(
+                agent_id=agent_id,
+                balance=_eco().starting_balance,
+            )
         return self._finances[agent_id]
 
     def get_skills(self, agent_id: str) -> list[SkillProgress]:
@@ -150,21 +150,21 @@ class WorldState:
         return f"Worked as {job.title}. Earned ${job.salary}. Balance: ${fin.balance}"
 
     def learn(self, agent_id: str, skill_name: str) -> str:
-        if skill_name not in LEARNABLE_SKILLS:
-            return f"Unknown skill: {skill_name}. Available: {', '.join(LEARNABLE_SKILLS)}"
+        if skill_name not in _eco().learnable_skills:
+            return f"Unknown skill: {skill_name}. Available: {', '.join(_eco().learnable_skills)}"
         fin = self.get_finances(agent_id)
-        if fin.balance < SKILL_COURSE_COST:
-            return f"Not enough money. Need ${SKILL_COURSE_COST}, have ${fin.balance}"
-        fin.balance -= SKILL_COURSE_COST
-        fin.total_spent += SKILL_COURSE_COST
+        if fin.balance < _eco().skill_course_cost:
+            return f"Not enough money. Need ${_eco().skill_course_cost}, have ${fin.balance}"
+        fin.balance -= _eco().skill_course_cost
+        fin.total_spent += _eco().skill_course_cost
 
         skills = self._skills.setdefault(agent_id, [])
         existing = next((s for s in skills if s.skill_name == skill_name), None)
         if existing:
-            existing.level = min(existing.max_level, existing.level + SKILL_INCREMENT)
+            existing.level = min(existing.max_level, existing.level + _eco().skill_increment)
             level = existing.level
         else:
-            sp = SkillProgress(skill_name=skill_name, level=SKILL_INCREMENT)
+            sp = SkillProgress(skill_name=skill_name, level=_eco().skill_increment)
             skills.append(sp)
             level = sp.level
 
@@ -187,10 +187,10 @@ class WorldState:
         fin.total_spent += wager
 
         if game == "lottery":
-            won = random.random() < LOTTERY_WIN_CHANCE
-            payout = LOTTERY_PAYOUT if won else 0
+            won = random.random() < _eco().lottery_win_chance
+            payout = _eco().lottery_payout if won else 0
         else:
-            won = random.random() < BLACKJACK_HOUSE_EDGE
+            won = random.random() < _eco().blackjack_win_rate
             payout = wager * 2 if won else 0
 
         if won:
@@ -228,12 +228,12 @@ class WorldState:
         for j in self.available_jobs():
             reqs = f" (requires: {', '.join(j.required_skills)})" if j.required_skills else ""
             lines.append(f"  - {j.title}: ${j.salary}/cycle{reqs}")
-        lines.append(f"\nSkill courses: ${SKILL_COURSE_COST} each")
-        lines.append(f"Skills: {', '.join(LEARNABLE_SKILLS)}")
+        lines.append(f"\nSkill courses: ${_eco().skill_course_cost} each")
+        lines.append(f"Skills: {', '.join(_eco().learnable_skills)}")
         lines.append("\nGambling:")
         lines.append(
-            f"  - Lottery: ${LOTTERY_COST} ticket, "
-            f"{LOTTERY_WIN_CHANCE:.0%} chance of ${LOTTERY_PAYOUT}"
+            f"  - Lottery: ${_eco().lottery_cost} ticket, "
+            f"{_eco().lottery_win_chance:.0%} chance of ${_eco().lottery_payout}"
         )
-        lines.append(f"  - Blackjack: variable wager, {BLACKJACK_HOUSE_EDGE:.0%} win rate")
+        lines.append(f"  - Blackjack: variable wager, {_eco().blackjack_win_rate:.0%} win rate")
         return "\n".join(lines)

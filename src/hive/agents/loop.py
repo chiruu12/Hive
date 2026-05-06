@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from hive.agents.base import AgentLoopBase
 from hive.agents.profile import AgentProfile
+from hive.config import get_config
 from hive.execution.action import Action, ActionResult, parse_action_plan
 from hive.execution.context import ExecutionContext
 from hive.logging.models import DecisionLog, GoalLog, ToolLog
@@ -16,7 +17,9 @@ from hive.models.claude import ClaudeCLIProvider
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 2
+
+def _max_retries() -> int:
+    return get_config().daemon.max_retries
 
 
 @dataclass
@@ -115,7 +118,7 @@ class AgentLoop(AgentLoopBase):
             else:
                 outcome.steps_failed += 1
                 retries += 1
-                if retries > MAX_RETRIES:
+                if retries > _max_retries():
                     outcome.summary = f"Abandoned after {retries} retries on step {i}"
                     return outcome
                 replan = await self._get_plan(
