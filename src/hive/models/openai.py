@@ -1,0 +1,106 @@
+"""OpenAI SDK provider — GPT models via direct API."""
+
+import logging
+import os
+import time
+
+import openai
+
+from hive.models.protocol import ModelResponse
+
+logger = logging.getLogger(__name__)
+
+COST_PER_1K = {
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+    "gpt-4o": {"input": 0.005, "output": 0.015},
+    "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
+    "gpt-4.1": {"input": 0.002, "output": 0.008},
+}
+
+
+class OpenAIProvider:
+    """ModelProvider using the OpenAI SDK."""
+
+    def __init__(self, model: str = "gpt-4o-mini", api_key: str | None = None):
+        key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        self._client = openai.AsyncOpenAI(api_key=key or "sk-placeholder")
+        self._model = model
+        self._has_key = bool(key)
+
+    @property
+    def name(self) -> str:
+        return "openai"
+
+    @property
+    def available(self) -> bool:
+        return self._has_key
+
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        system: str | None = None,
+        tools: list[dict] | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.0,
+    ) -> ModelResponse:
+        t0 = time.time()
+
+        msgs: list[dict[str, str]] = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.extend(messages)
+
+        response = await self._client.chat.completions.create(
+            model=self._model,
+            messages=msgs,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        duration_ms = int((time.time() - t0) * 1000)
+        choice = response.choices[0]
+        content = choice.message.content or ""
+
+        input_tokens = response.usage.prompt_tokens if response.usage else 0
+        output_tokens = response.usage.completion_tokens if response.usage else 0
+        cost = _estimate_cost(self._model, input_tokens, output_tokens)
+
+        return ModelResponse(
+            content=content,
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            stop_reason=choice.finish_reason,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+        )
+
+    async def plan(
+        self,
+        objective: str,
+        available_tools: list[str],
+        context: str | None = None,
+    ) -> list[dict]:
+        tools_str = ", ".join(available_tools) if available_tools else "none"
+        prompt = f"Task: {objective}\nAvailable tools: {tools_str}\n"
+        if context:
+            prompt += f"Context: {context}\n"
+        prompt += (
+            "\nRespond with ONLY a JSON array of steps. Each step:\n"
+            '{"tool": "tool_name", "params": {...}, "rationale": "why"}\n'
+        )
+        response = await self.complete(
+            messages=[{"role": "user", "content": prompt}],
+            system="Output only valid JSON. No markdown.",
+        )
+        import json
+
+        try:
+            return json.loads(response.content.strip())
+        except (json.JSONDecodeError, ValueError):
+            return []
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    rates = COST_PER_1K.get(model, {"input": 0.001, "output": 0.005})
+    return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])

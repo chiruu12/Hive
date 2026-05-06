@@ -3,6 +3,7 @@
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 from hive.agents.base import AgentLoopBase
 from hive.agents.profile import AgentProfile
@@ -13,7 +14,6 @@ from hive.logging.models import DecisionLog, GoalLog, ToolLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType
 from hive.memory.store import HiveStore
-from hive.models.claude import ClaudeCLIProvider
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class AgentLoop(AgentLoopBase):
         self,
         agent_id: str,
         profile: AgentProfile,
-        provider: ClaudeCLIProvider,
+        provider: Any,
         ctx: ExecutionContext,
         store: HiveStore,
         event_log: EventLog,

@@ -57,9 +57,11 @@ class DaemonConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    default_model: str = "claude-sonnet-4-6"
-    max_turns: int = 10
-    session_timeout: int = 300
+    default_model: str = "claude-haiku-4-5"
+    planning_model: str = "claude-sonnet-4-6"
+    max_tokens: int = 4096
+    temperature: float = 0.0
+    ollama_base_url: str = "http://localhost:11434"
 
 
 class HiveConfig(BaseModel):
