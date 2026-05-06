@@ -1,4 +1,4 @@
-"""Tool registry — auto-discover and dispatch tool calls."""
+"""Tool registry — auto-discover and dispatch tool calls with context injection."""
 
 import importlib
 import inspect
@@ -7,30 +7,40 @@ import pkgutil
 from collections.abc import Callable
 from typing import Any
 
+from hive.execution.context import ExecutionContext
 from hive.execution.protocol import ToolDefinition, ToolResult
 
 logger = logging.getLogger(__name__)
 
+_instance: "ToolRegistry | None" = None
+
+
+def get_registry() -> "ToolRegistry":
+    if _instance is None:
+        raise RuntimeError("ToolRegistry not initialized")
+    return _instance
+
 
 class ToolRegistry:
-    """Registry that discovers and dispatches tool calls."""
+    """Registry that discovers and dispatches tool calls, injecting ExecutionContext."""
 
-    def __init__(self) -> None:
+    def __init__(self, ctx: ExecutionContext) -> None:
+        global _instance
+        self._ctx = ctx
         self._tools: dict[str, Callable] = {}
         self._definitions: dict[str, ToolDefinition] = {}
+        _instance = self
 
     def discover(self) -> None:
-        """Auto-discover tools from hive.execution.tools package."""
         import hive.execution.tools as tools_pkg
 
-        for importer, modname, ispkg in pkgutil.iter_modules(tools_pkg.__path__):
+        for _importer, modname, _ispkg in pkgutil.iter_modules(tools_pkg.__path__):
             module = importlib.import_module(f"hive.execution.tools.{modname}")
-            for name, obj in inspect.getmembers(module):
+            for _name, obj in inspect.getmembers(module):
                 if callable(obj) and hasattr(obj, "_tool_name"):
                     self.register(obj)
 
     def register(self, func: Callable) -> None:
-        """Register a decorated tool function."""
         tool_name = getattr(func, "_tool_name", None)
         if not tool_name:
             return
@@ -43,7 +53,6 @@ class ToolRegistry:
         logger.debug("Registered tool: %s", tool_name)
 
     async def execute(self, tool_name: str, agent_id: str, **params: Any) -> ToolResult:
-        """Execute a tool by name, filtering params to match the function signature."""
         func = self._tools.get(tool_name)
         if not func:
             return ToolResult(
@@ -53,9 +62,12 @@ class ToolRegistry:
             )
         try:
             sig = inspect.signature(func)
-            valid_params = {
-                k: v for k, v in params.items() if k in sig.parameters and k != "agent_id"
-            }
+            valid_params: dict[str, Any] = {}
+            for k, v in params.items():
+                if k in sig.parameters and k not in ("agent_id", "context"):
+                    valid_params[k] = v
+            if "context" in sig.parameters:
+                valid_params["context"] = self._ctx
             return await func(agent_id=agent_id, **valid_params)
         except Exception as e:
             logger.error("Tool %s failed: %s", tool_name, e)
@@ -68,7 +80,6 @@ class ToolRegistry:
         return list(self._tools.keys())
 
     def get_tool_schemas(self) -> str:
-        """Format tool list for LLM prompt injection."""
         lines = []
         for defn in self._definitions.values():
             params_str = ", ".join(f"{k}: {v}" for k, v in defn.parameters.items())

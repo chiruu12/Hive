@@ -9,10 +9,8 @@ from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import SufferingState, assess_conditions
+from hive.execution.context import ExecutionContext
 from hive.execution.registry import ToolRegistry
-from hive.execution.tools.comms import set_comms_dir
-from hive.execution.tools.memory_tools import set_memory_dir
-from hive.execution.tools.world import set_world
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
@@ -40,7 +38,15 @@ class HiveDaemon:
         self._running = False
         self._store = HiveStore(hive_dir / "hive.db")
         self._events = EventLog(hive_dir)
-        self._registry = ToolRegistry()
+
+        self._ctx = ExecutionContext(
+            world=WorldState(hive_dir),
+            store=self._store,
+            comms_dir=hive_dir / "comms",
+            memory_dir=hive_dir / "agent_memory",
+        )
+
+        self._registry = ToolRegistry(self._ctx)
         self._log = LogWriter(logs_dir or (hive_dir.parent / "logs"))
         self._suffering: dict[str, SufferingState] = {}
         self._cycle_count = 0
@@ -48,11 +54,8 @@ class HiveDaemon:
         self._profiles = profiles or []
 
     async def start(self) -> None:
-        """Initialize subsystems and start the heartbeat."""
+        """Initialize store, discover tools, start heartbeat."""
         await self._store.initialize()
-        set_memory_dir(self._hive_dir)
-        set_comms_dir(self._hive_dir)
-        set_world(WorldState(self._hive_dir))
         self._registry.discover()
 
         agents = await self._store.list_agents()
@@ -96,6 +99,8 @@ class HiveDaemon:
                         agent.agent_id, AgentStatus.ERROR, error=str(e)
                     )
 
+            self._process_payday(alive)
+
             self._log.log_cycle(
                 CycleLog(
                     run_id=self._log.run_id,
@@ -137,7 +142,7 @@ class HiveDaemon:
                 agent_id=agent.agent_id,
                 profile=profile,
                 provider=provider,
-                registry=self._registry,
+                ctx=self._ctx,
                 store=self._store,
                 event_log=self._events,
                 log_writer=self._log,
@@ -205,7 +210,7 @@ class HiveDaemon:
                 agent_id=agent.agent_id,
                 profile=profile,
                 provider=provider,
-                registry=self._registry,
+                ctx=self._ctx,
                 store=self._store,
                 event_log=self._events,
                 log_writer=self._log,
@@ -217,10 +222,7 @@ class HiveDaemon:
                 agent.agent_id,
                 session_id,
                 EventType.EXISTENCE_CYCLE,
-                {
-                    "goal_generated": goal or "none",
-                    "suffering_load": suffering.cumulative_load,
-                },
+                {"goal_generated": goal or "none", "suffering_load": suffering.cumulative_load},
             )
 
         current_stressors = {s.type.value for s in suffering.active}
@@ -254,6 +256,13 @@ class HiveDaemon:
         )
 
         return result
+
+    def _process_payday(self, agents: list[AgentState]) -> None:
+        """Auto-pay salary to employed agents each cycle."""
+        for agent in agents:
+            job = self._ctx.world.agent_job(agent.agent_id)
+            if job:
+                self._ctx.world.work(agent.agent_id)
 
     def _get_suffering(self, agent_id: str) -> SufferingState:
         if agent_id not in self._suffering:
