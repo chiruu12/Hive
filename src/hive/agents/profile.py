@@ -66,7 +66,13 @@ class AgentProfile(BaseModel):
 
     def build_system_prompt(self) -> str:
         """Build the full system prompt including personality."""
-        parts = []
+        parts = [
+            f"You are an autonomous agent named {self.name}.",
+            f"Role: {self.role}.",
+            "You live in a persistent simulated world with an economy.",
+            "You make decisions, pursue goals, earn money, and learn skills.",
+            "Always respond in the exact JSON format requested. Never break character.",
+        ]
 
         if self.personality.traits:
             traits_str = ", ".join(self.personality.traits)

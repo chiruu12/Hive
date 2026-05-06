@@ -111,7 +111,24 @@ class ExistenceLoop(AgentLoopBase):
         tools_desc: str,
         nudges: list[str],
     ) -> str:
-        sections = [f"You are {self._profile.name}, a {self._profile.role}."]
+        identity_preamble = ""
+        try:
+            from hive.agents.identity import IdentityManager
+
+            im = IdentityManager(self._ctx.comms_dir.parent)
+            identity_preamble = im.build_preamble(self._agent_id)
+        except Exception:
+            pass
+
+        sections = [
+            f"You are {self._profile.name}, an autonomous agent in a persistent world.",
+            f"Your role: {self._profile.role}.",
+            "You exist in an economy where you earn money, learn skills, and pursue goals.",
+            "You make your own decisions. Choose what to do next based on your situation.",
+        ]
+
+        if identity_preamble:
+            sections.append(f"\n--- Your identity ---\n{identity_preamble}")
 
         status = self._ctx.world.get_status(self._agent_id)
         sections.append(f"\n--- Your economic status ---\n{status}")
