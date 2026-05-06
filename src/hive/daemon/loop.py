@@ -5,16 +5,19 @@ import logging
 from pathlib import Path
 
 from hive.agents.existence import ExistenceLoop
+from hive.agents.identity import IdentityManager
 from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import SufferingState, assess_conditions
+from hive.checkpoint import CheckpointManager
 from hive.config import get_config, load_config
 from hive.execution.context import ExecutionContext
 from hive.execution.registry import ToolRegistry
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
+from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
 from hive.models.router import create_provider
 from hive.world.state import WorldState
@@ -48,6 +51,9 @@ class HiveDaemon:
 
         self._registry = ToolRegistry(self._ctx)
         self._log = LogWriter(logs_dir or (hive_dir.parent / "logs"))
+        self._identity = IdentityManager(hive_dir)
+        self._checkpoint = CheckpointManager(hive_dir)
+        self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
@@ -133,6 +139,8 @@ class HiveDaemon:
         provider = create_provider(agent.model)
         profile = self._load_profile(agent.name)
         session_id = f"sess-{agent.agent_id}"
+        identity = self._identity.load_or_create(agent.agent_id, profile)
+        memory = self._get_memory(agent.agent_id)
 
         active_goal = await self._store.get_active_goal(agent.agent_id)
 
@@ -179,6 +187,24 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "summary": outcome.summary},
                 )
                 result = "completed"
+                self._identity.update_narrative(
+                    agent.agent_id,
+                    active_goal["objective"],
+                    outcome.summary,
+                )
+                await memory.store(
+                    f"Completed goal: {active_goal['objective']}. {outcome.summary}",
+                    metadata={"type": "goal_completed", "goal_id": active_goal["goal_id"]},
+                )
+                goals_snap = await self._store.list_agent_goals(agent.agent_id, limit=10)
+                self._checkpoint.save(
+                    agent.agent_id,
+                    "goal_completed",
+                    suffering,
+                    identity,
+                    self._ctx,
+                    goals_snap,
+                )
             elif outcome.steps_failed > outcome.steps_done:
                 await self._store.abandon_goal(active_goal["goal_id"])
                 self._log.log_goal(
@@ -268,6 +294,11 @@ class HiveDaemon:
         if agent_id not in self._suffering:
             self._suffering[agent_id] = SufferingState(agent_id=agent_id)
         return self._suffering[agent_id]
+
+    def _get_memory(self, agent_id: str) -> SemanticMemory:
+        if agent_id not in self._memories:
+            self._memories[agent_id] = SemanticMemory(self._hive_dir, agent_id)
+        return self._memories[agent_id]
 
     def _load_profile(self, name: str) -> AgentProfile:
         from hive.agents.profile import default_profiles_dir
