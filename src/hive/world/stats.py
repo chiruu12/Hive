@@ -16,6 +16,12 @@ class AgentStats(BaseModel):
 
     def apply(self, stat: str, change: float, change_type: str = "absolute") -> float:
         """Apply a stat change. Returns the new value."""
+        valid_stats = {"happiness", "health", "reputation", "energy"}
+        if stat not in valid_stats:
+            import logging
+
+            logging.getLogger(__name__).warning("Unknown stat: %s (valid: %s)", stat, valid_stats)
+            return 0.0
         current = getattr(self, stat, None)
         if current is None:
             return 0.0

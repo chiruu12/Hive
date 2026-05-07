@@ -528,11 +528,18 @@ def biography(
     writer = LifeDirectoryWriter(hive_dir)
     agent_ids = writer.list_lives()
 
-    target = None
-    for aid in agent_ids:
-        if aid == agent or aid.startswith(agent) or agent in aid:
-            target = aid
-            break
+    exact = [aid for aid in agent_ids if aid == agent]
+    if exact:
+        target = exact[0]
+    else:
+        prefix = [aid for aid in agent_ids if aid.startswith(agent)]
+        if len(prefix) == 1:
+            target = prefix[0]
+        elif len(prefix) > 1:
+            console.print(f"[red]Ambiguous match for '{agent}': {prefix}[/red]")
+            raise typer.Exit(1)
+        else:
+            target = None
 
     if not target:
         console.print(f"[red]No life record found for: {agent}[/red]")
