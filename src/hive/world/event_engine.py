@@ -2,6 +2,7 @@
 
 import logging
 import random
+from pathlib import Path
 
 from hive.world.event_catalog import EVENT_MAP, EVENTS
 from hive.world.events import EventOutcome, LifeEvent
@@ -23,11 +24,29 @@ class PendingFollowUp:
 class EventEngine:
     """Fires random life events and tracks follow-ups."""
 
-    def __init__(self, stats: StatsManager, world: WorldState):
+    def __init__(self, stats: StatsManager, world: WorldState, hive_dir: Path | None = None):
         self._stats = stats
         self._world = world
         self._pending: list[PendingFollowUp] = []
         self._history: list[EventOutcome] = []
+        self._history_path = (hive_dir / "event_history.jsonl") if hive_dir else None
+        self._load_history()
+
+    def _load_history(self) -> None:
+        if not self._history_path or not self._history_path.exists():
+            return
+        for line in self._history_path.read_text().strip().splitlines():
+            if line.strip():
+                try:
+                    self._history.append(EventOutcome.model_validate_json(line))
+                except Exception:
+                    pass
+
+    def _persist_outcome(self, outcome: EventOutcome) -> None:
+        if not self._history_path:
+            return
+        with open(self._history_path, "a") as f:
+            f.write(outcome.model_dump_json() + "\n")
 
     def roll_events(self, agent_id: str, cycle: int) -> list[LifeEvent]:
         """Check for follow-ups + random event roll for this agent."""
@@ -63,30 +82,26 @@ class EventEngine:
         stat_changes: dict[str, float] = {}
         for eff in choice.stat_effects:
             if eff.stat == "money":
-                fin = self._world.get_finances(agent_id)
-                fin.balance += eff.change
-                if eff.change > 0:
-                    fin.total_earned += eff.change
-                else:
-                    fin.total_spent += abs(eff.change)
+                self._world.adjust_balance(agent_id, eff.change)
                 stat_changes["money"] = eff.change
             else:
-                new_val = self._stats.apply_effect(
+                self._stats.apply_effect(
                     agent_id,
                     eff.stat,
                     eff.change,
                     eff.change_type,
                 )
-                stat_changes[eff.stat] = new_val
+                stat_changes[eff.stat] = eff.change
 
         follow_ups: list[str] = []
         for fu in choice.follow_up_events:
             if random.random() < fu.probability:
+                delay = max(fu.delay_cycles, 1)
                 self._pending.append(
                     PendingFollowUp(
                         agent_id=agent_id,
                         event_id=fu.event_id,
-                        fires_at_cycle=cycle + fu.delay_cycles,
+                        fires_at_cycle=cycle + delay,
                     )
                 )
                 follow_ups.append(fu.event_id)
@@ -102,6 +117,7 @@ class EventEngine:
             cycle=cycle,
         )
         self._history.append(outcome)
+        self._persist_outcome(outcome)
         return outcome
 
     def get_history(self, agent_id: str | None = None) -> list[EventOutcome]:
@@ -118,7 +134,10 @@ class EventEngine:
                 continue
             meets_prereqs = True
             for stat, threshold in ev.prerequisites.items():
-                val = getattr(stats, stat, 0.5)
+                val = getattr(stats, stat, None)
+                if val is None:
+                    meets_prereqs = False
+                    break
                 if threshold > 0 and val < threshold:
                     meets_prereqs = False
                 elif threshold < 0 and val > abs(threshold):

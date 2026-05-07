@@ -63,7 +63,7 @@ class HiveDaemon:
         self._specialization = SpecializationTracker()
         self._swarm = SwarmLearning(self._store, self._specialization)
         self._stats = StatsManager(hive_dir)
-        self._event_engine = EventEngine(self._stats, self._ctx.world)
+        self._event_engine = EventEngine(self._stats, self._ctx.world, hive_dir)
         self._life_writer = LifeDirectoryWriter(hive_dir)
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
@@ -92,7 +92,9 @@ class HiveDaemon:
             self._heartbeat,
         )
         self._running = True
+        self._pending_shutdown = False
         await self._run()
+        await self._shutdown()
 
     async def _run(self) -> None:
         goals_completed = 0
@@ -345,13 +347,28 @@ class HiveDaemon:
                         system=profile.build_system_prompt(),
                         max_tokens=50,
                     )
-                    choice_id = (
-                        response.content.strip().lower().split()[0] if response.content else ""
-                    )
+                    import re
+
+                    raw = response.content.strip().lower() if response.content else ""
+                    raw = re.sub(r"[^a-z0-9_]", " ", raw).strip().split()[0] if raw else ""
                     valid_ids = {c.id for c in event.choices}
-                    if choice_id not in valid_ids:
+                    if raw in valid_ids:
+                        choice_id = raw
+                    else:
+                        logger.warning(
+                            "Agent %s gave invalid choice '%s' for event %s, defaulting",
+                            agent.agent_id,
+                            raw,
+                            event.name,
+                        )
                         choice_id = event.choices[0].id
-                except Exception:
+                except Exception as e:
+                    logger.warning(
+                        "LLM error for event %s agent %s: %s",
+                        event.name,
+                        agent.agent_id,
+                        e,
+                    )
                     choice_id = event.choices[0].id
 
                 outcome = self._event_engine.apply_choice(
@@ -424,15 +441,13 @@ class HiveDaemon:
 
     def stop(self) -> None:
         self._running = False
-        self._write_life_summaries()
+        self._pending_shutdown = True
 
-    def _write_life_summaries(self) -> None:
-        """Generate life directories for all agents on shutdown."""
-        import asyncio
-
+    async def _shutdown(self) -> None:
+        """Write life summaries after the run loop exits."""
         try:
-            agents = asyncio.run(self._store.list_agents())
-        except RuntimeError:
+            agents = await self._store.list_agents()
+        except Exception:
             return
 
         for agent in agents:
@@ -451,4 +466,8 @@ class HiveDaemon:
                 path = self._life_writer.write(summary)
                 logger.info("Life summary written: %s", path)
             except Exception as e:
-                logger.warning("Failed to write life summary for %s: %s", agent.agent_id, e)
+                logger.warning(
+                    "Failed to write life summary for %s: %s",
+                    agent.agent_id,
+                    e,
+                )

@@ -98,6 +98,16 @@ class WorldState:
             )
         return self._finances[agent_id]
 
+    def adjust_balance(self, agent_id: str, amount: float) -> None:
+        """Adjust agent balance and persist. Use for event effects."""
+        fin = self.get_finances(agent_id)
+        fin.balance += amount
+        if amount > 0:
+            fin.total_earned += amount
+        else:
+            fin.total_spent += abs(amount)
+        self._save()
+
     def get_skills(self, agent_id: str) -> list[SkillProgress]:
         return self._skills.get(agent_id, [])
 

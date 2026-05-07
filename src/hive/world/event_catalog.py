@@ -302,7 +302,7 @@ EVENTS: list[LifeEvent] = [
                 description="Go all in (high risk, high reward)",
                 stat_effects=[StatEffect(stat="money", change=500)],
                 follow_up_events=[
-                    ConditionalFollowUp(event_id="big_loss", probability=0.7, delay_cycles=0),
+                    ConditionalFollowUp(event_id="big_loss", probability=0.7, delay_cycles=1),
                 ],
             ),
             Choice(
@@ -310,7 +310,7 @@ EVENTS: list[LifeEvent] = [
                 description="Play it safe with a small bet",
                 stat_effects=[StatEffect(stat="money", change=100)],
                 follow_up_events=[
-                    ConditionalFollowUp(event_id="small_loss", probability=0.5, delay_cycles=0),
+                    ConditionalFollowUp(event_id="small_loss", probability=0.5, delay_cycles=1),
                 ],
             ),
             Choice(
