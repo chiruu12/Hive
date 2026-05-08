@@ -1,36 +1,45 @@
-"""Anthropic SDK provider — Claude models via direct API."""
+"""Fireworks AI provider — fast inference via OpenAI-compatible API."""
 
 import logging
 import time
 
-import anthropic
+import openai
 
 from hive.models.protocol import ModelResponse
 
 logger = logging.getLogger(__name__)
 
+FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1"
 
-class AnthropicProvider:
-    """ModelProvider using the Anthropic SDK."""
 
-    def __init__(self, model: str = "claude-haiku-4-5", api_key: str | None = None):
+class FireworksProvider:
+    """ModelProvider using Fireworks AI's OpenAI-compatible endpoint."""
+
+    def __init__(
+        self,
+        model: str = "accounts/fireworks/models/llama-v3p1-8b-instruct",
+        api_key: str | None = None,
+    ):
         from hive.config import get_env
 
-        key = api_key or get_env("ANTHROPIC_API_KEY")
-        self._client = anthropic.AsyncAnthropic(api_key=key or "sk-placeholder")
+        key = api_key or get_env("FIREWORKS_API_KEY")
+        self._client = openai.AsyncOpenAI(
+            api_key=key or "placeholder",
+            base_url=FIREWORKS_BASE_URL,
+        )
         self._model = model
         self._has_key = bool(key)
 
     @property
     def name(self) -> str:
-        return "anthropic"
+        return "fireworks"
 
     @property
     def available(self) -> bool:
         if not self._has_key:
             from hive.config import get_env
 
-            return bool(get_env("ANTHROPIC_API_KEY"))
+            return bool(get_env("FIREWORKS_API_KEY"))
         return True
 
     async def complete(
@@ -43,22 +52,24 @@ class AnthropicProvider:
     ) -> ModelResponse:
         t0 = time.time()
 
-        response = await self._client.messages.create(
+        msgs: list[dict[str, str]] = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.extend(messages)
+
+        response = await self._client.chat.completions.create(
             model=self._model,
-            system=system or "You are a helpful assistant.",
-            messages=messages,
+            messages=msgs,
             max_tokens=max_tokens,
             temperature=temperature,
         )
 
         duration_ms = int((time.time() - t0) * 1000)
-        content = ""
-        for block in response.content:
-            if block.type == "text":
-                content += block.text
+        choice = response.choices[0]
+        content = choice.message.content or ""
 
-        input_tokens = response.usage.input_tokens
-        output_tokens = response.usage.output_tokens
+        input_tokens = response.usage.prompt_tokens if response.usage else 0
+        output_tokens = response.usage.completion_tokens if response.usage else 0
         cost = _estimate_cost(self._model, input_tokens, output_tokens)
 
         return ModelResponse(
@@ -66,7 +77,7 @@ class AnthropicProvider:
             model=self._model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            stop_reason=response.stop_reason,
+            stop_reason=choice.finish_reason,
             cost_usd=cost,
             duration_ms=duration_ms,
         )
@@ -77,6 +88,8 @@ class AnthropicProvider:
         available_tools: list[str],
         context: str | None = None,
     ) -> list[dict]:
+        import json
+
         tools_str = ", ".join(available_tools) if available_tools else "none"
         prompt = f"Task: {objective}\nAvailable tools: {tools_str}\n"
         if context:
@@ -89,8 +102,6 @@ class AnthropicProvider:
             messages=[{"role": "user", "content": prompt}],
             system="Output only valid JSON. No markdown.",
         )
-        import json
-
         try:
             return json.loads(response.content.strip())
         except (json.JSONDecodeError, ValueError):

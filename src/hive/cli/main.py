@@ -473,5 +473,87 @@ def inspect(run_id: str = typer.Argument(help="Run ID to inspect")) -> None:
             console.print(f"    {status_icon} [{g.event}] {obj}")
 
 
+@app.command()
+def lives() -> None:
+    """List all agent life directories."""
+    from hive.world.life_summary import LifeDirectoryWriter
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    writer = LifeDirectoryWriter(hive_dir)
+    agent_ids = writer.list_lives()
+
+    if not agent_ids:
+        console.print("[dim]No life records yet. Run the hive first.[/dim]")
+        return
+
+    table = Table(title="Agent Lives")
+    table.add_column("Agent", style="cyan")
+    table.add_column("Name", style="bold")
+    table.add_column("Money")
+    table.add_column("Stats")
+    table.add_column("Events")
+
+    for aid in agent_ids:
+        summary = writer.read(aid)
+        if not summary:
+            continue
+        stats_str = " ".join(f"{k}:{v:.0%}" for k, v in summary.final_stats.items())
+        table.add_row(
+            aid[:20],
+            summary.display_name,
+            f"${summary.final_money:.0f}",
+            stats_str,
+            str(len(summary.milestones)),
+        )
+
+    console.print(table)
+
+
+@app.command()
+def biography(
+    agent: str = typer.Argument(help="Agent name or ID"),
+) -> None:
+    """Show the full biography of an agent's life."""
+    from hive.world.life_summary import LifeDirectoryWriter
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    writer = LifeDirectoryWriter(hive_dir)
+    agent_ids = writer.list_lives()
+
+    exact = [aid for aid in agent_ids if aid == agent]
+    if exact:
+        target = exact[0]
+    else:
+        prefix = [aid for aid in agent_ids if aid.startswith(agent)]
+        if len(prefix) == 1:
+            target = prefix[0]
+        elif len(prefix) > 1:
+            console.print(f"[red]Ambiguous match for '{agent}': {prefix}[/red]")
+            raise typer.Exit(1)
+        else:
+            target = None
+
+    if not target:
+        console.print(f"[red]No life record found for: {agent}[/red]")
+        raise typer.Exit(1)
+
+    bio = writer.read_biography(target)
+    if not bio:
+        console.print(f"[red]No biography available for: {target}[/red]")
+        raise typer.Exit(1)
+
+    from rich.markdown import Markdown
+
+    console.print(Markdown(bio))
+
+
 if __name__ == "__main__":
     app()

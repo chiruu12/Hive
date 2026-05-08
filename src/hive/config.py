@@ -5,10 +5,24 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from pydantic import BaseModel, Field
 
-load_dotenv()
+_dotenv_cache: dict[str, str | None] = {}
+
+
+def _load_dotenv_safe() -> dict[str, str | None]:
+    """Load .env values WITHOUT injecting into os.environ."""
+    global _dotenv_cache
+    if not _dotenv_cache:
+        _dotenv_cache = dotenv_values()
+    return _dotenv_cache
+
+
+def get_env(key: str, default: str = "") -> str:
+    """Get a value from .env file first, then os.environ, never setting os.environ."""
+    dot = _load_dotenv_safe()
+    return dot.get(key) or os.environ.get(key, default)
 
 
 class SufferingConfig(BaseModel):

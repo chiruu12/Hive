@@ -1,7 +1,6 @@
 """OpenAI SDK provider — GPT models via direct API."""
 
 import logging
-import os
 import time
 
 import openai
@@ -10,19 +9,14 @@ from hive.models.protocol import ModelResponse
 
 logger = logging.getLogger(__name__)
 
-COST_PER_1K = {
-    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-    "gpt-4o": {"input": 0.005, "output": 0.015},
-    "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
-    "gpt-4.1": {"input": 0.002, "output": 0.008},
-}
-
 
 class OpenAIProvider:
     """ModelProvider using the OpenAI SDK."""
 
     def __init__(self, model: str = "gpt-4o-mini", api_key: str | None = None):
-        key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        from hive.config import get_env
+
+        key = api_key or get_env("OPENAI_API_KEY")
         self._client = openai.AsyncOpenAI(api_key=key or "sk-placeholder")
         self._model = model
         self._has_key = bool(key)
@@ -102,5 +96,7 @@ class OpenAIProvider:
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    rates = COST_PER_1K.get(model, {"input": 0.001, "output": 0.005})
+    from hive.models.registry import get_model_registry
+
+    rates = get_model_registry().cost_per_1k(model)
     return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])
