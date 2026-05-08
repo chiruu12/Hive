@@ -101,7 +101,7 @@ class YAMLScenario(Scenario):
             except (json.JSONDecodeError, ValueError):
                 accused = ""
 
-            if correct in accused or accused in correct:
+            if accused and (correct in accused or accused in correct):
                 scores[agent_id] = self._scoring.get("correct_accusation", 10)
             else:
                 scores[agent_id] = self._scoring.get("wrong_accusation", -5)
