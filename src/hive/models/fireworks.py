@@ -1,4 +1,4 @@
-"""OpenAI SDK provider — GPT models via direct API."""
+"""Fireworks AI provider — fast inference via OpenAI-compatible API."""
 
 import logging
 import time
@@ -9,32 +9,44 @@ from hive.models.protocol import ModelResponse
 
 logger = logging.getLogger(__name__)
 
+FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1"
+
 COST_PER_1K = {
-    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-    "gpt-4o": {"input": 0.005, "output": 0.015},
-    "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
-    "gpt-4.1": {"input": 0.002, "output": 0.008},
+    "accounts/fireworks/models/llama-v3p1-8b-instruct": {"input": 0.0002, "output": 0.0002},
+    "accounts/fireworks/models/llama-v3p1-70b-instruct": {"input": 0.0009, "output": 0.0009},
+    "accounts/fireworks/models/qwen2p5-72b-instruct": {"input": 0.0009, "output": 0.0009},
 }
 
 
-class OpenAIProvider:
-    """ModelProvider using the OpenAI SDK."""
+class FireworksProvider:
+    """ModelProvider using Fireworks AI's OpenAI-compatible endpoint."""
 
-    def __init__(self, model: str = "gpt-4o-mini", api_key: str | None = None):
+    def __init__(
+        self,
+        model: str = "accounts/fireworks/models/llama-v3p1-8b-instruct",
+        api_key: str | None = None,
+    ):
         from hive.config import get_env
 
-        key = api_key or get_env("OPENAI_API_KEY")
-        self._client = openai.AsyncOpenAI(api_key=key or "sk-placeholder")
+        key = api_key or get_env("FIREWORKS_API_KEY")
+        self._client = openai.AsyncOpenAI(
+            api_key=key or "placeholder",
+            base_url=FIREWORKS_BASE_URL,
+        )
         self._model = model
         self._has_key = bool(key)
 
     @property
     def name(self) -> str:
-        return "openai"
+        return "fireworks"
 
     @property
     def available(self) -> bool:
-        return self._has_key
+        if not self._has_key:
+            from hive.config import get_env
+
+            return bool(get_env("FIREWORKS_API_KEY"))
+        return True
 
     async def complete(
         self,
@@ -82,6 +94,8 @@ class OpenAIProvider:
         available_tools: list[str],
         context: str | None = None,
     ) -> list[dict]:
+        import json
+
         tools_str = ", ".join(available_tools) if available_tools else "none"
         prompt = f"Task: {objective}\nAvailable tools: {tools_str}\n"
         if context:
@@ -94,8 +108,6 @@ class OpenAIProvider:
             messages=[{"role": "user", "content": prompt}],
             system="Output only valid JSON. No markdown.",
         )
-        import json
-
         try:
             return json.loads(response.content.strip())
         except (json.JSONDecodeError, ValueError):
@@ -103,5 +115,5 @@ class OpenAIProvider:
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    rates = COST_PER_1K.get(model, {"input": 0.001, "output": 0.005})
+    rates = COST_PER_1K.get(model, {"input": 0.0002, "output": 0.0002})
     return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])

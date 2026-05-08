@@ -1,7 +1,6 @@
 """Model router — smart provider selection by model name and task complexity."""
 
 import logging
-import os
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -30,6 +29,12 @@ def create_provider(model_name: str):  # noqa: ANN201
         from hive.models.openai import OpenAIProvider
 
         return OpenAIProvider(model=model_name)
+
+    if model_name.startswith("fireworks:") or model_name.startswith("accounts/fireworks"):
+        from hive.models.fireworks import FireworksProvider
+
+        clean = model_name.removeprefix("fireworks:")
+        return FireworksProvider(model=clean)
 
     if model_name.startswith("lmstudio:"):
         from hive.models.lmstudio import LMStudioProvider
@@ -75,13 +80,21 @@ def detect_models() -> dict[str, list[ModelInfo]]:
     """Scan all providers for available models."""
     providers: dict[str, list[ModelInfo]] = {}
 
-    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    from hive.config import get_env
+
+    has_anthropic = bool(get_env("ANTHROPIC_API_KEY"))
     providers["Anthropic"] = [
         ModelInfo(m, "anthropic", has_anthropic) for m in sorted(ANTHROPIC_MODELS)
     ]
 
-    has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+    has_openai = bool(get_env("OPENAI_API_KEY"))
     providers["OpenAI"] = [ModelInfo(m, "openai", has_openai) for m in sorted(OPENAI_MODELS)]
+
+    has_fireworks = bool(get_env("FIREWORKS_API_KEY"))
+    providers["Fireworks"] = [
+        ModelInfo("fireworks:llama-v3p1-8b-instruct", "fireworks", has_fireworks),
+        ModelInfo("fireworks:llama-v3p1-70b-instruct", "fireworks", has_fireworks),
+    ]
 
     from hive.models.lmstudio import LMStudioProvider
 
