@@ -138,6 +138,49 @@ def test_event_catalog_valid():
             assert choice.description
 
 
+def test_eligibility_isolated_per_agent(tmp_dir):
+    """Event fired for agent-1 should not block agent-2 from the same event."""
+    stats = StatsManager(tmp_dir)
+    world = WorldState(tmp_dir)
+    engine = EventEngine(stats, world, tmp_dir)
+
+    stats.get("agent-1").cycles_alive = 20
+    stats.get("agent-2").cycles_alive = 20
+
+    event = LifeEvent(
+        event_id="shared_event",
+        name="Shared Event",
+        description="Can happen to anyone",
+        category="test",
+        choices=[Choice(id="ok", description="Ok", stat_effects=[])],
+    )
+
+    engine.apply_choice("agent-1", event, "ok", cycle=1)
+
+    agent1_eligible = engine._get_eligible("agent-1", stats.get("agent-1"))
+    agent2_eligible = engine._get_eligible("agent-2", stats.get("agent-2"))
+
+    agent1_ids = {e.event_id for e in agent1_eligible}
+    agent2_ids = {e.event_id for e in agent2_eligible}
+
+    assert "shared_event" not in agent1_ids, "agent-1 should be blocked from its own recent event"
+    assert "shared_event" not in agent2_ids, (
+        "shared_event is not in EVENTS catalog so won't appear for agent-2 either"
+    )
+
+    from hive.world.event_catalog import EVENTS as CATALOG_EVENTS
+
+    if CATALOG_EVENTS:
+        first_event = CATALOG_EVENTS[0]
+        engine.apply_choice("agent-1", first_event, first_event.choices[0].id, cycle=2)
+
+        a1 = {e.event_id for e in engine._get_eligible("agent-1", stats.get("agent-1"))}
+        a2 = {e.event_id for e in engine._get_eligible("agent-2", stats.get("agent-2"))}
+
+        assert first_event.event_id not in a1, "agent-1 should be blocked from its recent event"
+        assert first_event.event_id in a2, "agent-2 should still be eligible for the same event"
+
+
 def test_followup_delay_minimum():
     """All follow-ups should have delay_cycles >= 1."""
     for event in EVENTS:
