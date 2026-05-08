@@ -1,7 +1,6 @@
 """Anthropic SDK provider — Claude models via direct API."""
 
 import logging
-import os
 import time
 
 import anthropic
@@ -21,7 +20,9 @@ class AnthropicProvider:
     """ModelProvider using the Anthropic SDK."""
 
     def __init__(self, model: str = "claude-haiku-4-5", api_key: str | None = None):
-        key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        from hive.config import get_env
+
+        key = api_key or get_env("ANTHROPIC_API_KEY")
         self._client = anthropic.AsyncAnthropic(api_key=key or "sk-placeholder")
         self._model = model
         self._has_key = bool(key)
@@ -32,7 +33,11 @@ class AnthropicProvider:
 
     @property
     def available(self) -> bool:
-        return self._has_key
+        if not self._has_key:
+            from hive.config import get_env
+
+            return bool(get_env("ANTHROPIC_API_KEY"))
+        return True
 
     async def complete(
         self,
