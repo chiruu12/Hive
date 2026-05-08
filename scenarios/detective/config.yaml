@@ -1,0 +1,29 @@
+# Detective Scenario Configuration
+name: "The Thornfield Gallery Murder"
+description: "Three AI detectives investigate a locked-room murder at an art gallery"
+
+# Each detective gets a different model and personality
+detectives:
+  - name: detective_a
+    display_name: "Detective Sharp"
+    model: claude-haiku-4-5
+    personality: "methodical, follows evidence chains, skeptical of easy answers"
+    approach: "Start with physical evidence and work outward"
+
+  - name: detective_b
+    display_name: "Detective Reyes"
+    model: accounts/fireworks/models/qwen3p6-plus
+    personality: "intuitive, follows gut instinct, focuses on people and motives"
+    approach: "Start with suspects and their relationships"
+
+  - name: detective_c
+    display_name: "Detective Park"
+    model: accounts/fireworks/models/deepseek-v4-pro
+    personality: "analytical, systematic, builds timelines and cross-references"
+    approach: "Build a timeline first, then find contradictions"
+
+# How many rounds of investigation
+rounds: 4
+
+# After investigation, each detective accuses a suspect
+final_accusation: true
