@@ -61,7 +61,7 @@ class EventEngine:
 
         if random.random() < EVENT_PROBABILITY:
             agent_stats = self._stats.get(agent_id)
-            eligible = self._get_eligible(agent_stats)
+            eligible = self._get_eligible(agent_id, agent_stats)
             if eligible:
                 events_to_fire.append(random.choice(eligible))
 
@@ -125,12 +125,13 @@ class EventEngine:
             return [o for o in self._history if o.agent_id == agent_id]
         return list(self._history)
 
-    def _get_eligible(self, stats: AgentStats) -> list[LifeEvent]:
+    def _get_eligible(self, agent_id: str, stats: AgentStats) -> list[LifeEvent]:
         eligible = []
+        agent_recent = [o.event_id for o in self._history if o.agent_id == agent_id][-20:]
         for ev in EVENTS:
             if ev.min_cycles_alive > stats.cycles_alive:
                 continue
-            if ev.event_id in {o.event_id for o in self._history[-20:]}:
+            if ev.event_id in agent_recent:
                 continue
             meets_prereqs = True
             for stat, threshold in ev.prerequisites.items():

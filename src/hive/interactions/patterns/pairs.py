@@ -1,7 +1,10 @@
 """Pairs — agents interact 1-on-1, rotate partners each round."""
 
+import logging
 import random
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from hive.interactions.base import (
     AgentSlot,
@@ -71,4 +74,9 @@ class PairsPattern(InteractionPattern):
         pairs = []
         for i in range(0, len(shuffled) - 1, 2):
             pairs.append((shuffled[i], shuffled[i + 1]))
+        if len(shuffled) % 2 == 1:
+            leftover = shuffled[-1]
+            partner = pairs[-1][0]
+            pairs.append((leftover, partner))
+            logger.debug("Odd agent count: %s paired with %s", leftover.slot_id, partner.slot_id)
         return pairs
