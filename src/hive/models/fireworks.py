@@ -11,12 +11,6 @@ logger = logging.getLogger(__name__)
 
 FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1"
 
-COST_PER_1K = {
-    "accounts/fireworks/models/llama-v3p1-8b-instruct": {"input": 0.0002, "output": 0.0002},
-    "accounts/fireworks/models/llama-v3p1-70b-instruct": {"input": 0.0009, "output": 0.0009},
-    "accounts/fireworks/models/qwen2p5-72b-instruct": {"input": 0.0009, "output": 0.0009},
-}
-
 
 class FireworksProvider:
     """ModelProvider using Fireworks AI's OpenAI-compatible endpoint."""
@@ -115,5 +109,7 @@ class FireworksProvider:
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    rates = COST_PER_1K.get(model, {"input": 0.0002, "output": 0.0002})
+    from hive.models.registry import get_model_registry
+
+    rates = get_model_registry().cost_per_1k(model)
     return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])

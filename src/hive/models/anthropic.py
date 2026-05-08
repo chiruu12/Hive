@@ -9,12 +9,6 @@ from hive.models.protocol import ModelResponse
 
 logger = logging.getLogger(__name__)
 
-COST_PER_1K = {
-    "claude-haiku-4-5": {"input": 0.001, "output": 0.005},
-    "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
-    "claude-opus-4-6": {"input": 0.015, "output": 0.075},
-}
-
 
 class AnthropicProvider:
     """ModelProvider using the Anthropic SDK."""
@@ -104,5 +98,7 @@ class AnthropicProvider:
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    rates = COST_PER_1K.get(model, {"input": 0.001, "output": 0.005})
+    from hive.models.registry import get_model_registry
+
+    rates = get_model_registry().cost_per_1k(model)
     return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])
