@@ -1,0 +1,80 @@
+# Hive Model Registry
+# Configure all available models, costs, and routing preferences
+
+# Routing: which models to use for different task types
+routing:
+  routine: claude-haiku-4-5          # Cheapest for existence loops, simple decisions
+  planning: claude-sonnet-4-6        # Best for plan generation, complex reasoning
+  events: claude-haiku-4-5           # Life event choices (cheap, fast)
+
+# Anthropic models (via API key)
+anthropic:
+  - id: claude-haiku-4-5
+    display: Claude Haiku 4.5
+    cost_input_per_1k: 0.001
+    cost_output_per_1k: 0.005
+    max_tokens: 8192
+    tier: routine
+  - id: claude-sonnet-4-6
+    display: Claude Sonnet 4.6
+    cost_input_per_1k: 0.003
+    cost_output_per_1k: 0.015
+    max_tokens: 8192
+    tier: planning
+
+# Fireworks models (via API key)
+fireworks:
+  - id: accounts/fireworks/models/deepseek-v4-pro
+    display: DeepSeek V4 Pro
+    cost_input_per_1k: 0.0008
+    cost_output_per_1k: 0.002
+    tier: planning
+  - id: accounts/fireworks/models/kimi-k2p6
+    display: Kimi K2P6
+    cost_input_per_1k: 0.0005
+    cost_output_per_1k: 0.002
+    tier: planning
+  - id: accounts/fireworks/models/qwen3p6-plus
+    display: Qwen 3P6 Plus
+    cost_input_per_1k: 0.0003
+    cost_output_per_1k: 0.0012
+    tier: routine
+  - id: accounts/fireworks/models/minimax-m2p7
+    display: MiniMax M2P7
+    cost_input_per_1k: 0.0004
+    cost_output_per_1k: 0.0016
+    tier: routine
+  - id: accounts/fireworks/models/glm-5p1
+    display: GLM 5P1
+    cost_input_per_1k: 0.0003
+    cost_output_per_1k: 0.001
+    tier: routine
+  - id: accounts/fireworks/models/gpt-oss-120b
+    display: GPT-OSS 120B
+    cost_input_per_1k: 0.001
+    cost_output_per_1k: 0.003
+    tier: planning
+
+# OpenAI models (via API key)
+openai:
+  - id: gpt-4o-mini
+    display: GPT-4o Mini
+    cost_input_per_1k: 0.00015
+    cost_output_per_1k: 0.0006
+    tier: routine
+  - id: gpt-4o
+    display: GPT-4o
+    cost_input_per_1k: 0.005
+    cost_output_per_1k: 0.015
+    tier: planning
+
+# Local models (no API key needed)
+local:
+  - id: "lmstudio:auto"
+    provider: lmstudio
+    display: LM Studio (auto-detect)
+    tier: routine
+  - id: "ollama:llama3.2"
+    provider: ollama
+    display: Llama 3.2 (Ollama)
+    tier: routine
