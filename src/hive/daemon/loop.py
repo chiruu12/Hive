@@ -7,7 +7,6 @@ from pathlib import Path
 from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
 from hive.agents.identity import IdentityManager
-from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.specialization import SpecializationTracker
 from hive.agents.state import AgentState, AgentStatus
@@ -23,10 +22,14 @@ from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
 from hive.models.router import create_provider
-from hive.world.event_engine import EventEngine
-from hive.world.life_summary import LifeDirectoryWriter
-from hive.world.state import WorldState
-from hive.world.stats import StatsManager
+from hive.runtime import (
+    Agent,
+    CommsToolkit,
+    DaemonAgentAdapter,
+    MemoryToolkit,
+    WorldToolkit,
+    create_runtime_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,15 +47,22 @@ class HiveDaemon:
         self._hive_dir = hive_dir
         cfg = load_config(hive_dir)
         self._heartbeat = heartbeat or cfg.daemon.heartbeat
+        self._economy_enabled = cfg.economy.enabled
         self._running = False
         self._store = HiveStore(hive_dir / "hive.db")
         self._events = EventLog(hive_dir)
 
+        world = None
+        if self._economy_enabled:
+            from hive.world.state import WorldState
+
+            world = WorldState(hive_dir)
+
         self._ctx = ExecutionContext(
-            world=WorldState(hive_dir),
             store=self._store,
             comms_dir=hive_dir / "comms",
             memory_dir=hive_dir / "agent_memory",
+            world=world,
         )
 
         self._registry = ToolRegistry(self._ctx)
@@ -62,14 +72,33 @@ class HiveDaemon:
         self._delegation = DelegationEngine(self._store)
         self._specialization = SpecializationTracker()
         self._swarm = SwarmLearning(self._store, self._specialization)
-        self._stats = StatsManager(hive_dir)
-        self._event_engine = EventEngine(self._stats, self._ctx.world, hive_dir)
-        self._life_writer = LifeDirectoryWriter(hive_dir)
+
+        self._stats = None
+        self._event_engine = None
+        self._life_writer = None
+        if self._economy_enabled:
+            from hive.world.event_engine import EventEngine
+            from hive.world.life_summary import LifeDirectoryWriter
+            from hive.world.stats import StatsManager
+
+            self._stats = StatsManager(hive_dir)
+            self._event_engine = EventEngine(self._stats, self._ctx.world, hive_dir)
+            self._life_writer = LifeDirectoryWriter(hive_dir)
+
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
+
+    def _build_toolkits(self, agent_id: str) -> list:
+        toolkits = [
+            MemoryToolkit(self._ctx.memory_dir, agent_id),
+            CommsToolkit(self._ctx.comms_dir, agent_id),
+        ]
+        if self._economy_enabled and self._ctx.world is not None:
+            toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
+        return toolkits
 
     async def start(self) -> None:
         """Initialize store, discover tools, start heartbeat."""
@@ -86,10 +115,11 @@ class HiveDaemon:
         )
 
         logger.info(
-            "Daemon started: run=%s, %d tools, heartbeat=%ds",
+            "Daemon started: run=%s, %d tools, heartbeat=%ds, economy=%s",
             self._log.run_id,
             len(self._registry.list_tools()),
             self._heartbeat,
+            self._economy_enabled,
         )
         self._running = True
         self._pending_shutdown = False
@@ -119,8 +149,9 @@ class HiveDaemon:
                         agent.agent_id, AgentStatus.ERROR, error=str(e)
                     )
 
-            self._process_payday(alive)
-            await self._process_life_events(alive)
+            if self._economy_enabled:
+                self._process_payday(alive)
+                await self._process_life_events(alive)
 
             if self._cycle_count % 5 == 0 and alive:
                 agent_ids = [a.agent_id for a in alive]
@@ -172,18 +203,17 @@ class HiveDaemon:
 
         if active_goal:
             await self._store.update_agent_status(agent.agent_id, AgentStatus.WORKING)
-            loop = AgentLoop(
-                agent_id=agent.agent_id,
-                profile=profile,
-                provider=provider,
-                ctx=self._ctx,
-                store=self._store,
-                event_log=self._events,
-                log_writer=self._log,
-                session_id=session_id,
-                goal_id=active_goal["goal_id"],
+            runtime_provider = create_runtime_provider(agent.model)
+            runtime_agent = Agent(
+                name=agent.name,
+                model=runtime_provider,
+                system_prompt=profile.build_system_prompt(
+                    economy_enabled=self._economy_enabled,
+                ),
+                toolkits=self._build_toolkits(agent.agent_id),
             )
-            outcome = await loop.pursue_goal(
+            adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
+            outcome = await adapter.pursue_goal(
                 active_goal["objective"],
                 context=suffering.prompt_fragment(),
             )
@@ -232,11 +262,7 @@ class HiveDaemon:
                     goals_snap,
                 )
                 self._specialization.record(
-                    agent.agent_id,
-                    "goal_pursuit",
-                    True,
-                    0,
-                    "autonomy_loop",
+                    agent.agent_id, "goal_pursuit", True, 0, "autonomy_loop",
                 )
             elif outcome.steps_failed > outcome.steps_done:
                 await self._store.abandon_goal(active_goal["goal_id"])
@@ -259,11 +285,7 @@ class HiveDaemon:
                 )
                 result = "abandoned"
                 self._specialization.record(
-                    agent.agent_id,
-                    "goal_pursuit",
-                    False,
-                    0,
-                    "autonomy_loop",
+                    agent.agent_id, "goal_pursuit", False, 0, "autonomy_loop",
                 )
 
             await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
@@ -281,6 +303,7 @@ class HiveDaemon:
                 event_log=self._events,
                 log_writer=self._log,
                 session_id=session_id,
+                economy_enabled=self._economy_enabled,
             )
             goal = await existence.generate_goal(suffering, peers, nudges)
 
@@ -324,14 +347,16 @@ class HiveDaemon:
         return result
 
     def _process_payday(self, agents: list[AgentState]) -> None:
-        """Auto-pay salary to employed agents each cycle."""
         for agent in agents:
+            if self._ctx.world is None:
+                return
             job = self._ctx.world.agent_job(agent.agent_id)
             if job:
                 self._ctx.world.work(agent.agent_id)
 
     async def _process_life_events(self, agents: list[AgentState]) -> None:
-        """Roll random life events and let agents choose via LLM."""
+        if not self._event_engine or not self._stats:
+            return
         for agent in agents:
             self._stats.tick(agent.agent_id)
             events = self._event_engine.roll_events(agent.agent_id, self._cycle_count)
@@ -344,7 +369,9 @@ class HiveDaemon:
                 try:
                     response = await provider.complete(
                         messages=[{"role": "user", "content": prompt}],
-                        system=profile.build_system_prompt(),
+                        system=profile.build_system_prompt(
+                            economy_enabled=self._economy_enabled,
+                        ),
                         max_tokens=50,
                     )
                     import re
@@ -357,32 +384,22 @@ class HiveDaemon:
                     else:
                         logger.warning(
                             "Agent %s gave invalid choice '%s' for event %s, defaulting",
-                            agent.agent_id,
-                            raw,
-                            event.name,
+                            agent.agent_id, raw, event.name,
                         )
                         choice_id = event.choices[0].id
                 except Exception as e:
                     logger.warning(
-                        "LLM error for event %s agent %s: %s",
-                        event.name,
-                        agent.agent_id,
-                        e,
+                        "LLM error for event %s agent %s: %s", event.name, agent.agent_id, e,
                     )
                     choice_id = event.choices[0].id
 
                 outcome = self._event_engine.apply_choice(
-                    agent.agent_id,
-                    event,
-                    choice_id,
-                    self._cycle_count,
+                    agent.agent_id, event, choice_id, self._cycle_count,
                 )
 
                 session_id = f"sess-{agent.agent_id}"
                 await self._emit(
-                    agent.agent_id,
-                    session_id,
-                    EventType.EXISTENCE_CYCLE,
+                    agent.agent_id, session_id, EventType.EXISTENCE_CYCLE,
                     {
                         "life_event": event.name,
                         "choice": outcome.choice_description,
@@ -432,10 +449,7 @@ class HiveDaemon:
         self, agent_id: str, session_id: str, event_type: EventType, data: dict
     ) -> None:
         event = HiveEvent(
-            event_type=event_type,
-            agent_id=agent_id,
-            session_id=session_id,
-            data=data,
+            event_type=event_type, agent_id=agent_id, session_id=session_id, data=data,
         )
         await self._events.append(event)
 
@@ -444,7 +458,9 @@ class HiveDaemon:
         self._pending_shutdown = True
 
     async def _shutdown(self) -> None:
-        """Write life summaries after the run loop exits."""
+        if not self._economy_enabled or not self._life_writer:
+            return
+
         try:
             agents = await self._store.list_agents()
         except Exception:
@@ -455,19 +471,10 @@ class HiveDaemon:
                 continue
             try:
                 summary = self._life_writer.generate(
-                    agent.agent_id,
-                    self._identity,
-                    self._stats,
-                    self._ctx.world,
-                    self._event_engine,
-                    self._store,
-                    self._cycle_count,
+                    agent.agent_id, self._identity, self._stats,
+                    self._ctx.world, self._event_engine, self._store, self._cycle_count,
                 )
                 path = self._life_writer.write(summary)
                 logger.info("Life summary written: %s", path)
             except Exception as e:
-                logger.warning(
-                    "Failed to write life summary for %s: %s",
-                    agent.agent_id,
-                    e,
-                )
+                logger.warning("Failed to write life summary for %s: %s", agent.agent_id, e)

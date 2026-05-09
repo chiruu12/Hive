@@ -1,22 +1,22 @@
 """Existence loop — autonomous goal generation when agent is idle."""
 
+import json
 import logging
 from typing import Any
 from uuid import uuid4
 
-from hive.agents.base import AgentLoopBase
 from hive.agents.profile import AgentProfile
 from hive.agents.suffering import SufferingState
 from hive.execution.context import ExecutionContext
 from hive.logging.models import DecisionLog, GoalLog
 from hive.logging.writer import LogWriter
-from hive.memory.events import EventLog, EventType
+from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 
 logger = logging.getLogger(__name__)
 
 
-class ExistenceLoop(AgentLoopBase):
+class ExistenceLoop:
     """Generates autonomous goals from agent context when idle."""
 
     def __init__(
@@ -29,8 +29,39 @@ class ExistenceLoop(AgentLoopBase):
         event_log: EventLog,
         log_writer: LogWriter | None = None,
         session_id: str = "",
+        economy_enabled: bool = True,
     ):
-        super().__init__(agent_id, profile, provider, ctx, store, event_log, log_writer, session_id)
+        self._agent_id = agent_id
+        self._profile = profile
+        self._provider = provider
+        self._ctx = ctx
+        self._store = store
+        self._events = event_log
+        self._log = log_writer
+        self._session_id = session_id or f"sess-{agent_id}"
+        self._economy_enabled = economy_enabled
+
+    async def _emit(self, event_type: EventType, data: dict) -> None:
+        event = HiveEvent(
+            event_type=event_type,
+            agent_id=self._agent_id,
+            session_id=self._session_id,
+            data=data,
+        )
+        await self._events.append(event)
+
+    @staticmethod
+    def _parse_json(text: str) -> dict | None:
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+        try:
+            data = json.loads(text)
+            return data if isinstance(data, dict) else None
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse JSON: %s", text[:200])
+            return None
 
     async def generate_goal(
         self,
@@ -38,7 +69,7 @@ class ExistenceLoop(AgentLoopBase):
         peer_summaries: list[str],
         nudges: list[str],
     ) -> str | None:
-        """Build context and ask Claude what the agent should do next."""
+        """Build context and ask the LLM what the agent should do next."""
         recent_goals = await self._store.list_agent_goals(self._agent_id, limit=5)
 
         tool_schemas = ""
@@ -123,15 +154,21 @@ class ExistenceLoop(AgentLoopBase):
         sections = [
             f"You are {self._profile.name}, an autonomous agent in a persistent world.",
             f"Your role: {self._profile.role}.",
-            "You exist in an economy where you earn money, learn skills, and pursue goals.",
             "You make your own decisions. Choose what to do next based on your situation.",
         ]
+
+        if self._economy_enabled:
+            sections.insert(
+                2, "You participate in an economy where you earn money, "
+                "learn skills, and pursue goals.",
+            )
 
         if identity_preamble:
             sections.append(f"\n--- Your identity ---\n{identity_preamble}")
 
-        status = self._ctx.world.get_status(self._agent_id)
-        sections.append(f"\n--- Your economic status ---\n{status}")
+        if self._economy_enabled and self._ctx.world is not None:
+            status = self._ctx.world.get_status(self._agent_id)
+            sections.append(f"\n--- Your economic status ---\n{status}")
 
         suffering_frag = suffering.prompt_fragment()
         if suffering_frag:
@@ -157,10 +194,15 @@ class ExistenceLoop(AgentLoopBase):
         if tools_desc:
             sections.append(f"\n--- Available tools ---\n{tools_desc}")
 
+        actions = ["send messages to peers", "store things in memory"]
+        if self._economy_enabled:
+            actions = [
+                "work", "apply_job", "quit_job", "learn skills",
+                "gamble", "query the world",
+            ] + actions
         sections.append(
             "\n--- Available actions ---\n"
-            "You can: work, apply_job, quit_job, learn skills, gamble,\n"
-            "send messages to peers, store things in memory, query the world.\n"
+            f"You can: {', '.join(actions)}.\n"
         )
 
         sections.append(
