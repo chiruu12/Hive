@@ -4,14 +4,14 @@ import logging
 import random
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from hive.interactions.base import (
     AgentSlot,
     InteractionPattern,
     Message,
     RoundResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PairsPattern(InteractionPattern):
