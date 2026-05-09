@@ -91,3 +91,9 @@ def get_model_registry() -> ModelRegistry:
     if _registry is None:
         return load_model_registry()
     return _registry
+
+
+def estimate_cost(model_id: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate cost in USD for a model call using registry rates."""
+    rates = get_model_registry().cost_per_1k(model_id)
+    return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])

@@ -1,20 +1,19 @@
 """Claude CLI subprocess wrapper - implements ModelProvider via Claude Code CLI."""
 
 import asyncio
-import json
 import logging
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from hive.models._protocol import (
+from hive.models.claude_ndjson import (
     AssistantMessage,
     InboundMessage,
     ResultMessage,
     SystemInit,
     parse_ndjson_line,
 )
-from hive.models.protocol import ModelResponse, PlanStep
+from hive.models.protocol import ModelResponse
 
 logger = logging.getLogger(__name__)
 
@@ -84,39 +83,6 @@ class ClaudeCLIProvider:
             cost_usd=cost_usd,
             duration_ms=duration_ms,
         )
-
-    async def plan(
-        self,
-        objective: str,
-        available_tools: list[str],
-        context: str | None = None,
-    ) -> list[PlanStep]:
-        """Ask Claude to produce a structured execution plan."""
-        tools_str = ", ".join(available_tools) if available_tools else "none"
-        prompt = (
-            f"Create a step-by-step plan to accomplish this task.\n\n"
-            f"Task: {objective}\n"
-            f"Available tools: {tools_str}\n"
-        )
-        if context:
-            prompt += f"Context: {context}\n"
-        prompt += (
-            "\nRespond with ONLY a JSON array of steps. Each step has: "
-            '{"tool": "tool_name", "params": {...}, "rationale": "why"}\n'
-            "No markdown, no explanation, just the JSON array."
-        )
-
-        response = await self.complete(
-            messages=[{"role": "user", "content": prompt}],
-            system="You are a planning agent. Output only valid JSON.",
-        )
-
-        try:
-            steps_data = json.loads(response.content.strip())
-            return [PlanStep(**step) for step in steps_data]
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.warning("Failed to parse plan response: %s", e)
-            return []
 
     async def run_task(
         self,
