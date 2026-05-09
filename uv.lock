@@ -123,7 +123,7 @@ wheels = [
 ]
 
 [[package]]
-name = "hive-agents"
+name = "hive-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

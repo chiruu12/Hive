@@ -2,16 +2,17 @@
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from hive.agents.profile import AgentProfile
 from hive.agents.suffering import SufferingState
-from hive.execution.context import ExecutionContext
 from hive.logging.models import DecisionLog, GoalLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
+from hive.runtime.types import Message
 
 logger = logging.getLogger(__name__)
 
@@ -24,22 +25,26 @@ class ExistenceLoop:
         agent_id: str,
         profile: AgentProfile,
         provider: Any,
-        ctx: ExecutionContext,
         store: HiveStore,
         event_log: EventLog,
+        hive_dir: Path | None = None,
         log_writer: LogWriter | None = None,
         session_id: str = "",
         economy_enabled: bool = True,
+        tools_description: str = "",
+        world_status: str = "",
     ):
         self._agent_id = agent_id
         self._profile = profile
         self._provider = provider
-        self._ctx = ctx
         self._store = store
         self._events = event_log
+        self._hive_dir = hive_dir
         self._log = log_writer
         self._session_id = session_id or f"sess-{agent_id}"
         self._economy_enabled = economy_enabled
+        self._tools_description = tools_description
+        self._world_status = world_status
 
     async def _emit(self, event_type: EventType, data: dict) -> None:
         event = HiveEvent(
@@ -72,22 +77,18 @@ class ExistenceLoop:
         """Build context and ask the LLM what the agent should do next."""
         recent_goals = await self._store.list_agent_goals(self._agent_id, limit=5)
 
-        tool_schemas = ""
-        try:
-            from hive.execution.registry import get_registry
-
-            tool_schemas = get_registry().get_tool_schemas()
-        except RuntimeError:
-            pass
-
-        prompt = self._build_prompt(suffering, peer_summaries, recent_goals, tool_schemas, nudges)
-
-        response = await self._provider.complete(
-            messages=[{"role": "user", "content": prompt}],
-            system=self._profile.build_system_prompt(),
+        prompt = self._build_prompt(
+            suffering, peer_summaries, recent_goals, self._tools_description, nudges
         )
 
-        parsed = self._parse_json(response.content)
+        result = await self._provider.generate_with_metadata(
+            messages=[
+                Message.system(self._profile.build_system_prompt()),
+                Message.user(prompt),
+            ],
+        )
+
+        parsed = self._parse_json(result.message.content)
         goal_text = parsed.get("goal") if parsed else None
         reasoning = parsed.get("reasoning") if parsed else None
 
@@ -96,12 +97,12 @@ class ExistenceLoop:
                 DecisionLog(
                     agent_id=self._agent_id,
                     decision_type="existence",
-                    model=response.model,
-                    input_tokens=response.input_tokens,
-                    output_tokens=response.output_tokens,
-                    cost_usd=response.cost_usd,
-                    duration_ms=response.duration_ms,
-                    response_raw=response.content,
+                    model=result.model,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    cost_usd=result.cost_usd,
+                    duration_ms=result.duration_ms,
+                    response_raw=result.message.content,
                     response_parsed=parsed,
                     success=goal_text is not None,
                 )
@@ -143,13 +144,14 @@ class ExistenceLoop:
         nudges: list[str],
     ) -> str:
         identity_preamble = ""
-        try:
-            from hive.agents.identity import IdentityManager
+        if self._hive_dir:
+            try:
+                from hive.agents.identity import IdentityManager
 
-            im = IdentityManager(self._ctx.comms_dir.parent)
-            identity_preamble = im.build_preamble(self._agent_id)
-        except Exception:
-            pass
+                im = IdentityManager(self._hive_dir)
+                identity_preamble = im.build_preamble(self._agent_id)
+            except Exception:
+                pass
 
         sections = [
             f"You are {self._profile.name}, an autonomous agent in a persistent world.",
@@ -166,9 +168,8 @@ class ExistenceLoop:
         if identity_preamble:
             sections.append(f"\n--- Your identity ---\n{identity_preamble}")
 
-        if self._economy_enabled and self._ctx.world is not None:
-            status = self._ctx.world.get_status(self._agent_id)
-            sections.append(f"\n--- Your economic status ---\n{status}")
+        if self._economy_enabled and self._world_status:
+            sections.append(f"\n--- Your economic status ---\n{self._world_status}")
 
         suffering_frag = suffering.prompt_fragment()
         if suffering_frag:

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Protocol, runtime_checkable
 
-from hive.runtime.types import Message, Role, ToolCall
+from hive.runtime.types import GenerateResult, Message, Role, ToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,9 @@ logger = logging.getLogger(__name__)
 class RuntimeProvider(Protocol):
     """Provider protocol for the runtime. Returns Message with tool_calls."""
 
+    @property
+    def available(self) -> bool: ...
+
     async def generate(
         self,
         messages: list[Message],
@@ -22,6 +26,14 @@ class RuntimeProvider(Protocol):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> Message: ...
+
+    async def generate_with_metadata(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> GenerateResult: ...
 
 
 class AnthropicRuntimeProvider:
@@ -48,7 +60,20 @@ class AnthropicRuntimeProvider:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> Message:
+        result = await self.generate_with_metadata(messages, tools, temperature, max_tokens)
+        return result.message
+
+    async def generate_with_metadata(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> GenerateResult:
+        from hive.models.registry import estimate_cost
+
         system, api_messages = self._messages_to_anthropic(messages)
+        t0 = time.time()
 
         kwargs: dict[str, Any] = {
             "model": self._model,
@@ -69,7 +94,20 @@ class AnthropicRuntimeProvider:
             ]
 
         response = await self._client.messages.create(**kwargs)
-        return self._response_to_message(response)
+        duration_ms = int((time.time() - t0) * 1000)
+
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        cost = estimate_cost(self._model, input_tokens, output_tokens)
+
+        return GenerateResult(
+            message=self._response_to_message(response),
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+        )
 
     def _messages_to_anthropic(
         self, messages: list[Message]
@@ -180,7 +218,20 @@ class OpenAIRuntimeProvider:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> Message:
+        result = await self.generate_with_metadata(messages, tools, temperature, max_tokens)
+        return result.message
+
+    async def generate_with_metadata(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> GenerateResult:
+        from hive.models.registry import estimate_cost
+
         api_messages = self._messages_to_openai(messages)
+        t0 = time.time()
 
         kwargs: dict[str, Any] = {
             "model": self._model,
@@ -192,7 +243,24 @@ class OpenAIRuntimeProvider:
             kwargs["tools"] = self._tools_to_openai(tools)
 
         response = await self._client.chat.completions.create(**kwargs)
-        return self._response_to_message(response)
+        duration_ms = int((time.time() - t0) * 1000)
+
+        input_tokens = 0
+        output_tokens = 0
+        if response.usage:
+            input_tokens = response.usage.prompt_tokens or 0
+            output_tokens = response.usage.completion_tokens or 0
+
+        cost = estimate_cost(self._model, input_tokens, output_tokens)
+
+        return GenerateResult(
+            message=self._response_to_message(response),
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+        )
 
     def _messages_to_openai(self, messages: list[Message]) -> list[dict[str, Any]]:
         api_messages: list[dict[str, Any]] = []

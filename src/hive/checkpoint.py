@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from hive.agents.identity import AgentIdentity
 from hive.agents.suffering import SufferingState
-from hive.execution.context import ExecutionContext
+from hive.context import ExecutionContext
 
 
 class Checkpoint(BaseModel):

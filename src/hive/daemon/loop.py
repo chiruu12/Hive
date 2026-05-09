@@ -14,19 +14,18 @@ from hive.agents.suffering import SufferingState, assess_conditions
 from hive.agents.swarm import SwarmLearning
 from hive.checkpoint import CheckpointManager
 from hive.config import get_config, load_config
-from hive.execution.context import ExecutionContext
-from hive.execution.registry import ToolRegistry
+from hive.context import ExecutionContext
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
-from hive.models.router import create_provider
 from hive.runtime import (
     Agent,
     CommsToolkit,
     DaemonAgentAdapter,
     MemoryToolkit,
+    Message,
     WorldToolkit,
     create_runtime_provider,
 )
@@ -65,7 +64,6 @@ class HiveDaemon:
             world=world,
         )
 
-        self._registry = ToolRegistry(self._ctx)
         self._log = LogWriter(logs_dir or (hive_dir.parent / "logs"))
         self._identity = IdentityManager(hive_dir)
         self._checkpoint = CheckpointManager(hive_dir)
@@ -100,24 +98,39 @@ class HiveDaemon:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
         return toolkits
 
+    def _get_tool_names(self) -> list[str]:
+        """Get tool names from runtime toolkits."""
+        sample_toolkits = self._build_toolkits("__system__")
+        return [t.name for tk in sample_toolkits for t in tk.get_tools()]
+
+    def _build_tools_description(self, agent_id: str) -> str:
+        """Build a text description of available tools for goal prompts."""
+        toolkits = self._build_toolkits(agent_id)
+        lines = []
+        for tk in toolkits:
+            for t in tk.get_tools():
+                params = ", ".join(t.parameters.get("properties", {}).keys())
+                lines.append(f"- {t.name}({params}): {t.description}")
+        return "\n".join(lines)
+
     async def start(self) -> None:
-        """Initialize store, discover tools, start heartbeat."""
+        """Initialize store, start heartbeat."""
         await self._store.initialize()
-        self._registry.discover()
 
         agents = await self._store.list_agents()
         agent_ids = [a.agent_id for a in agents if a.is_alive()]
+        tool_names = self._get_tool_names()
         self._log.start_run(
             heartbeat=self._heartbeat,
             profiles=self._profiles,
             agents=agent_ids,
-            tools=self._registry.get_tool_names(),
+            tools=tool_names,
         )
 
         logger.info(
             "Daemon started: run=%s, %d tools, heartbeat=%ds, economy=%s",
             self._log.run_id,
-            len(self._registry.list_tools()),
+            len(tool_names),
             self._heartbeat,
             self._economy_enabled,
         )
@@ -193,7 +206,7 @@ class HiveDaemon:
         else:
             self._crisis_counts[agent.agent_id] = 0
 
-        provider = create_provider(agent.model)
+        runtime_provider = create_runtime_provider(agent.model)
         profile = self._load_profile(agent.name)
         session_id = f"sess-{agent.agent_id}"
         identity = self._identity.load_or_create(agent.agent_id, profile)
@@ -203,7 +216,6 @@ class HiveDaemon:
 
         if active_goal:
             await self._store.update_agent_status(agent.agent_id, AgentStatus.WORKING)
-            runtime_provider = create_runtime_provider(agent.model)
             runtime_agent = Agent(
                 name=agent.name,
                 model=runtime_provider,
@@ -294,16 +306,22 @@ class HiveDaemon:
             nudges = await self._store.get_pending_nudges(agent.agent_id)
             peers = await self._get_peer_summaries(agent.agent_id)
 
+            world_status = ""
+            if self._economy_enabled and self._ctx.world is not None:
+                world_status = self._ctx.world.get_status(agent.agent_id)
+
             existence = ExistenceLoop(
                 agent_id=agent.agent_id,
                 profile=profile,
-                provider=provider,
-                ctx=self._ctx,
+                provider=runtime_provider,
                 store=self._store,
                 event_log=self._events,
+                hive_dir=self._hive_dir,
                 log_writer=self._log,
                 session_id=session_id,
                 economy_enabled=self._economy_enabled,
+                tools_description=self._build_tools_description(agent.agent_id),
+                world_status=world_status,
             )
             goal = await existence.generate_goal(suffering, peers, nudges)
 
@@ -363,15 +381,19 @@ class HiveDaemon:
 
             for event in events:
                 prompt = self._event_engine.format_event_prompt(event)
-                provider = create_provider(agent.model)
+                event_provider = create_runtime_provider(agent.model)
                 profile = self._load_profile(agent.name)
 
                 try:
-                    response = await provider.complete(
-                        messages=[{"role": "user", "content": prompt}],
-                        system=profile.build_system_prompt(
-                            economy_enabled=self._economy_enabled,
-                        ),
+                    response = await event_provider.generate(
+                        messages=[
+                            Message.system(
+                                profile.build_system_prompt(
+                                    economy_enabled=self._economy_enabled,
+                                )
+                            ),
+                            Message.user(prompt),
+                        ],
                         max_tokens=50,
                     )
                     import re

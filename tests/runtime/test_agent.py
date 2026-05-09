@@ -8,8 +8,8 @@ import pytest
 
 from hive.runtime.agent import Agent
 from hive.runtime.memory import ConversationMemory
-from hive.runtime.tools import Tool, Toolkit, tool
-from hive.runtime.types import Message, Role, Task, TaskStatus, ToolCall
+from hive.runtime.tools import Toolkit, tool
+from hive.runtime.types import GenerateResult, Message, Role, Task, TaskStatus, ToolCall
 
 
 class MockProvider:
@@ -20,6 +20,10 @@ class MockProvider:
         self._call_count = 0
         self.calls: list[dict[str, Any]] = []
 
+    @property
+    def available(self) -> bool:
+        return True
+
     async def generate(
         self,
         messages: list[Message],
@@ -27,6 +31,16 @@ class MockProvider:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> Message:
+        result = await self.generate_with_metadata(messages, tools, temperature, max_tokens)
+        return result.message
+
+    async def generate_with_metadata(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> GenerateResult:
         self.calls.append(
             {
                 "messages": messages,
@@ -39,7 +53,12 @@ class MockProvider:
         else:
             response = Message.assistant("No more responses configured.")
         self._call_count += 1
-        return response
+        return GenerateResult(
+            message=response,
+            model="mock-model",
+            input_tokens=10,
+            output_tokens=5,
+        )
 
 
 class CalculatorToolkit(Toolkit):
@@ -225,6 +244,34 @@ class TestReActLoop:
         result = await agent.run(Task(instruction="Try failing"))
         assert result.status == TaskStatus.COMPLETED
         assert result.tool_calls_made == 1
+
+
+class TestProviderMetadata:
+    @pytest.mark.asyncio
+    async def test_generate_with_metadata(self):
+        """generate_with_metadata returns GenerateResult with metadata."""
+        provider = MockProvider([Message.assistant("hello")])
+        result = await provider.generate_with_metadata(
+            messages=[Message.user("hi")],
+        )
+        assert result.message.content == "hello"
+        assert result.model == "mock-model"
+        assert result.input_tokens == 10
+        assert result.output_tokens == 5
+
+    @pytest.mark.asyncio
+    async def test_generate_delegates_to_metadata(self):
+        """generate() returns only the message from generate_with_metadata()."""
+        provider = MockProvider([Message.assistant("world")])
+        msg = await provider.generate(messages=[Message.user("hi")])
+        assert msg.content == "world"
+        assert msg.role == Role.ASSISTANT
+
+    @pytest.mark.asyncio
+    async def test_available_property(self):
+        """MockProvider reports availability."""
+        provider = MockProvider([])
+        assert provider.available is True
 
 
 class TestConversationMemory:

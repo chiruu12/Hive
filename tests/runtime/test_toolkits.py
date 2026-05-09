@@ -1,9 +1,6 @@
 """Tests for the built-in WorldToolkit, MemoryToolkit, CommsToolkit."""
 
-import json
 from pathlib import Path
-
-import pytest
 
 from hive.runtime.toolkits import CommsToolkit, MemoryToolkit
 

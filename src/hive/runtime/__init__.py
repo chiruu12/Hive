@@ -11,7 +11,16 @@ from hive.runtime.providers import (
 )
 from hive.runtime.toolkits import CommsToolkit, MemoryToolkit, WorldToolkit
 from hive.runtime.tools import Tool, Toolkit, tool
-from hive.runtime.types import Message, Role, Task, TaskResult, TaskStatus, ToolCall, ToolResult
+from hive.runtime.types import (
+    GenerateResult,
+    Message,
+    Role,
+    Task,
+    TaskResult,
+    TaskStatus,
+    ToolCall,
+    ToolResult,
+)
 from hive.runtime.workflow import Step, Workflow
 
 __all__ = [
@@ -20,6 +29,7 @@ __all__ = [
     "CommsToolkit",
     "ConversationMemory",
     "DaemonAgentAdapter",
+    "GenerateResult",
     "GoalOutcome",
     "MemoryToolkit",
     "Message",

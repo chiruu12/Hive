@@ -74,6 +74,18 @@ class Message:
         )
 
 
+@dataclass(frozen=True)
+class GenerateResult:
+    """Result from a provider call, carrying the message plus metadata."""
+
+    message: Message
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float | None = None
+    duration_ms: int | None = None
+
+
 class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"

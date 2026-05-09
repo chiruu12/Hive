@@ -1,8 +1,8 @@
 """Tests for the suffering system."""
 
 from hive.agents.suffering import (
-    SufferingState,
     StressorType,
+    SufferingState,
     assess_conditions,
 )
 

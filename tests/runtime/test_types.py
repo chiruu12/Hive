@@ -1,6 +1,15 @@
 """Tests for runtime type system."""
 
-from hive.runtime.types import Message, Role, Task, TaskResult, TaskStatus, ToolCall, ToolResult
+from hive.runtime.types import (
+    GenerateResult,
+    Message,
+    Role,
+    Task,
+    TaskResult,
+    TaskStatus,
+    ToolCall,
+    ToolResult,
+)
 
 
 class TestMessage:
@@ -99,3 +108,40 @@ class TestTaskResult:
         )
         assert r.status == TaskStatus.COMPLETED
         assert r.steps_taken == 3
+
+
+class TestGenerateResult:
+    def test_creation(self):
+        msg = Message.assistant("hello")
+        result = GenerateResult(
+            message=msg,
+            model="claude-haiku-4-5",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.001,
+            duration_ms=500,
+        )
+        assert result.message.content == "hello"
+        assert result.model == "claude-haiku-4-5"
+        assert result.input_tokens == 100
+        assert result.output_tokens == 50
+        assert result.cost_usd == 0.001
+        assert result.duration_ms == 500
+
+    def test_defaults(self):
+        msg = Message.assistant("hi")
+        result = GenerateResult(message=msg)
+        assert result.model == ""
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0
+        assert result.cost_usd is None
+        assert result.duration_ms is None
+
+    def test_frozen(self):
+        msg = Message.assistant("hi")
+        result = GenerateResult(message=msg)
+        try:
+            result.model = "changed"  # type: ignore[misc]
+            assert False, "Should raise"
+        except AttributeError:
+            pass

@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from hive.models.registry import get_model_registry
+from hive.runtime.providers import RuntimeProvider, create_runtime_provider
 
 logger = logging.getLogger(__name__)
 
@@ -15,70 +16,43 @@ class ModelInfo:
     available: bool
 
 
-def create_provider(model_name: str):  # noqa: ANN201
-    """Route a model name to the correct provider instance."""
-    reg = get_model_registry()
-    result = reg.find(model_name)
-    provider_name = result[0] if result else _guess_provider(model_name)
-
-    if provider_name == "anthropic" or model_name.startswith("claude-"):
-        from hive.models.anthropic import AnthropicProvider
-
-        return AnthropicProvider(model=model_name)
-
-    if provider_name == "openai" or model_name.startswith("gpt-"):
-        from hive.models.openai import OpenAIProvider
-
-        return OpenAIProvider(model=model_name)
-
-    if provider_name == "fireworks" or model_name.startswith(("fireworks:", "accounts/fireworks")):
-        from hive.models.fireworks import FireworksProvider
-
-        clean = model_name.removeprefix("fireworks:")
-        return FireworksProvider(model=clean)
-
-    if model_name.startswith("lmstudio:") or provider_name == "lmstudio":
-        from hive.models.lmstudio import LMStudioProvider
-
-        return LMStudioProvider(model=model_name.removeprefix("lmstudio:"))
-
-    from hive.models.ollama import OllamaProvider
-
-    return OllamaProvider(model=model_name.removeprefix("ollama:"))
+def create_provider(model_name: str) -> RuntimeProvider:
+    """Route a model name to the correct RuntimeProvider."""
+    return create_runtime_provider(model_name)
 
 
-def get_routine_provider():  # noqa: ANN201
+def get_routine_provider() -> RuntimeProvider:
     """Cheapest available model for existence loops and simple decisions."""
     reg = get_model_registry()
     model = reg.routing.routine
-    p = create_provider(model)
+    p = create_runtime_provider(model)
     if p.available:
         return p
 
     for _prov, entry in reg.all_models():
         if entry.tier == "routine":
-            p = create_provider(entry.id)
+            p = create_runtime_provider(entry.id)
             if p.available:
                 return p
 
-    return create_provider(model)
+    return create_runtime_provider(model)
 
 
-def get_planning_provider():  # noqa: ANN201
+def get_planning_provider() -> RuntimeProvider:
     """Best available model for plan generation and complex reasoning."""
     reg = get_model_registry()
     model = reg.routing.planning
-    p = create_provider(model)
+    p = create_runtime_provider(model)
     if p.available:
         return p
     return get_routine_provider()
 
 
-def get_events_provider():  # noqa: ANN201
+def get_events_provider() -> RuntimeProvider:
     """Model for life event choices."""
     reg = get_model_registry()
     model = reg.routing.events
-    p = create_provider(model)
+    p = create_runtime_provider(model)
     if p.available:
         return p
     return get_routine_provider()
@@ -110,20 +84,8 @@ def detect_models() -> dict[str, list[ModelInfo]]:
     if reg.local:
         local_models = []
         for m in reg.local:
-            p = create_provider(m.id)
+            p = create_runtime_provider(m.id)
             local_models.append(ModelInfo(m.id, m.provider or "local", p.available))
         providers["Local"] = local_models
 
     return providers
-
-
-def _guess_provider(model_name: str) -> str:
-    if "claude" in model_name:
-        return "anthropic"
-    if "gpt" in model_name:
-        return "openai"
-    if "fireworks" in model_name:
-        return "fireworks"
-    if "lmstudio" in model_name:
-        return "lmstudio"
-    return "ollama"
