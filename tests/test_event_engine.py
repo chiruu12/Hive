@@ -147,38 +147,23 @@ def test_eligibility_isolated_per_agent(tmp_dir):
     stats.get("agent-1").cycles_alive = 20
     stats.get("agent-2").cycles_alive = 20
 
-    event = LifeEvent(
-        event_id="shared_event",
-        name="Shared Event",
-        description="Can happen to anyone",
-        category="test",
-        choices=[Choice(id="ok", description="Ok", stat_effects=[])],
-    )
+    # Use rent_increase — a real catalog event with no prerequisites
+    event = EVENT_MAP["rent_increase"]
 
-    engine.apply_choice("agent-1", event, "ok", cycle=1)
+    # Both agents should be eligible before any history
+    a1_before = {e.event_id for e in engine._get_eligible("agent-1", stats.get("agent-1"))}
+    a2_before = {e.event_id for e in engine._get_eligible("agent-2", stats.get("agent-2"))}
+    assert event.event_id in a1_before, "agent-1 should be eligible initially"
+    assert event.event_id in a2_before, "agent-2 should be eligible initially"
 
-    agent1_eligible = engine._get_eligible("agent-1", stats.get("agent-1"))
-    agent2_eligible = engine._get_eligible("agent-2", stats.get("agent-2"))
+    # Fire the event for agent-1 only
+    engine.apply_choice("agent-1", event, event.choices[0].id, cycle=1)
 
-    agent1_ids = {e.event_id for e in agent1_eligible}
-    agent2_ids = {e.event_id for e in agent2_eligible}
+    a1_after = {e.event_id for e in engine._get_eligible("agent-1", stats.get("agent-1"))}
+    a2_after = {e.event_id for e in engine._get_eligible("agent-2", stats.get("agent-2"))}
 
-    assert "shared_event" not in agent1_ids, "agent-1 should be blocked from its own recent event"
-    assert "shared_event" not in agent2_ids, (
-        "shared_event is not in EVENTS catalog so won't appear for agent-2 either"
-    )
-
-    from hive.world.event_catalog import EVENTS as CATALOG_EVENTS
-
-    if CATALOG_EVENTS:
-        first_event = CATALOG_EVENTS[0]
-        engine.apply_choice("agent-1", first_event, first_event.choices[0].id, cycle=2)
-
-        a1 = {e.event_id for e in engine._get_eligible("agent-1", stats.get("agent-1"))}
-        a2 = {e.event_id for e in engine._get_eligible("agent-2", stats.get("agent-2"))}
-
-        assert first_event.event_id not in a1, "agent-1 should be blocked from its recent event"
-        assert first_event.event_id in a2, "agent-2 should still be eligible for the same event"
+    assert event.event_id not in a1_after, "agent-1 should be blocked from its recent event"
+    assert event.event_id in a2_after, "agent-2 should still be eligible for the same event"
 
 
 def test_followup_delay_minimum():
