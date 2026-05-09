@@ -64,15 +64,21 @@ class AgentProfile(BaseModel):
         """Resolve workspace path, substituting {name} placeholder."""
         return self.workspace.replace("{name}", self.name)
 
-    def build_system_prompt(self) -> str:
+    def build_system_prompt(self, economy_enabled: bool = True) -> str:
         """Build the full system prompt including personality."""
         parts = [
             f"You are an autonomous agent named {self.name}.",
             f"Role: {self.role}.",
-            "You live in a persistent simulated world with an economy.",
-            "You make decisions, pursue goals, earn money, and learn skills.",
-            "Always respond in the exact JSON format requested. Never break character.",
+            "You live in a persistent simulated world.",
         ]
+        if economy_enabled:
+            parts.append(
+                "You participate in an economy, pursue goals, "
+                "earn money, and learn skills.",
+            )
+        else:
+            parts.append("You make decisions and pursue goals autonomously.")
+        parts.append("Always respond in the exact JSON format requested. Never break character.")
 
         if self.personality.traits:
             traits_str = ", ".join(self.personality.traits)

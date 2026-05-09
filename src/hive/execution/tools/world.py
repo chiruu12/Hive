@@ -9,8 +9,8 @@ async def world_query(
     agent_id: str, context: ExecutionContext | None = None, query_type: str = "status"
 ) -> ToolResult:
     """Query: my_status, available_jobs, market, skills."""
-    if not context:
-        return ToolResult(success=False, output="No context", error="no_context")
+    if not context or context.world is None:
+        return ToolResult(success=False, output="Economy is not enabled", error="economy_disabled")
     w = context.world
 
     if query_type == "my_status":
@@ -48,8 +48,8 @@ async def world_action(
     amount: str = "",
 ) -> ToolResult:
     """Actions: work, apply_job, quit_job, learn, gamble."""
-    if not context:
-        return ToolResult(success=False, output="No context", error="no_context")
+    if not context or context.world is None:
+        return ToolResult(success=False, output="Economy is not enabled", error="economy_disabled")
     w = context.world
 
     if not action:
