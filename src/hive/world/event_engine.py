@@ -127,7 +127,14 @@ class EventEngine:
 
     def _get_eligible(self, agent_id: str, stats: AgentStats) -> list[LifeEvent]:
         eligible = []
-        agent_recent = [o.event_id for o in self._history if o.agent_id == agent_id][-20:]
+        agent_recent: set[str] = set()
+        count = 0
+        for outcome in reversed(self._history):
+            if count >= 20:
+                break
+            if outcome.agent_id == agent_id:
+                agent_recent.add(outcome.event_id)
+                count += 1
         for ev in EVENTS:
             if ev.min_cycles_alive > stats.cycles_alive:
                 continue

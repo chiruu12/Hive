@@ -4,14 +4,14 @@ import logging
 import random
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from hive.interactions.base import (
     AgentSlot,
     InteractionPattern,
     Message,
     RoundResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PairsPattern(InteractionPattern):
@@ -69,6 +69,8 @@ class PairsPattern(InteractionPattern):
         self, agents: list[AgentSlot], round_num: int
     ) -> list[tuple[AgentSlot, AgentSlot]]:
         shuffled = list(agents)
+        if len(shuffled) < 2:
+            return []
         rng = random.Random(round_num * 42)
         rng.shuffle(shuffled)
         pairs = []

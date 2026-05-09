@@ -5,12 +5,17 @@ import logging
 from pathlib import Path
 from uuid import uuid4
 
-from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
-from hive.memory.events import EventLog
 from hive.memory.store import HiveStore
-from hive.models.router import create_provider
+from hive.runtime import (
+    Agent,
+    CommsToolkit,
+    MemoryToolkit,
+    Task,
+    WorldToolkit,
+    create_runtime_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,18 +64,35 @@ def spawn_agent(
     asyncio.run(store.save_agent(state))
 
     if task:
-        event_log = EventLog(hive_dir)
-        provider = create_provider(profile.model)
+        from hive.config import get_config
 
-        loop = AgentLoop(
-            agent_id=agent_id,
-            profile=profile,
-            provider=provider,
-            store=store,
-            event_log=event_log,
+        cfg = get_config()
+        provider = create_runtime_provider(profile.model)
+        comms_dir = hive_dir / "comms"
+        memory_dir = hive_dir / "agent_memory"
+
+        toolkits_list = [
+            MemoryToolkit(memory_dir, agent_id),
+            CommsToolkit(comms_dir, agent_id),
+        ]
+        if cfg.economy.enabled:
+            from hive.world.state import WorldState
+
+            world = WorldState(hive_dir)
+            toolkits_list.insert(0, WorldToolkit(world, agent_id))
+
+        agent = Agent(
+            name=profile.name,
+            model=provider,
+            system_prompt=profile.build_system_prompt(
+                economy_enabled=cfg.economy.enabled,
+            ),
+            toolkits=toolkits_list,
         )
 
-        asyncio.run(loop.run(task, cwd=workspace))
+        result = asyncio.run(agent.run(Task(instruction=task)))
+        logger.info("Agent %s finished task: %s", agent_id, result.status)
+
         state.status = AgentStatus.IDLE
         state.current_task = None
 

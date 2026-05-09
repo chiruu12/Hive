@@ -1,4 +1,4 @@
-"""Model provider protocol - the interface all LLM backends must implement."""
+"""Model provider protocol — the interface all legacy LLM backends implement."""
 
 from typing import Protocol, runtime_checkable
 
@@ -24,17 +24,9 @@ class ToolCall(BaseModel):
     arguments: dict[str, object]
 
 
-class PlanStep(BaseModel):
-    """A single step in an agent's execution plan."""
-
-    tool: str
-    params: dict[str, object]
-    rationale: str
-
-
 @runtime_checkable
 class ModelProvider(Protocol):
-    """Interface for LLM providers. Implement this to add a new backend."""
+    """Interface for legacy LLM providers (used by ExistenceLoop)."""
 
     @property
     def name(self) -> str: ...
@@ -50,10 +42,3 @@ class ModelProvider(Protocol):
         max_tokens: int = 4096,
         temperature: float = 0.0,
     ) -> ModelResponse: ...
-
-    async def plan(
-        self,
-        objective: str,
-        available_tools: list[str],
-        context: str | None = None,
-    ) -> list[PlanStep]: ...

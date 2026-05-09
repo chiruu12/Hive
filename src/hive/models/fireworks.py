@@ -70,7 +70,10 @@ class FireworksProvider:
 
         input_tokens = response.usage.prompt_tokens if response.usage else 0
         output_tokens = response.usage.completion_tokens if response.usage else 0
-        cost = _estimate_cost(self._model, input_tokens, output_tokens)
+
+        from hive.models.registry import estimate_cost
+
+        cost = estimate_cost(self._model, input_tokens, output_tokens)
 
         return ModelResponse(
             content=content,
@@ -81,35 +84,3 @@ class FireworksProvider:
             cost_usd=cost,
             duration_ms=duration_ms,
         )
-
-    async def plan(
-        self,
-        objective: str,
-        available_tools: list[str],
-        context: str | None = None,
-    ) -> list[dict]:
-        import json
-
-        tools_str = ", ".join(available_tools) if available_tools else "none"
-        prompt = f"Task: {objective}\nAvailable tools: {tools_str}\n"
-        if context:
-            prompt += f"Context: {context}\n"
-        prompt += (
-            "\nRespond with ONLY a JSON array of steps. Each step:\n"
-            '{"tool": "tool_name", "params": {...}, "rationale": "why"}\n'
-        )
-        response = await self.complete(
-            messages=[{"role": "user", "content": prompt}],
-            system="Output only valid JSON. No markdown.",
-        )
-        try:
-            return json.loads(response.content.strip())
-        except (json.JSONDecodeError, ValueError):
-            return []
-
-
-def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    from hive.models.registry import get_model_registry
-
-    rates = get_model_registry().cost_per_1k(model)
-    return (input_tokens / 1000 * rates["input"]) + (output_tokens / 1000 * rates["output"])

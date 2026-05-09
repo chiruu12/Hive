@@ -46,6 +46,7 @@ class SufferingConfig(BaseModel):
 
 
 class EconomyConfig(BaseModel):
+    enabled: bool = True
     starting_balance: float = 100.0
     skill_course_cost: float = 80.0
     skill_increment: float = 0.25

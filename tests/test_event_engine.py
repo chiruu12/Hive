@@ -138,6 +138,34 @@ def test_event_catalog_valid():
             assert choice.description
 
 
+def test_eligibility_isolated_per_agent(tmp_dir):
+    """Event fired for agent-1 should not block agent-2 from the same event."""
+    stats = StatsManager(tmp_dir)
+    world = WorldState(tmp_dir)
+    engine = EventEngine(stats, world, tmp_dir)
+
+    stats.get("agent-1").cycles_alive = 20
+    stats.get("agent-2").cycles_alive = 20
+
+    # Use rent_increase — a real catalog event with no prerequisites
+    event = EVENT_MAP["rent_increase"]
+
+    # Both agents should be eligible before any history
+    a1_before = {e.event_id for e in engine._get_eligible("agent-1", stats.get("agent-1"))}
+    a2_before = {e.event_id for e in engine._get_eligible("agent-2", stats.get("agent-2"))}
+    assert event.event_id in a1_before, "agent-1 should be eligible initially"
+    assert event.event_id in a2_before, "agent-2 should be eligible initially"
+
+    # Fire the event for agent-1 only
+    engine.apply_choice("agent-1", event, event.choices[0].id, cycle=1)
+
+    a1_after = {e.event_id for e in engine._get_eligible("agent-1", stats.get("agent-1"))}
+    a2_after = {e.event_id for e in engine._get_eligible("agent-2", stats.get("agent-2"))}
+
+    assert event.event_id not in a1_after, "agent-1 should be blocked from its recent event"
+    assert event.event_id in a2_after, "agent-2 should still be eligible for the same event"
+
+
 def test_followup_delay_minimum():
     """All follow-ups should have delay_cycles >= 1."""
     for event in EVENTS:

@@ -81,28 +81,3 @@ class OllamaProvider:
             cost_usd=0.0,
             duration_ms=duration_ms,
         )
-
-    async def plan(
-        self,
-        objective: str,
-        available_tools: list[str],
-        context: str | None = None,
-    ) -> list[dict]:
-        tools_str = ", ".join(available_tools) if available_tools else "none"
-        prompt = f"Task: {objective}\nAvailable tools: {tools_str}\n"
-        if context:
-            prompt += f"Context: {context}\n"
-        prompt += (
-            "\nRespond with ONLY a JSON array of steps. Each step:\n"
-            '{"tool": "tool_name", "params": {...}, "rationale": "why"}\n'
-        )
-        response = await self.complete(
-            messages=[{"role": "user", "content": prompt}],
-            system="Output only valid JSON. No markdown.",
-        )
-        import json
-
-        try:
-            return json.loads(response.content.strip())
-        except (json.JSONDecodeError, ValueError):
-            return []

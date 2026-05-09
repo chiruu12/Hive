@@ -24,35 +24,25 @@ anthropic:
 
 # Fireworks models (via API key)
 fireworks:
-  - id: accounts/fireworks/models/deepseek-v4-pro
-    display: DeepSeek V4 Pro
-    cost_input_per_1k: 0.0008
-    cost_output_per_1k: 0.002
-    tier: planning
   - id: accounts/fireworks/models/kimi-k2p6
     display: Kimi K2P6
-    cost_input_per_1k: 0.0005
-    cost_output_per_1k: 0.002
+    cost_input_per_1k: 0.00095
+    cost_output_per_1k: 0.004
     tier: planning
-  - id: accounts/fireworks/models/qwen3p6-plus
-    display: Qwen 3P6 Plus
-    cost_input_per_1k: 0.0003
-    cost_output_per_1k: 0.0012
-    tier: routine
   - id: accounts/fireworks/models/minimax-m2p7
     display: MiniMax M2P7
-    cost_input_per_1k: 0.0004
-    cost_output_per_1k: 0.0016
+    cost_input_per_1k: 0.00030
+    cost_output_per_1k: 0.00120
     tier: routine
-  - id: accounts/fireworks/models/glm-5p1
-    display: GLM 5P1
-    cost_input_per_1k: 0.0003
-    cost_output_per_1k: 0.001
-    tier: routine
+  - id: accounts/fireworks/models/deepseek-v3p2
+    display: DeepSeek V3P2
+    cost_input_per_1k: 0.00056
+    cost_output_per_1k: 0.00168
+    tier: planning
   - id: accounts/fireworks/models/gpt-oss-120b
     display: GPT-OSS 120B
-    cost_input_per_1k: 0.001
-    cost_output_per_1k: 0.003
+    cost_input_per_1k: 0.00015
+    cost_output_per_1k: 0.00060
     tier: planning
 
 # OpenAI models (via API key)
