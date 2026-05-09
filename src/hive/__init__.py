@@ -3,41 +3,76 @@
 __version__ = "0.1.0"
 
 from hive.agents.existence import ExistenceLoop
-from hive.agents.loop import AgentLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import StressorType, SufferingState
 from hive.config import HiveConfig, load_config
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
-from hive.execution.action import Action, ActionResult, ToolAction, WorldAction
 from hive.execution.context import ExecutionContext
-from hive.execution.registry import ToolRegistry
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
+from hive.runtime import (
+    Agent,
+    CommsToolkit,
+    ConversationMemory,
+    DaemonAgentAdapter,
+    GoalOutcome,
+    MemoryToolkit,
+    Message,
+    PersistentMemory,
+    Role,
+    Step,
+    Task,
+    TaskResult,
+    TaskStatus,
+    Tool,
+    ToolCall,
+    Toolkit,
+    ToolResult,
+    Workflow,
+    WorldToolkit,
+    create_runtime_provider,
+    tool,
+)
 from hive.world.state import WorldState
 
 __all__ = [
-    "AgentLoop",
+    "Agent",
     "AgentProfile",
     "AgentState",
     "AgentStatus",
-    "Action",
-    "ActionResult",
-    "ExecutionContext",
+    "CommsToolkit",
+    "ConversationMemory",
+    "DaemonAgentAdapter",
     "EventLog",
     "EventType",
+    "ExecutionContext",
     "ExistenceLoop",
+    "GoalOutcome",
     "HiveConfig",
     "HiveDaemon",
     "HiveEvent",
     "HiveStore",
+    "MemoryToolkit",
+    "Message",
+    "PersistentMemory",
+    "Step",
     "StressorType",
     "SufferingState",
-    "ToolAction",
-    "ToolRegistry",
-    "WorldAction",
+    "Role",
+    "Task",
+    "TaskResult",
+    "TaskStatus",
+    "Tool",
+    "ToolCall",
+    "ToolResult",
+    "Toolkit",
+    "Workflow",
     "WorldState",
+    "WorldToolkit",
+    "create_runtime_provider",
     "initialize_hive",
     "load_config",
+    "tool",
 ]
