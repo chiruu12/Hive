@@ -12,13 +12,13 @@ detectives:
 
   - name: detective_b
     display_name: "Detective Reyes"
-    model: accounts/fireworks/models/qwen3p6-plus
+    model: accounts/fireworks/models/kimi-k2p6
     personality: "intuitive, follows gut instinct, focuses on people and motives"
     approach: "Start with suspects and their relationships"
 
   - name: detective_c
     display_name: "Detective Park"
-    model: accounts/fireworks/models/deepseek-v4-pro
+    model: accounts/fireworks/models/deepseek-v3p2
     personality: "analytical, systematic, builds timelines and cross-references"
     approach: "Build a timeline first, then find contradictions"
 
