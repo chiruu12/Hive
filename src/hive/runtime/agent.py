@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.providers import RuntimeProvider
 from hive.runtime.tools import Tool, Toolkit
 from hive.runtime.types import Message, Task, TaskResult, TaskStatus
+
+if TYPE_CHECKING:
+    from hive.logging.writer import LogWriter
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,8 @@ class Agent:
         memory: PersistentMemory | None = None,
         max_steps: int = 25,
         temperature: float = 0.0,
+        log_writer: LogWriter | None = None,
+        agent_id: str = "",
     ):
         self.name = name
         self._model = model
@@ -42,6 +48,8 @@ class Agent:
         self._memory = memory
         self._max_steps = max_steps
         self._temperature = temperature
+        self._log_writer = log_writer
+        self._agent_id = agent_id or name
 
     def _collect_tools(self) -> list[Tool]:
         all_tools: list[Tool] = list(self._extra_tools)
@@ -95,11 +103,13 @@ class Agent:
             steps += 1
 
             try:
+                gen_t0 = time.time()
                 response = await self._model.generate(
                     messages=conversation.get_messages(),
                     tools=tool_schemas,
                     temperature=self._temperature,
                 )
+                self._log_decision(steps, gen_t0)
             except Exception as e:
                 logger.error("Model generation failed: %s", e)
                 return TaskResult(
@@ -138,12 +148,18 @@ class Agent:
                             name=tc.name,
                         )
                     )
+                    self._log_tool(tc.name, tc.arguments, False, "", "unknown tool", 0)
                     continue
 
+                tool_t0 = time.time()
                 try:
                     result_text = await tool.call(**tc.arguments)
                     conversation.add(
                         Message.tool_result(tc.id, result_text, name=tc.name)
+                    )
+                    self._log_tool(
+                        tc.name, tc.arguments, True, result_text[:500], None,
+                        int((time.time() - tool_t0) * 1000),
                     )
                 except Exception as e:
                     logger.warning("Tool %s failed: %s", tc.name, e)
@@ -155,6 +171,10 @@ class Agent:
                             name=tc.name,
                         )
                     )
+                    self._log_tool(
+                        tc.name, tc.arguments, False, "", str(e),
+                        int((time.time() - tool_t0) * 1000),
+                    )
 
         return TaskResult(
             task_id=task.id,
@@ -163,4 +183,43 @@ class Agent:
             steps_taken=steps,
             tool_calls_made=tool_calls_total,
             duration_seconds=time.time() - t0,
+        )
+
+    def _log_decision(self, step: int, gen_t0: float) -> None:
+        if not self._log_writer:
+            return
+        from hive.logging.models import DecisionLog
+
+        self._log_writer.log_decision(
+            DecisionLog(
+                agent_id=self._agent_id,
+                decision_type="react_step",
+                duration_ms=int((time.time() - gen_t0) * 1000),
+                success=True,
+            )
+        )
+
+    def _log_tool(
+        self,
+        name: str,
+        params: dict,  # type: ignore[type-arg]
+        success: bool,
+        output: str,
+        error: str | None,
+        duration_ms: int,
+    ) -> None:
+        if not self._log_writer:
+            return
+        from hive.logging.models import ToolLog
+
+        self._log_writer.log_tool(
+            ToolLog(
+                agent_id=self._agent_id,
+                tool_name=name,
+                params_raw=params,
+                success=success,
+                output=output[:500],
+                error=error,
+                duration_ms=duration_ms,
+            )
         )
