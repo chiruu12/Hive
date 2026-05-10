@@ -32,7 +32,7 @@ def create_pattern(name: str) -> InteractionPattern:
         "freeform": FreeformPattern,
     }
     cls = patterns.get(name, RoundTablePattern)
-    return cls()
+    return cls()  # type: ignore[abstract]
 
 
 def create_memory(name: str) -> MemoryStrategy:
@@ -42,7 +42,7 @@ def create_memory(name: str) -> MemoryStrategy:
         "persona": PersonaMemory,
     }
     cls = strategies.get(name, SelectiveMemory)
-    return cls()
+    return cls()  # type: ignore[abstract]
 
 
 class ScenarioRunner:
@@ -73,7 +73,7 @@ class ScenarioRunner:
                 agent: AgentSlot,
                 visible: list[Message],
                 round_num: int,
-                _memories: dict = memories,
+                _memories: dict[str, MemoryStrategy] = memories,
                 _scenario: Scenario = self._scenario,
                 _evidence: str = evidence,
             ) -> str:
@@ -112,16 +112,16 @@ class ScenarioRunner:
                 prompt = self._scenario.get_final_prompt(agent, mem_ctx)
 
                 provider = create_runtime_provider(agent.model)
-                result = await provider.generate_with_metadata(
+                gen = await provider.generate_with_metadata(
                     messages=[
                         RuntimeMessage.system(agent.system_prompt),
                         RuntimeMessage.user(prompt),
                     ],
                     max_tokens=500,
                 )
-                total_tokens += result.input_tokens + result.output_tokens
-                total_cost += result.cost_usd or 0.0
-                final_actions[agent.slot_id] = result.message.content.strip()
+                total_tokens += gen.input_tokens + gen.output_tokens
+                total_cost += gen.cost_usd or 0.0
+                final_actions[agent.slot_id] = gen.message.content.strip()
 
         transcript_path = self._transcript.save(self._scenario.name)
 
@@ -137,6 +137,6 @@ class ScenarioRunner:
         scores = self._scenario.evaluate(result)
         result.scores = scores
         if scores:
-            result.winner = max(scores, key=scores.get)
+            result.winner = max(scores, key=lambda k: scores[k])
 
         return result

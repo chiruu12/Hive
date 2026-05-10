@@ -79,6 +79,7 @@ class HiveDaemon:
             from hive.world.life_summary import LifeDirectoryWriter
             from hive.world.stats import StatsManager
 
+            assert self._ctx.world is not None
             self._stats = StatsManager(hive_dir)
             self._event_engine = EventEngine(self._stats, self._ctx.world, hive_dir)
             self._life_writer = LifeDirectoryWriter(hive_dir)
@@ -488,6 +489,10 @@ class HiveDaemon:
         except Exception:
             return
 
+        assert self._life_writer is not None
+        assert self._stats is not None
+        assert self._ctx.world is not None
+        assert self._event_engine is not None
         for agent in agents:
             if not agent.is_alive():
                 continue

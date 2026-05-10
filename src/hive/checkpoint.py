@@ -45,17 +45,18 @@ class CheckpointManager:
     ) -> str:
         cp_id = f"cp-{uuid4().hex[:8]}"
         world_snap = {}
-        try:
-            fin = ctx.world.get_finances(agent_id)
-            job = ctx.world.agent_job(agent_id)
-            skills = ctx.world.get_skills(agent_id)
-            world_snap = {
-                "balance": fin.balance,
-                "job": job.title if job else None,
-                "skills": [s.model_dump() for s in skills],
-            }
-        except Exception:
-            pass
+        if ctx.world is not None:
+            try:
+                fin = ctx.world.get_finances(agent_id)
+                job = ctx.world.agent_job(agent_id)
+                skills = ctx.world.get_skills(agent_id)
+                world_snap = {
+                    "balance": fin.balance,
+                    "job": job.title if job else None,
+                    "skills": [s.model_dump() for s in skills],
+                }
+            except Exception:
+                pass
 
         cp = Checkpoint(
             checkpoint_id=cp_id,
