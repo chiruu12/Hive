@@ -17,11 +17,11 @@ CLUES_DIR = SCENARIO_DIR / "clues"
 
 sys.path.insert(0, str(SCENARIO_DIR.parent.parent))
 
-import re
+import re  # noqa: E402
 
-from hive.config import load_config
-from hive.runtime.providers import create_runtime_provider
-from hive.runtime.types import Message
+from hive.config import load_config  # noqa: E402
+from hive.runtime.providers import create_runtime_provider  # noqa: E402
+from hive.runtime.types import Message  # noqa: E402
 
 
 def extract_json(text: str) -> dict | None:
@@ -285,7 +285,6 @@ async def run_scenario():
         print_separator()
         print("  RESULTS")
         print_separator()
-        correct_answer = "Petra Novak"
         for acc in accusations:
             killer = acc.get("killer", "").lower()
             correct = "petra" in killer or "novak" in killer
