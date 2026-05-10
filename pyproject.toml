@@ -54,6 +54,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/hive"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"profiles" = "hive/profiles"
+"models.yaml" = "hive/models.yaml"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
