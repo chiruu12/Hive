@@ -36,7 +36,12 @@ class Tool:
         else:
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: self.fn(**kwargs))
-        return str(result) if result is not None else ""
+        if result is None:
+            return ""
+        if isinstance(result, (dict, list)):
+            import json
+            return json.dumps(result, default=str)
+        return str(result)
 
 
 def _python_type_to_json_schema(tp: Any) -> dict[str, Any]:

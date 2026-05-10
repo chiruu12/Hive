@@ -43,27 +43,48 @@ class ConversationMemory:
         self._messages.clear()
 
     def _truncate(self) -> None:
-        """Drop oldest non-system messages, preserving the first user message."""
+        """Drop oldest message groups, preserving tool_use/tool_result pairs."""
         if len(self._messages) <= self._max_messages:
             return
 
-        first_user_idx = None
-        for i, msg in enumerate(self._messages):
-            if msg.role == Role.USER:
-                first_user_idx = i
+        groups = self._group_messages()
+
+        first_user_group = None
+        for i, group in enumerate(groups):
+            if group[0].role == Role.USER:
+                first_user_group = i
                 break
 
-        drop_count = len(self._messages) - self._max_messages
         keep: list[Message] = []
+        total = sum(len(g) for g in groups)
         dropped = 0
+        target = total - self._max_messages
 
-        for i, msg in enumerate(self._messages):
-            if i == first_user_idx or dropped >= drop_count:
-                keep.append(msg)
+        for i, group in enumerate(groups):
+            if i == first_user_group or dropped >= target:
+                keep.extend(group)
             else:
-                dropped += 1
+                dropped += len(group)
 
         self._messages = keep
+
+    def _group_messages(self) -> list[list[Message]]:
+        """Group messages so assistant+tool_results stay together."""
+        groups: list[list[Message]] = []
+        i = 0
+        while i < len(self._messages):
+            msg = self._messages[i]
+            if msg.role == Role.ASSISTANT and msg.tool_calls:
+                group = [msg]
+                i += 1
+                while i < len(self._messages) and self._messages[i].role == Role.TOOL:
+                    group.append(self._messages[i])
+                    i += 1
+                groups.append(group)
+            else:
+                groups.append([msg])
+                i += 1
+        return groups
 
 
 class PersistentMemory:
@@ -85,18 +106,22 @@ class PersistentMemory:
         try:
             from hive.memory.semantic import SemanticMemory
 
-            self._semantic = SemanticMemory(self._agent_name, self._hive_dir)
+            self._semantic = SemanticMemory(self._hive_dir, self._agent_name)
             return self._semantic
         except Exception:
             logger.debug("SemanticMemory unavailable, using in-memory fallback")
             return None
 
+    def _memory_path(self) -> Path | None:
+        if self._hive_dir is None:
+            return None
+        return self._hive_dir / "memory" / self._agent_name / "memories.jsonl"
+
     async def store(self, content: str, metadata: dict[str, Any] | None = None) -> str:
         """Store a memory entry."""
         semantic = self._get_semantic()
         if semantic:
-            await semantic.add_observation(content, importance=0.5)
-            return f"mem-{self._agent_name}-{len(self._fallback)}"
+            return await semantic.store(thought=content, metadata=metadata)
 
         import uuid
 
@@ -108,8 +133,11 @@ class PersistentMemory:
         """Retrieve relevant memories by similarity."""
         semantic = self._get_semantic()
         if semantic:
-            results = await semantic.query(query, top_k=limit)
-            return results
+            results = await semantic.search(query, top_k=limit)
+            return [
+                {"thought": r.thought, "metadata": r.metadata}
+                for r in results
+            ]
 
         entries = list(self._fallback.values())[-limit:]
         return entries
@@ -117,3 +145,6 @@ class PersistentMemory:
     async def clear(self) -> None:
         self._fallback.clear()
         self._semantic = None
+        path = self._memory_path()
+        if path and path.exists():
+            path.unlink()

@@ -83,7 +83,7 @@ class ExistenceLoop:
 
         result = await self._provider.generate_with_metadata(
             messages=[
-                Message.system(self._profile.build_system_prompt()),
+                Message.system(self._profile.build_system_prompt(economy_enabled=self._economy_enabled)),
                 Message.user(prompt),
             ],
         )
