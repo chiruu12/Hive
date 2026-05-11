@@ -4,6 +4,7 @@ import json
 import random
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -72,7 +73,7 @@ class AgentIdentity(BaseModel):
     domains: list[str] = []
     narrative: str = ""
     worldview: str = ""
-    opinions: list[dict] = Field(default_factory=list)
+    opinions: list[dict[str, Any]] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

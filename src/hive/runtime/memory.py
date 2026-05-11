@@ -121,7 +121,7 @@ class PersistentMemory:
         """Store a memory entry."""
         semantic = self._get_semantic()
         if semantic:
-            return await semantic.store(thought=content, metadata=metadata)
+            return str(await semantic.store(thought=content, metadata=metadata))
 
         import uuid
 

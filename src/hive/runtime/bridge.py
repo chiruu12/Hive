@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hive.runtime.types import Task
 
@@ -19,7 +19,7 @@ class GoalOutcome:
     steps_failed: int = 0
     success: bool = False
     summary: str = ""
-    results: list = field(default_factory=list)
+    results: list[Any] = field(default_factory=list)
 
 
 class DaemonAgentAdapter:

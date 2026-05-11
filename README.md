@@ -3,7 +3,7 @@
 **Autonomous agent OS.** Start the hive, watch AI agents come alive. They pick their own goals, suffer when they fail, interact with each other, and make decisions in a mini economy. You observe and occasionally nudge.
 
 ```bash
-pip install hive-agents
+pip install hive-agent
 hive init
 hive start
 ```

@@ -1,6 +1,9 @@
 """Structured log reader — load and analyze past runs."""
 
 from pathlib import Path
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
 
 from hive.logging.models import (
     CycleLog,
@@ -10,6 +13,8 @@ from hive.logging.models import (
     SufferingLog,
     ToolLog,
 )
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class LogReader:
@@ -59,7 +64,7 @@ class LogReader:
             return []
         return [d.name for d in agents_dir.iterdir() if d.is_dir()]
 
-    def get_summary(self, run_id: str) -> dict:
+    def get_summary(self, run_id: str) -> dict[str, Any]:
         """Aggregate stats for a run — useful for analysis agents."""
         run = self.get_run(run_id)
         if not run:
@@ -102,19 +107,19 @@ class LogReader:
             "total_cost_usd": round(total_cost, 4),
         }
 
-    def _read_file(self, path: Path, model_cls: type) -> list:
+    def _read_file(self, path: Path, model_cls: type[T]) -> list[T]:
         if not path.exists():
             return []
-        records = []
+        records: list[T] = []
         for line in path.read_text().strip().splitlines():
             if line.strip():
                 records.append(model_cls.model_validate_json(line))
         return records
 
-    def _read_jsonl(self, directory: Path, glob_pattern: str, model_cls: type) -> list:
+    def _read_jsonl(self, directory: Path, glob_pattern: str, model_cls: type[T]) -> list[T]:
         if not directory.exists():
             return []
-        records = []
+        records: list[T] = []
         for f in sorted(directory.glob(glob_pattern)):
             for line in f.read_text().strip().splitlines():
                 if line.strip():

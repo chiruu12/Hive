@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from hive.agents.profile import AgentProfile, default_profiles_dir
@@ -20,10 +21,10 @@ class HiveMCPServer:
     def __init__(self, hive_dir: Path | None = None):
         self._hive_dir = hive_dir or Path.cwd() / ".hive"
         self._store = HiveStore(self._hive_dir / "hive.db")
-        self._daemon_task: asyncio.Task | None = None
+        self._daemon_task: asyncio.Task[None] | None = None
         self._request_id = 0
 
-    def _tools(self) -> list[dict]:
+    def _tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "name": "hive_init",
@@ -116,7 +117,7 @@ class HiveMCPServer:
             },
         ]
 
-    async def handle_tool(self, name: str, args: dict) -> str:
+    async def handle_tool(self, name: str, args: dict[str, Any]) -> str:
         """Execute a tool and return the result as text."""
         if name == "hive_init":
             return await self._init()
@@ -338,7 +339,7 @@ class HiveMCPServer:
             if response:
                 await self._send(writer, response)
 
-    async def _handle_message(self, msg: dict) -> dict | None:
+    async def _handle_message(self, msg: dict[str, Any]) -> dict[str, Any] | None:
         method = msg.get("method", "")
         req_id = msg.get("id")
 
@@ -380,7 +381,7 @@ class HiveMCPServer:
 
         return None
 
-    async def _send(self, writer: asyncio.StreamWriter, msg: dict) -> None:
+    async def _send(self, writer: asyncio.StreamWriter, msg: dict[str, Any]) -> None:
         data = json.dumps(msg) + "\n"
         writer.write(data.encode())
         await writer.drain()

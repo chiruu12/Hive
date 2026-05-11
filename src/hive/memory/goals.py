@@ -1,6 +1,7 @@
 """Persistent goal engine — hierarchy, priority, and lifecycle tracking."""
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -108,7 +109,7 @@ class GoalEngine:
         goals = await self._store.list_agent_goals(agent_id, limit=100)
         return sum(1 for g in goals if g.get("status") == "abandoned")
 
-    async def _get_record(self, goal_id: str) -> dict | None:
+    async def _get_record(self, goal_id: str) -> dict[str, Any] | None:
         goals = await self._store.list_agent_goals("", limit=1000)
         for g in goals:
             if g.get("goal_id") == goal_id:
@@ -116,7 +117,7 @@ class GoalEngine:
         return None
 
     @staticmethod
-    def _row_to_record(row: dict) -> GoalRecord:
+    def _row_to_record(row: dict[str, Any]) -> GoalRecord:
         return GoalRecord(
             goal_id=row["goal_id"],
             agent_id=row["agent_id"],

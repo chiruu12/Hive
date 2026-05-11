@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from pathlib import Path
+from typing import Any
 
 from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
@@ -90,7 +91,7 @@ class HiveDaemon:
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
 
-    def _build_toolkits(self, agent_id: str) -> list:
+    def _build_toolkits(self, agent_id: str) -> list[Any]:
         toolkits = [
             MemoryToolkit(self._ctx.memory_dir, agent_id),
             CommsToolkit(self._ctx.comms_dir, agent_id),
@@ -469,7 +470,7 @@ class HiveDaemon:
         return summaries
 
     async def _emit(
-        self, agent_id: str, session_id: str, event_type: EventType, data: dict
+        self, agent_id: str, session_id: str, event_type: EventType, data: dict[str, Any]
     ) -> None:
         event = HiveEvent(
             event_type=event_type, agent_id=agent_id, session_id=session_id, data=data,

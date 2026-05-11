@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -16,10 +17,10 @@ class Checkpoint(BaseModel):
     agent_id: str
     label: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    suffering_snapshot: dict = {}
-    goals_snapshot: list[dict] = []
-    identity_snapshot: dict = {}
-    world_snapshot: dict = {}
+    suffering_snapshot: dict[str, Any] = {}
+    goals_snapshot: list[dict[str, Any]] = []
+    identity_snapshot: dict[str, Any] = {}
+    world_snapshot: dict[str, Any] = {}
 
 
 class CheckpointManager:
@@ -41,7 +42,7 @@ class CheckpointManager:
         suffering: SufferingState,
         identity: AgentIdentity | None,
         ctx: ExecutionContext,
-        goals: list[dict] | None = None,
+        goals: list[dict[str, Any]] | None = None,
     ) -> str:
         cp_id = f"cp-{uuid4().hex[:8]}"
         world_snap = {}
@@ -90,9 +91,9 @@ class CheckpointManager:
                 pass
         return cps
 
-    def diff(self, cp_a: Checkpoint, cp_b: Checkpoint) -> dict:
+    def diff(self, cp_a: Checkpoint, cp_b: Checkpoint) -> dict[str, Any]:
         """Compare two checkpoints. Returns dict of what changed."""
-        changes: dict[str, list] = {"added": [], "removed": [], "modified": []}
+        changes: dict[str, list[str]] = {"added": [], "removed": [], "modified": []}
 
         suf_a = cp_a.suffering_snapshot
         suf_b = cp_b.suffering_snapshot

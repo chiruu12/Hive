@@ -46,7 +46,7 @@ class ExistenceLoop:
         self._tools_description = tools_description
         self._world_status = world_status
 
-    async def _emit(self, event_type: EventType, data: dict) -> None:
+    async def _emit(self, event_type: EventType, data: dict[str, Any]) -> None:
         event = HiveEvent(
             event_type=event_type,
             agent_id=self._agent_id,
@@ -56,7 +56,7 @@ class ExistenceLoop:
         await self._events.append(event)
 
     @staticmethod
-    def _parse_json(text: str) -> dict | None:
+    def _parse_json(text: str) -> dict[str, Any] | None:
         text = text.strip()
         if text.startswith("```"):
             lines = text.splitlines()
@@ -89,7 +89,8 @@ class ExistenceLoop:
         )
 
         parsed = self._parse_json(result.message.content)
-        goal_text = parsed.get("goal") if parsed else None
+        raw_goal = parsed.get("goal") if parsed else None
+        goal_text = str(raw_goal) if raw_goal else None
         reasoning = parsed.get("reasoning") if parsed else None
 
         if self._log:
@@ -139,7 +140,7 @@ class ExistenceLoop:
         self,
         suffering: SufferingState,
         peers: list[str],
-        recent_goals: list[dict],
+        recent_goals: list[dict[str, Any]],
         tools_desc: str,
         nudges: list[str],
     ) -> str:
