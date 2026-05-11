@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.providers import RuntimeProvider
 from hive.runtime.tools import Tool, Toolkit
-from hive.runtime.types import Message, Task, TaskResult, TaskStatus
+from hive.runtime.types import GenerateResult, Message, Task, TaskResult, TaskStatus
 
 if TYPE_CHECKING:
     from hive.logging.writer import LogWriter
@@ -103,15 +103,16 @@ class Agent:
             steps += 1
 
             try:
-                gen_t0 = time.time()
-                response = await self._model.generate(
+                result = await self._model.generate_with_metadata(
                     messages=conversation.get_messages(),
                     tools=tool_schemas,
                     temperature=self._temperature,
                 )
-                self._log_decision(steps, gen_t0)
+                response = result.message
+                self._log_decision(steps, result)
             except Exception as e:
                 logger.error("Model generation failed: %s", e)
+                self._log_decision_failure(steps, e)
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.FAILED,
@@ -185,7 +186,7 @@ class Agent:
             duration_seconds=time.time() - t0,
         )
 
-    def _log_decision(self, step: int, gen_t0: float) -> None:
+    def _log_decision(self, step: int, result: GenerateResult) -> None:
         if not self._log_writer:
             return
         from hive.logging.models import DecisionLog
@@ -194,15 +195,34 @@ class Agent:
             DecisionLog(
                 agent_id=self._agent_id,
                 decision_type="react_step",
-                duration_ms=int((time.time() - gen_t0) * 1000),
+                model=result.model,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                cost_usd=result.cost_usd,
+                duration_ms=result.duration_ms,
+                response_raw=result.message.content,
                 success=True,
+            )
+        )
+
+    def _log_decision_failure(self, step: int, error: Exception) -> None:
+        if not self._log_writer:
+            return
+        from hive.logging.models import DecisionLog
+
+        self._log_writer.log_decision(
+            DecisionLog(
+                agent_id=self._agent_id,
+                decision_type="react_step",
+                success=False,
+                response_raw=str(error),
             )
         )
 
     def _log_tool(
         self,
         name: str,
-        params: dict,  # type: ignore[type-arg]
+        params: dict[str, Any],
         success: bool,
         output: str,
         error: str | None,

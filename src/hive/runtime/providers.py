@@ -206,10 +206,27 @@ class OpenAIRuntimeProvider:
         self._client = openai.AsyncOpenAI(**kwargs)
         self._model = model
         self._has_key = bool(key)
+        self._base_url = base_url
+        self._is_local = base_url is not None and (
+            "localhost" in base_url or "127.0.0.1" in base_url
+        )
 
     @property
     def available(self) -> bool:
+        if self._is_local:
+            return self._check_local_health()
         return self._has_key
+
+    def _check_local_health(self) -> bool:
+        """Check if a local model server is reachable."""
+        import httpx
+
+        try:
+            url = f"{self._base_url}/models" if self._base_url else ""
+            resp = httpx.get(url, timeout=2.0)
+            return resp.status_code == 200
+        except Exception:
+            return False
 
     async def generate(
         self,
