@@ -44,8 +44,8 @@ class AnthropicRuntimeProvider:
 
         from hive.config import get_env
 
-        key = api_key or get_env("ANTHROPIC_API_KEY")
-        self._client = anthropic.AsyncAnthropic(api_key=key or "")
+        key = api_key or get_env("ANTHROPIC_API_KEY") or None
+        self._client = anthropic.AsyncAnthropic(api_key=key)
         self._model = model
         self._has_key = bool(key)
 
@@ -258,8 +258,10 @@ class OpenAIRuntimeProvider:
 
         from hive.config import get_env
 
-        key = api_key or get_env("OPENAI_API_KEY")
-        kwargs: dict[str, Any] = {"api_key": key or ""}
+        key = api_key or get_env("OPENAI_API_KEY") or None
+        kwargs: dict[str, Any] = {}
+        if key:
+            kwargs["api_key"] = key
         if base_url:
             kwargs["base_url"] = base_url
         self._client = openai.AsyncOpenAI(**kwargs)

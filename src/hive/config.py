@@ -11,11 +11,24 @@ from pydantic import BaseModel, Field
 _dotenv_cache: dict[str, str | None] = {}
 
 
+def _find_dotenv() -> Path | None:
+    """Search CWD and parent directories for a .env file."""
+    current = Path.cwd()
+    for directory in [current, *current.parents]:
+        candidate = directory / ".env"
+        if candidate.is_file():
+            return candidate
+        if (directory / ".hive").is_dir():
+            return candidate if candidate.is_file() else None
+    return None
+
+
 def _load_dotenv_safe() -> dict[str, str | None]:
     """Load .env values WITHOUT injecting into os.environ."""
     global _dotenv_cache
     if not _dotenv_cache:
-        _dotenv_cache = dotenv_values()
+        env_path = _find_dotenv()
+        _dotenv_cache = dotenv_values(env_path) if env_path else {}
     return _dotenv_cache
 
 
