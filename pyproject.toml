@@ -28,15 +28,16 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.30",
     "python-dotenv>=1.0",
-    "pytest-asyncio>=0.23",
-    "mcp>=1.27.1",
+    "mcp>=1.27",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.23",
     "ruff>=0.5",
     "mypy>=1.10",
+    "types-PyYAML>=6.0",
 ]
 
 [project.scripts]
@@ -78,5 +79,11 @@ asyncio_mode = "auto"
 
 [dependency-groups]
 dev = [
-    "types-pyyaml>=6.0.12.20260510",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "types-pyyaml>=6.0",
+    "twine>=6.0",
+    "build>=1.0",
 ]
