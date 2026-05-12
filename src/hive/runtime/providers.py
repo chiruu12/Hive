@@ -185,6 +185,65 @@ class AnthropicRuntimeProvider:
 
         return Message.assistant("\n".join(text_parts), tool_calls or None)
 
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        from hive.models.registry import estimate_cost
+        from hive.runtime.structured import (
+            StructuredGenerateResult,
+            pydantic_to_json_schema,
+        )
+
+        schema = pydantic_to_json_schema(output_type)
+        system, api_messages = self._messages_to_anthropic(messages)
+        t0 = time.time()
+
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": api_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "tools": [
+                {
+                    "name": "structured_output",
+                    "description": f"Return a {output_type.__name__} response",
+                    "input_schema": schema,
+                }
+            ],
+            "tool_choice": {"type": "tool", "name": "structured_output"},
+        }
+        if system:
+            kwargs["system"] = system
+
+        response = await self._client.messages.create(**kwargs)
+        duration_ms = int((time.time() - t0) * 1000)
+
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        cost = estimate_cost(self._model, input_tokens, output_tokens)
+
+        tool_input: dict[str, Any] = {}
+        for block in response.content:
+            if block.type == "tool_use":
+                tool_input = block.input
+                break
+
+        parsed = output_type.model_validate(tool_input)
+
+        gen_result = GenerateResult(
+            message=Message.assistant(json.dumps(tool_input)),
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+        )
+        return StructuredGenerateResult(result=gen_result, parsed=parsed)
+
 
 class OpenAIRuntimeProvider:
     """OpenAI SDK with native function calling. Works for OpenAI and Fireworks."""
@@ -350,6 +409,59 @@ class OpenAIRuntimeProvider:
                 )
 
         return Message.assistant(content, tool_calls or None)
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        from hive.models.registry import estimate_cost
+        from hive.runtime.structured import (
+            StructuredGenerateResult,
+            generate_structured_fallback,
+            pydantic_to_response_format,
+        )
+
+        if self._is_local:
+            return await generate_structured_fallback(
+                self, messages, output_type, temperature, max_tokens
+            )
+
+        api_messages = self._messages_to_openai(messages)
+        t0 = time.time()
+
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": api_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "response_format": pydantic_to_response_format(output_type),
+        }
+
+        response = await self._client.chat.completions.create(**kwargs)
+        duration_ms = int((time.time() - t0) * 1000)
+
+        input_tokens = 0
+        output_tokens = 0
+        if response.usage:
+            input_tokens = response.usage.prompt_tokens or 0
+            output_tokens = response.usage.completion_tokens or 0
+
+        cost = estimate_cost(self._model, input_tokens, output_tokens)
+        content = response.choices[0].message.content or ""
+        parsed = output_type.model_validate_json(content)
+
+        gen_result = GenerateResult(
+            message=Message.assistant(content),
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+        )
+        return StructuredGenerateResult(result=gen_result, parsed=parsed)
 
 
 def create_runtime_provider(model_name: str) -> RuntimeProvider:

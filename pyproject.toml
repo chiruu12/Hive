@@ -29,6 +29,7 @@ dependencies = [
     "openai>=1.30",
     "python-dotenv>=1.0",
     "pytest-asyncio>=0.23",
+    "mcp>=1.27.1",
 ]
 
 [project.optional-dependencies]

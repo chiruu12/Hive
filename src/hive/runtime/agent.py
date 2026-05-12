@@ -9,7 +9,14 @@ from typing import TYPE_CHECKING, Any
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.providers import RuntimeProvider
 from hive.runtime.tools import Tool, Toolkit
-from hive.runtime.types import GenerateResult, Message, Task, TaskResult, TaskStatus
+from hive.runtime.types import (
+    GenerateResult,
+    Message,
+    StructuredTaskResult,
+    Task,
+    TaskResult,
+    TaskStatus,
+)
 
 if TYPE_CHECKING:
     from hive.logging.writer import LogWriter
@@ -185,6 +192,63 @@ class Agent:
             tool_calls_made=tool_calls_total,
             duration_seconds=time.time() - t0,
         )
+
+    async def run_structured(
+        self,
+        task: Task,
+        output_type: type[Any],
+    ) -> StructuredTaskResult[Any]:
+        """One-shot structured output — returns a validated Pydantic model."""
+        from hive.runtime.structured import (
+            StructuredGenerateResult,
+            generate_structured_fallback,
+        )
+
+        t0 = time.time()
+        messages: list[Message] = []
+        if self._system_prompt:
+            messages.append(Message.system(self._system_prompt))
+        if task.context:
+            context_str = "\n".join(f"{k}: {v}" for k, v in task.context.items())
+            messages.append(
+                Message.user(f"{task.instruction}\n\nContext:\n{context_str}")
+            )
+        else:
+            messages.append(Message.user(task.instruction))
+
+        try:
+            if hasattr(self._model, "generate_structured"):
+                structured: StructuredGenerateResult[Any] = (
+                    await self._model.generate_structured(
+                        messages,
+                        output_type=output_type,
+                        temperature=self._temperature,
+                    )
+                )
+            else:
+                structured = await generate_structured_fallback(
+                    self._model, messages, output_type, self._temperature
+                )
+
+            return StructuredTaskResult(
+                task_id=task.id,
+                status=TaskStatus.COMPLETED,
+                output=structured.result.message.content,
+                steps_taken=1,
+                duration_seconds=time.time() - t0,
+                parsed=structured.parsed,
+            )
+        except Exception as e:
+            logger.error("Structured generation failed: %s", e)
+            return StructuredTaskResult(
+                task_id=task.id,
+                status=TaskStatus.FAILED,
+                output="",
+                error=str(e),
+                steps_taken=1,
+                duration_seconds=time.time() - t0,
+                parsed=output_type.model_construct(),
+            )
 
     def _log_decision(self, step: int, result: GenerateResult) -> None:
         if not self._log_writer:

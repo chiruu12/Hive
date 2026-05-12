@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
+
+T = TypeVar("T")
 
 
 class Role(StrEnum):
@@ -113,3 +115,9 @@ class TaskResult(BaseModel):
     tool_calls_made: int = 0
     error: str | None = None
     duration_seconds: float = 0.0
+
+
+class StructuredTaskResult(TaskResult, Generic[T]):
+    """TaskResult with a parsed structured output."""
+
+    parsed: T

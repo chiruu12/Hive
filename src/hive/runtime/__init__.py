@@ -9,12 +9,14 @@ from hive.runtime.providers import (
     RuntimeProvider,
     create_runtime_provider,
 )
+from hive.runtime.structured import StructuredGenerateResult
 from hive.runtime.toolkits import CommsToolkit, MemoryToolkit, WorldToolkit
 from hive.runtime.tools import Tool, Toolkit, tool
 from hive.runtime.types import (
     GenerateResult,
     Message,
     Role,
+    StructuredTaskResult,
     Task,
     TaskResult,
     TaskStatus,
@@ -38,6 +40,8 @@ __all__ = [
     "Role",
     "RuntimeProvider",
     "Step",
+    "StructuredGenerateResult",
+    "StructuredTaskResult",
     "Task",
     "TaskResult",
     "TaskStatus",

@@ -10,6 +10,7 @@ from hive.config import HiveConfig, load_config
 from hive.context import ExecutionContext
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
+from hive.mcp.client import MCPToolkit
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.runtime import (
@@ -24,6 +25,8 @@ from hive.runtime import (
     PersistentMemory,
     Role,
     Step,
+    StructuredGenerateResult,
+    StructuredTaskResult,
     Task,
     TaskResult,
     TaskStatus,
@@ -56,11 +59,14 @@ __all__ = [
     "HiveDaemon",
     "HiveEvent",
     "HiveStore",
+    "MCPToolkit",
     "MemoryToolkit",
     "Message",
     "PersistentMemory",
     "Step",
     "StressorType",
+    "StructuredGenerateResult",
+    "StructuredTaskResult",
     "SufferingState",
     "Role",
     "Task",
