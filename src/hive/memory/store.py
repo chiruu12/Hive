@@ -182,6 +182,15 @@ class HiveStore:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
+    async def get_goal_by_id(self, goal_id: str) -> dict[str, Any] | None:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM goals WHERE goal_id = ?", (goal_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
     async def complete_goal(self, goal_id: str) -> None:
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
@@ -193,9 +202,8 @@ class HiveStore:
     async def update_goal_progress(self, goal_id: str, steps_done: int, steps_failed: int) -> None:
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
-                """UPDATE goals SET steps_completed = ?, last_worked_on = ?
-                   WHERE goal_id = ?""",
-                (steps_done, datetime.now(UTC).isoformat(), goal_id),
+                "UPDATE goals SET steps_completed = ? WHERE goal_id = ?",
+                (steps_done, goal_id),
             )
             await db.commit()
 
