@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS goals (
     objective TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',
     priority INTEGER DEFAULT 4,
+    parent_goal_id TEXT,
     created_at TEXT NOT NULL,
     completed_at TEXT,
     steps_completed INTEGER DEFAULT 0,
@@ -69,6 +70,12 @@ class HiveStore:
     async def initialize(self) -> None:
         async with aiosqlite.connect(self._db_path) as db:
             await db.executescript(_SCHEMA)
+            cursor = await db.execute("PRAGMA table_info(goals)")
+            columns = {row[1] for row in await cursor.fetchall()}
+            if "parent_goal_id" not in columns:
+                await db.execute(
+                    "ALTER TABLE goals ADD COLUMN parent_goal_id TEXT",
+                )
             await db.commit()
 
     async def save_agent(self, state: AgentState) -> None:
@@ -161,14 +168,23 @@ class HiveStore:
             await db.commit()
 
     async def save_goal(
-        self, goal_id: str, agent_id: str, objective: str, priority: int = 4
+        self,
+        goal_id: str,
+        agent_id: str,
+        objective: str,
+        priority: int = 4,
+        parent_goal_id: str | None = None,
     ) -> None:
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
                 """INSERT OR REPLACE INTO goals
-                   (goal_id, agent_id, objective, status, priority, created_at)
-                   VALUES (?, ?, ?, 'active', ?, ?)""",
-                (goal_id, agent_id, objective, priority, datetime.now(UTC).isoformat()),
+                   (goal_id, agent_id, objective, status, priority,
+                    parent_goal_id, created_at)
+                   VALUES (?, ?, ?, 'active', ?, ?, ?)""",
+                (
+                    goal_id, agent_id, objective, priority,
+                    parent_goal_id, datetime.now(UTC).isoformat(),
+                ),
             )
             await db.commit()
 
@@ -190,6 +206,18 @@ class HiveStore:
             ) as cursor:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
+
+    async def get_subgoals(
+        self, parent_goal_id: str,
+    ) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM goals WHERE parent_goal_id = ?"
+                " ORDER BY priority DESC",
+                (parent_goal_id,),
+            ) as cursor:
+                return [dict(row) async for row in cursor]
 
     async def complete_goal(self, goal_id: str) -> None:
         async with aiosqlite.connect(self._db_path) as db:
