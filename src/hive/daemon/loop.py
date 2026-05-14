@@ -30,6 +30,7 @@ from hive.runtime import (
     WorldToolkit,
     create_runtime_provider,
 )
+from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,13 @@ class HiveDaemon:
         self._profiles = profiles or []
 
     def _build_toolkits(self, agent_id: str) -> list[Any]:
-        toolkits = [
+        workspace = self._hive_dir / "workspaces" / agent_id
+        workspace.mkdir(parents=True, exist_ok=True)
+
+        toolkits: list[Any] = [
+            FileToolkit(workspace),
+            ShellToolkit(workspace),
+            GitToolkit(workspace),
             MemoryToolkit(self._ctx.memory_dir, agent_id),
             CommsToolkit(self._ctx.comms_dir, agent_id),
         ]

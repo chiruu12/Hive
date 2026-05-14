@@ -58,6 +58,7 @@ packages = ["src/hive"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "profiles" = "hive/profiles"
+"skills" = "hive/skills"
 "models.yaml" = "hive/models.yaml"
 
 [tool.ruff]

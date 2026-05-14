@@ -65,7 +65,7 @@ class AgentProfile(BaseModel):
         return self.workspace.replace("{name}", self.name)
 
     def build_system_prompt(self, economy_enabled: bool = True) -> str:
-        """Build the full system prompt including personality."""
+        """Build the full system prompt including personality and skills."""
         parts = [
             f"You are an autonomous agent named {self.name}.",
             f"Role: {self.role}.",
@@ -89,5 +89,12 @@ class AgentProfile(BaseModel):
 
         if self.system_prompt:
             parts.append(self.system_prompt.strip())
+
+        if self.skills:
+            from hive.agents.skills import load_skills
+
+            skills_context = load_skills(self.skills)
+            if skills_context:
+                parts.append(f"--- Skills & Methodologies ---\n{skills_context}")
 
         return "\n\n".join(parts)

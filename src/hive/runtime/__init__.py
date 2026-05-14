@@ -2,6 +2,7 @@
 
 from hive.runtime.agent import Agent
 from hive.runtime.bridge import DaemonAgentAdapter, GoalOutcome
+from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.providers import (
     AnthropicRuntimeProvider,
@@ -31,7 +32,9 @@ __all__ = [
     "CommsToolkit",
     "ConversationMemory",
     "DaemonAgentAdapter",
+    "FileToolkit",
     "GenerateResult",
+    "GitToolkit",
     "GoalOutcome",
     "MemoryToolkit",
     "Message",
@@ -39,6 +42,7 @@ __all__ = [
     "PersistentMemory",
     "Role",
     "RuntimeProvider",
+    "ShellToolkit",
     "Step",
     "StructuredGenerateResult",
     "StructuredTaskResult",
