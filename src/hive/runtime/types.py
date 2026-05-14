@@ -46,6 +46,7 @@ class Message:
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str = ""
     name: str = ""
+    is_error: bool = False
 
     @staticmethod
     def system(content: str) -> Message:
@@ -73,6 +74,7 @@ class Message:
             content=content,
             tool_call_id=tool_call_id,
             name=name,
+            is_error=is_error,
         )
 
 
