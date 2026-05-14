@@ -29,7 +29,7 @@ class AgentStats(BaseModel):
             new_val = current * (1 + change / 100)
         else:
             new_val = current + change
-        new_val = max(0.0, min(1.0, new_val))
+        new_val = max(0.0, min(1.0, float(new_val)))
         setattr(self, stat, new_val)
         return new_val
 

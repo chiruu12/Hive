@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -14,7 +15,7 @@ class MemoryRecord(BaseModel):
     memory_id: str
     agent_id: str
     thought: str
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
     access_count: int = 0
     last_accessed: datetime | None = None
@@ -45,7 +46,7 @@ class SemanticMemory:
         tmp.write_text("\n".join(lines) + "\n" if lines else "")
         tmp.rename(self._path)
 
-    async def store(self, thought: str, metadata: dict | None = None) -> str:
+    async def store(self, thought: str, metadata: dict[str, Any] | None = None) -> str:
         mid = f"mem-{uuid4().hex[:8]}"
         rec = MemoryRecord(
             memory_id=mid,

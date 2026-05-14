@@ -150,5 +150,5 @@ class EnvironmentParticipant:
             return ""
         result = self._response_fn(messages)
         if asyncio.iscoroutine(result):
-            return await result
-        return result  # type: ignore[return-value]
+            return str(await result)
+        return str(result)

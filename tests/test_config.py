@@ -1,6 +1,5 @@
 """Tests for config system."""
 
-from pathlib import Path
 
 from hive.config import HiveConfig, load_config, set_config
 

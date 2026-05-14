@@ -10,6 +10,7 @@ from hive.interactions.base import (
     Message,
     RoundResult,
 )
+from hive.runtime.types import Message as RuntimeMessage
 
 
 class FreeformPattern(InteractionPattern):
@@ -40,13 +41,17 @@ class FreeformPattern(InteractionPattern):
             memory_ctx = context_builder(agent, visible, round_num) + choice_prompt
             provider = provider_factory(agent.model)
 
-            response = await provider.complete(
-                messages=[{"role": "user", "content": memory_ctx}],
-                system=agent.system_prompt,
+            result = await provider.generate_with_metadata(
+                messages=[
+                    RuntimeMessage.system(agent.system_prompt),
+                    RuntimeMessage.user(memory_ctx),
+                ],
                 max_tokens=300,
             )
 
-            recipient, content = self._parse_response(response.content, all_ids, agent.slot_id)
+            recipient, content = self._parse_response(
+                result.message.content, all_ids, agent.slot_id
+            )
 
             if recipient == "all":
                 vis = all_ids
@@ -59,8 +64,8 @@ class FreeformPattern(InteractionPattern):
                 recipient=recipient,
                 content=content,
                 visible_to=vis,
-                tokens=response.input_tokens + response.output_tokens,
-                cost_usd=response.cost_usd or 0.0,
+                tokens=result.input_tokens + result.output_tokens,
+                cost_usd=result.cost_usd or 0.0,
             )
             messages.append(msg)
 

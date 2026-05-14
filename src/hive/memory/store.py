@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -171,7 +172,7 @@ class HiveStore:
             )
             await db.commit()
 
-    async def get_active_goal(self, agent_id: str) -> dict | None:
+    async def get_active_goal(self, agent_id: str) -> dict[str, Any] | None:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
@@ -206,7 +207,7 @@ class HiveStore:
             )
             await db.commit()
 
-    async def list_agent_goals(self, agent_id: str, limit: int = 10) -> list[dict]:
+    async def list_agent_goals(self, agent_id: str, limit: int = 10) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

@@ -10,6 +10,7 @@ from hive.interactions.base import (
     Message,
     RoundResult,
 )
+from hive.runtime.types import Message as RuntimeMessage
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +39,11 @@ class PairsPattern(InteractionPattern):
                 memory_ctx = context_builder(speaker, visible, round_num)
                 provider = provider_factory(speaker.model)
 
-                response = await provider.complete(
-                    messages=[{"role": "user", "content": memory_ctx}],
-                    system=speaker.system_prompt,
+                result = await provider.generate_with_metadata(
+                    messages=[
+                        RuntimeMessage.system(speaker.system_prompt),
+                        RuntimeMessage.user(memory_ctx),
+                    ],
                     max_tokens=300,
                 )
 
@@ -48,10 +51,10 @@ class PairsPattern(InteractionPattern):
                     round=round_num,
                     sender=speaker.slot_id,
                     recipient=listener.slot_id,
-                    content=response.content.strip(),
+                    content=result.message.content.strip(),
                     visible_to=pair_ids,
-                    tokens=response.input_tokens + response.output_tokens,
-                    cost_usd=response.cost_usd or 0.0,
+                    tokens=result.input_tokens + result.output_tokens,
+                    cost_usd=result.cost_usd or 0.0,
                 )
                 messages.append(msg)
 

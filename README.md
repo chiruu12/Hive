@@ -3,7 +3,7 @@
 **Autonomous agent OS.** Start the hive, watch AI agents come alive. They pick their own goals, suffer when they fail, interact with each other, and make decisions in a mini economy. You observe and occasionally nudge.
 
 ```bash
-pip install hive-agents
+pip install hive-agent
 hive init
 hive start
 ```
@@ -44,29 +44,38 @@ hive replay <session_id>           # Step-by-step replay of a session
 
 ```
 src/hive/
-├── agents/           # Agent runtime
-│   ├── loop.py       # Plan-execute-substitute (goal pursuit)
-│   ├── existence.py  # Autonomous goal generation
+├── agents/           # Agent profiles, state, and goal generation
+│   ├── existence.py  # Autonomous goal generation (existence loop)
 │   ├── suffering.py  # 6 stressor types, escalation, resolution
 │   ├── profile.py    # YAML-driven agent config
 │   └── state.py      # Runtime state model
+├── runtime/          # Standalone agent framework
+│   ├── agent.py      # ReAct loop (observe → think → act)
+│   ├── tools.py      # Tool and Toolkit with JSON Schema extraction
+│   ├── toolkits.py   # Built-in toolkits (world, memory, comms)
+│   ├── providers.py  # Anthropic and OpenAI provider implementations
+│   ├── memory.py     # Conversation and persistent memory
+│   ├── types.py      # Message, Task, TaskResult, ToolCall
+│   ├── bridge.py     # DaemonAgentAdapter for daemon integration
+│   └── workflow.py   # Multi-step agent pipelines
 ├── daemon/           # Background service
 │   ├── loop.py       # Heartbeat drives all agents on a cycle
 │   ├── lifecycle.py  # Spawn, kill, list agents
 │   └── setup.py      # Initialize .hive/ directory
-├── execution/        # Tool system
-│   ├── registry.py   # Auto-discover and dispatch tools
-│   ├── protocol.py   # ToolResult, ToolDefinition, @tool decorator
-│   └── tools/        # Built-in tools (world, memory, comms)
-├── models/           # LLM abstraction
-│   ├── claude.py     # Claude Code CLI subprocess wrapper
-│   ├── protocol.py   # ModelProvider interface
-│   └── router.py     # Provider factory
+├── models/           # Model registry and routing
+│   ├── registry.py   # YAML model catalog with pricing
+│   └── router.py     # Provider factory and model detection
+├── interactions/     # Multi-agent interaction patterns
+│   ├── exchange.py   # ExchangeRunner (participant-based)
+│   ├── runner.py     # ScenarioRunner (YAML-driven scenarios)
+│   └── patterns/     # Round-table, pairs, freeform
 ├── memory/           # Persistence
 │   ├── store.py      # SQLite (agents, goals, nudges, sessions)
+│   ├── semantic.py   # TF-IDF semantic memory with JSONL storage
 │   └── events.py     # JSONL append-only event log
+├── context.py        # ExecutionContext (injected state for tools)
 └── logging/          # Structured run logs
-    ├── models.py     # RunLog, CycleLog, GoalLog, DecisionLog, ToolLog, SufferingLog
+    ├── models.py     # RunLog, CycleLog, GoalLog, DecisionLog, ToolLog
     ├── writer.py     # Writes to logs/runs/{id}/agents/{aid}/*.jsonl
     └── reader.py     # Loads and aggregates for analysis
 ```

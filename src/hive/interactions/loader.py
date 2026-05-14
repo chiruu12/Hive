@@ -38,7 +38,7 @@ class YAMLScenario(Scenario):
             agents.append(slot)
         return agents
 
-    def _build_system_prompt(self, cfg: dict) -> str:
+    def _build_system_prompt(self, cfg: dict[str, str]) -> str:
         parts = [
             f"You are {cfg.get('name', 'an agent')}.",
             f"Role: {cfg.get('role', 'participant')}.",
@@ -59,7 +59,7 @@ class YAMLScenario(Scenario):
         )
 
     def get_evidence(self, round_num: int) -> str:
-        return self._evidence.get(round_num, "")
+        return str(self._evidence.get(round_num, ""))
 
     def get_final_prompt(self, agent: AgentSlot, memory_context: str) -> str:
         final_phase = self._config.get("final_phase")

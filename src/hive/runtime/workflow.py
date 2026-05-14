@@ -31,7 +31,7 @@ class Step:
         if self.agent:
             task = Task(instruction=resolved, context=context)
             result = await self.agent.run(task)
-            return result.output
+            return str(result.output)
 
         raise ValueError(f"Step '{self.name}' has no agent or fn")
 
@@ -56,7 +56,7 @@ class Workflow:
         return context
 
 
-class _SafeFormatMap(dict):
+class _SafeFormatMap(dict[str, Any]):
     """Dict that returns the key placeholder for missing keys."""
 
     def __missing__(self, key: str) -> str:

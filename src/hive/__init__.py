@@ -1,15 +1,16 @@
 """Hive - Autonomous agent OS."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from hive.agents.existence import ExistenceLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import StressorType, SufferingState
 from hive.config import HiveConfig, load_config
+from hive.context import ExecutionContext
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
-from hive.execution.context import ExecutionContext
+from hive.mcp.client import MCPToolkit
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.runtime import (
@@ -17,12 +18,15 @@ from hive.runtime import (
     CommsToolkit,
     ConversationMemory,
     DaemonAgentAdapter,
+    GenerateResult,
     GoalOutcome,
     MemoryToolkit,
     Message,
     PersistentMemory,
     Role,
     Step,
+    StructuredGenerateResult,
+    StructuredTaskResult,
     Task,
     TaskResult,
     TaskStatus,
@@ -49,16 +53,20 @@ __all__ = [
     "EventType",
     "ExecutionContext",
     "ExistenceLoop",
+    "GenerateResult",
     "GoalOutcome",
     "HiveConfig",
     "HiveDaemon",
     "HiveEvent",
     "HiveStore",
+    "MCPToolkit",
     "MemoryToolkit",
     "Message",
     "PersistentMemory",
     "Step",
     "StressorType",
+    "StructuredGenerateResult",
+    "StructuredTaskResult",
     "SufferingState",
     "Role",
     "Task",

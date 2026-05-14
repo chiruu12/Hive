@@ -1,6 +1,5 @@
 """Tests for the toolkit system and @tool decorator."""
 
-import asyncio
 from typing import Literal
 
 import pytest

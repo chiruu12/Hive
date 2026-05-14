@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_MODELS_PATHS = [
     Path.cwd() / "models.yaml",
+    Path(__file__).resolve().parent.parent / "models.yaml",
     Path(__file__).resolve().parent.parent.parent.parent / "models.yaml",
 ]
 

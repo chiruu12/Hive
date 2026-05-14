@@ -3,6 +3,7 @@
 import json
 import random
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -52,7 +53,7 @@ AVAILABLE_JOBS = [
 ]
 
 
-def _eco():  # noqa: ANN202
+def _eco() -> Any:
     return get_config().economy
 
 

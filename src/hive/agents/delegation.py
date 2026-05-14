@@ -1,6 +1,7 @@
 """Delegation engine — route subtasks between agents."""
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -81,7 +82,7 @@ class DelegationEngine:
         return [r for r in self._active.values() if r.to_agent == agent_id]
 
     def find_best_agent(
-        self, task: str, agents: list[str], specializations: dict[str, dict]
+        self, task: str, agents: list[str], specializations: dict[str, dict[str, Any]]
     ) -> str | None:
         """Pick the best agent for a task based on specialization scores."""
         if not agents:

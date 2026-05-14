@@ -19,7 +19,8 @@ from hive.interactions.patterns.freeform import FreeformPattern
 from hive.interactions.patterns.pairs import PairsPattern
 from hive.interactions.patterns.round_table import RoundTablePattern
 from hive.interactions.transcript import Transcript
-from hive.models.router import create_provider
+from hive.runtime.providers import create_runtime_provider
+from hive.runtime.types import Message as RuntimeMessage
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def create_pattern(name: str) -> InteractionPattern:
         "freeform": FreeformPattern,
     }
     cls = patterns.get(name, RoundTablePattern)
-    return cls()
+    return cls()  # type: ignore[abstract]
 
 
 def create_memory(name: str) -> MemoryStrategy:
@@ -41,7 +42,7 @@ def create_memory(name: str) -> MemoryStrategy:
         "persona": PersonaMemory,
     }
     cls = strategies.get(name, SelectiveMemory)
-    return cls()
+    return cls()  # type: ignore[abstract]
 
 
 class ScenarioRunner:
@@ -72,7 +73,7 @@ class ScenarioRunner:
                 agent: AgentSlot,
                 visible: list[Message],
                 round_num: int,
-                _memories: dict = memories,
+                _memories: dict[str, MemoryStrategy] = memories,
                 _scenario: Scenario = self._scenario,
                 _evidence: str = evidence,
             ) -> str:
@@ -83,7 +84,9 @@ class ScenarioRunner:
                     prompt = f"[NEW EVIDENCE] {_evidence}\n\n{prompt}"
                 return prompt
 
-            rr = await pattern.run_round(agents, r, history, context_builder, create_provider)
+            rr = await pattern.run_round(
+                agents, r, history, context_builder, create_runtime_provider
+            )
             rr.evidence_revealed = evidence
 
             for m in rr.messages:
@@ -108,15 +111,17 @@ class ScenarioRunner:
                 mem_ctx = mem.build_context(agent, visible, self._scenario.num_rounds)
                 prompt = self._scenario.get_final_prompt(agent, mem_ctx)
 
-                provider = create_provider(agent.model)
-                response = await provider.complete(
-                    messages=[{"role": "user", "content": prompt}],
-                    system=agent.system_prompt,
+                provider = create_runtime_provider(agent.model)
+                gen = await provider.generate_with_metadata(
+                    messages=[
+                        RuntimeMessage.system(agent.system_prompt),
+                        RuntimeMessage.user(prompt),
+                    ],
                     max_tokens=500,
                 )
-                total_tokens += response.input_tokens + response.output_tokens
-                total_cost += response.cost_usd or 0.0
-                final_actions[agent.slot_id] = response.content.strip()
+                total_tokens += gen.input_tokens + gen.output_tokens
+                total_cost += gen.cost_usd or 0.0
+                final_actions[agent.slot_id] = gen.message.content.strip()
 
         transcript_path = self._transcript.save(self._scenario.name)
 
@@ -132,6 +137,6 @@ class ScenarioRunner:
         scores = self._scenario.evaluate(result)
         result.scores = scores
         if scores:
-            result.winner = max(scores, key=scores.get)
+            result.winner = max(scores, key=lambda k: scores[k])
 
         return result

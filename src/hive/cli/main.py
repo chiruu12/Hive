@@ -91,7 +91,7 @@ def start(
 
     loop = asyncio.new_event_loop()
 
-    def _stop(signum, frame):  # noqa: ANN001
+    def _stop(signum: int, frame: object) -> None:
         daemon.stop()
         console.print("\n[yellow]Stopping hive...[/yellow]")
 
@@ -257,8 +257,8 @@ def watch() -> None:
     store = HiveStore(hive_dir / "hive.db")
     feed: deque[str] = deque(maxlen=20)
 
-    def _build_dashboard() -> Layout:
-        agents = asyncio.run(store.list_agents())
+    async def _build_dashboard() -> Layout:
+        agents = await store.list_agents()
         alive = [a for a in agents if a.is_alive()]
 
         agent_table = Table(title="Agents", box=None, show_edge=False, pad_edge=False)
@@ -273,7 +273,7 @@ def watch() -> None:
         }
 
         for a in alive:
-            goal = asyncio.run(store.get_active_goal(a.agent_id))
+            goal = await store.get_active_goal(a.agent_id)
             goal_text = goal["objective"][:50] if goal else "-"
             sv = a.status.value if hasattr(a.status, "value") else a.status
             agent_table.add_row(a.name, status_styles.get(sv, sv), goal_text)
@@ -300,8 +300,8 @@ def watch() -> None:
         et = event.event_type
 
         if et == EventType.TOOL_USED:
-            tool = event.data.get("tool", "?")
-            return f"[cyan]{ts}[/cyan] {name} [dim]⚡[/dim] {tool}"
+            tool_name = event.data.get("tool", "?")
+            return f"[cyan]{ts}[/cyan] {name} [dim]⚡[/dim] {tool_name}"
         if et == EventType.GOAL_SET:
             obj = (event.data.get("objective") or "")[:50]
             return f"[blue]{ts}[/blue] {name} [bold]🎯[/bold] {obj}"
@@ -325,7 +325,7 @@ def watch() -> None:
         return ""
 
     async def _poll_events() -> None:
-        agents = asyncio.run(store.list_agents())
+        agents = await store.list_agents()
         offsets: dict[str, int] = {}
 
         while True:
@@ -357,19 +357,19 @@ def watch() -> None:
                 offsets[a.agent_id] = len(text)
             await asyncio.sleep(0.5)
 
+    async def _watch_loop() -> None:
+        await store.initialize()
+        with Live(await _build_dashboard(), console=console, refresh_per_second=2) as live:
+            poll_task = asyncio.create_task(_poll_events())
+            try:
+                while True:
+                    live.update(await _build_dashboard())
+                    await asyncio.sleep(0.5)
+            finally:
+                poll_task.cancel()
+
     try:
-        with Live(_build_dashboard(), console=console, refresh_per_second=2) as live:
-
-            async def _run() -> None:
-                poll_task = asyncio.create_task(_poll_events())
-                try:
-                    while True:
-                        live.update(_build_dashboard())
-                        await asyncio.sleep(0.5)
-                finally:
-                    poll_task.cancel()
-
-            asyncio.run(_run())
+        asyncio.run(_watch_loop())
     except KeyboardInterrupt:
         pass
 
@@ -553,6 +553,39 @@ def biography(
     from rich.markdown import Markdown
 
     console.print(Markdown(bio))
+
+
+agent_app = typer.Typer(
+    name="agent",
+    help="Run individual agents interactively.",
+    no_args_is_help=True,
+)
+app.add_typer(agent_app, name="agent")
+
+
+@agent_app.command("run")
+def agent_run(
+    config: Path = typer.Argument(help="Path to agent YAML config file"),
+) -> None:
+    """Run an agent from a YAML config as an interactive assistant."""
+    from hive.serve import serve_from_yaml
+
+    if not config.exists():
+        console.print(f"[red]Config file not found: {config}[/red]")
+        raise typer.Exit(1)
+    serve_from_yaml(config)
+
+
+@agent_app.command("chat")
+def agent_chat(
+    model: str = typer.Option("claude-haiku-4-5", "--model", "-m", help="Model to use"),
+    no_tools: bool = typer.Option(False, "--no-tools", help="Disable file/shell/git tools"),
+    workspace: str = typer.Option(".", "--workspace", "-w", help="Working directory for tools"),
+) -> None:
+    """Quick-start an interactive agent with tools."""
+    from hive.serve import serve_quick
+
+    serve_quick(model=model, tools=not no_tools, workspace=workspace)
 
 
 if __name__ == "__main__":

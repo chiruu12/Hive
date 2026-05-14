@@ -1,4 +1,4 @@
-"""Execution context — injected environment for all tools and actions."""
+"""Execution context — injected environment for daemon tools and actions."""
 
 from __future__ import annotations
 

@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
+
+T = TypeVar("T")
 
 
 class Role(StrEnum):
@@ -44,6 +46,7 @@ class Message:
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str = ""
     name: str = ""
+    is_error: bool = False
 
     @staticmethod
     def system(content: str) -> Message:
@@ -71,7 +74,20 @@ class Message:
             content=content,
             tool_call_id=tool_call_id,
             name=name,
+            is_error=is_error,
         )
+
+
+@dataclass(frozen=True)
+class GenerateResult:
+    """Result from a provider call, carrying the message plus metadata."""
+
+    message: Message
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float | None = None
+    duration_ms: int | None = None
 
 
 class TaskStatus(StrEnum):
@@ -101,3 +117,9 @@ class TaskResult(BaseModel):
     tool_calls_made: int = 0
     error: str | None = None
     duration_seconds: float = 0.0
+
+
+class StructuredTaskResult(TaskResult, Generic[T]):
+    """TaskResult with a parsed structured output."""
+
+    parsed: T

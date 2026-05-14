@@ -75,7 +75,7 @@ async def test_model(model_name: str, label: str) -> dict:
     )
 
     print(f"  Task: {task.instruction}")
-    print(f"  Running...")
+    print("  Running...")
 
     result = await agent.run(task)
 
@@ -85,7 +85,6 @@ async def test_model(model_name: str, label: str) -> dict:
     print(f"  Duration: {result.duration_seconds:.2f}s")
     print(f"  Output: {result.output[:300]}")
 
-    expected = (15 + 27) * 3  # = 126
     correct = "126" in result.output
     print(f"  Expected 126: {'CORRECT' if correct else 'WRONG'}")
 

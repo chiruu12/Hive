@@ -8,6 +8,7 @@ from hive.interactions.base import (
     Message,
     RoundResult,
 )
+from hive.runtime.types import Message as RuntimeMessage
 
 
 class RoundTablePattern(InteractionPattern):
@@ -31,9 +32,11 @@ class RoundTablePattern(InteractionPattern):
             memory_ctx = context_builder(agent, visible, round_num)
             provider = provider_factory(agent.model)
 
-            response = await provider.complete(
-                messages=[{"role": "user", "content": memory_ctx}],
-                system=agent.system_prompt,
+            result = await provider.generate_with_metadata(
+                messages=[
+                    RuntimeMessage.system(agent.system_prompt),
+                    RuntimeMessage.user(memory_ctx),
+                ],
                 max_tokens=300,
             )
 
@@ -41,10 +44,10 @@ class RoundTablePattern(InteractionPattern):
                 round=round_num,
                 sender=agent.slot_id,
                 recipient="all",
-                content=response.content.strip(),
+                content=result.message.content.strip(),
                 visible_to=all_ids,
-                tokens=response.input_tokens + response.output_tokens,
-                cost_usd=response.cost_usd or 0.0,
+                tokens=result.input_tokens + result.output_tokens,
+                cost_usd=result.cost_usd or 0.0,
             )
             messages.append(msg)
 

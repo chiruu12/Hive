@@ -36,7 +36,12 @@ class Tool:
         else:
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: self.fn(**kwargs))
-        return str(result) if result is not None else ""
+        if result is None:
+            return ""
+        if isinstance(result, (dict, list)):
+            import json
+            return json.dumps(result, default=str)
+        return str(result)
 
 
 def _python_type_to_json_schema(tp: Any) -> dict[str, Any]:
@@ -103,7 +108,7 @@ def _parse_docstring_args(docstring: str | None) -> dict[str, str]:
     return descriptions
 
 
-def _extract_schema(fn: Callable) -> dict[str, Any]:
+def _extract_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     """Extract JSON Schema from a function's type hints and docstring."""
     hints = typing.get_type_hints(fn)
     sig = inspect.signature(fn)
@@ -139,10 +144,10 @@ def _extract_schema(fn: Callable) -> dict[str, Any]:
 def tool(
     name: str | None = None,
     description: str | None = None,
-) -> Callable:
+) -> Callable[..., Any]:
     """Decorator that marks a function as a tool with auto-extracted JSON Schema."""
 
-    def decorator(fn: Callable) -> Callable:
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         tool_name = name or fn.__name__
         raw_doc = inspect.cleandoc(fn.__doc__ or "")
         tool_desc = description or raw_doc.split("\n\n")[0].strip() or tool_name

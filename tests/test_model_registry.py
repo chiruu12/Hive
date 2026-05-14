@@ -5,7 +5,6 @@ from pathlib import Path
 
 from hive.models.registry import estimate_cost, load_model_registry
 
-
 MODELS_YAML = Path(__file__).resolve().parents[1] / "models.yaml"
 
 

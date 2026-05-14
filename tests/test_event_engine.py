@@ -1,10 +1,10 @@
 """Tests for event engine, stats manager, and life summaries."""
 
-from hive.world.event_catalog import EVENTS, EVENT_MAP
+from hive.world.event_catalog import EVENT_MAP, EVENTS
 from hive.world.event_engine import EventEngine
 from hive.world.events import Choice, LifeEvent, StatEffect
 from hive.world.state import WorldState
-from hive.world.stats import AgentStats, StatsManager
+from hive.world.stats import StatsManager
 
 
 def test_stats_apply_valid(tmp_dir):

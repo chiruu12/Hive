@@ -112,7 +112,8 @@ class MemoryToolkit(Toolkit):
     def _load(self) -> dict[str, str]:
         if not self._path.exists():
             return {}
-        return json.loads(self._path.read_text())
+        data: dict[str, str] = json.loads(self._path.read_text())
+        return data
 
     def _save(self, data: dict[str, str]) -> None:
         self._path.write_text(json.dumps(data, indent=2))

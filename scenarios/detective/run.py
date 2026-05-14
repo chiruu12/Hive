@@ -17,10 +17,11 @@ CLUES_DIR = SCENARIO_DIR / "clues"
 
 sys.path.insert(0, str(SCENARIO_DIR.parent.parent))
 
-import re
+import re  # noqa: E402
 
-from hive.config import load_config
-from hive.models.router import create_provider
+from hive.config import load_config  # noqa: E402
+from hive.runtime.providers import create_runtime_provider  # noqa: E402
+from hive.runtime.types import Message  # noqa: E402
 
 
 def extract_json(text: str) -> dict | None:
@@ -72,7 +73,7 @@ async def investigate(
     other_theories: list[str],
 ) -> dict:
     """One round of investigation for one detective."""
-    provider = create_provider(detective["model"])
+    provider = create_runtime_provider(detective["model"])
 
     system = (
         f"You are {detective['display_name']}, a detective investigating a murder.\n"
@@ -111,16 +112,18 @@ async def investigate(
     prompt = "\n".join(prompt_parts)
 
     try:
-        response = await provider.complete(
-            messages=[{"role": "user", "content": prompt}],
-            system=system,
+        response = await provider.generate_with_metadata(
+            messages=[
+                Message.system(system),
+                Message.user(prompt),
+            ],
             max_tokens=2048,
         )
 
-        result = extract_json(response.content)
+        result = extract_json(response.message.content)
         if not result:
             result = {
-                "theory": response.content[:200],
+                "theory": response.message.content[:200],
                 "prime_suspect": "unknown",
                 "confidence": 0.3,
                 "reasoning": "Could not parse structured response",
@@ -155,7 +158,7 @@ async def investigate(
 
 async def final_accusation(detective: dict, crime_scene: str, clues: dict[str, str]) -> dict:
     """Each detective makes their final accusation."""
-    provider = create_provider(detective["model"])
+    provider = create_runtime_provider(detective["model"])
 
     all_clues = "\n\n---\n\n".join(clues.values())
 
@@ -177,17 +180,19 @@ async def final_accusation(detective: dict, crime_scene: str, clues: dict[str, s
         "Make your final accusation based on ALL evidence. Be decisive."
     )
 
-    response = await provider.complete(
-        messages=[{"role": "user", "content": prompt}],
-        system=system,
+    response = await provider.generate_with_metadata(
+        messages=[
+            Message.system(system),
+            Message.user(prompt),
+        ],
         max_tokens=2048,
     )
 
-    result = extract_json(response.content)
+    result = extract_json(response.message.content)
     if not result:
         result = {
             "killer": "unknown",
-            "method": response.content[:200],
+            "method": response.message.content[:200],
             "motive": "unknown",
             "locked_room": "unknown",
             "confidence": 0.3,
@@ -280,7 +285,6 @@ async def run_scenario():
         print_separator()
         print("  RESULTS")
         print_separator()
-        correct_answer = "Petra Novak"
         for acc in accusations:
             killer = acc.get("killer", "").lower()
             correct = "petra" in killer or "novak" in killer
