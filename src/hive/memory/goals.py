@@ -38,13 +38,9 @@ class GoalEngine:
         parent_id: str | None = None,
     ) -> GoalRecord:
         goal_id = f"goal-{uuid4().hex[:8]}"
-        await self._store.save_goal(goal_id, agent_id, objective, priority)
-
-        if parent_id:
-            parent = await self._get_record(parent_id)
-            if parent and goal_id not in parent.get("subgoal_ids", []):
-                subs = parent.get("subgoal_ids", [])
-                subs.append(goal_id)
+        await self._store.save_goal(
+            goal_id, agent_id, objective, priority, parent_id,
+        )
 
         return GoalRecord(
             goal_id=goal_id,
@@ -96,6 +92,23 @@ class GoalEngine:
 
     async def abandon(self, goal_id: str, reason: str = "") -> None:
         await self._store.abandon_goal(goal_id)
+
+    async def check_subtask_rollup(
+        self, parent_goal_id: str,
+    ) -> str | None:
+        """Check if parent should complete/abandon based on subtasks.
+
+        Returns 'completed', 'abandoned', or None (still in progress).
+        """
+        subs = await self._store.get_subgoals(parent_goal_id)
+        if not subs:
+            return None
+        statuses = [s.get("status", "active") for s in subs]
+        if all(s == "completed" for s in statuses):
+            return "completed"
+        if any(s == "abandoned" for s in statuses):
+            return "abandoned"
+        return None
 
     async def list_history(self, agent_id: str, limit: int = 10) -> list[GoalRecord]:
         rows = await self._store.list_agent_goals(agent_id, limit)

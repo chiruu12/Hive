@@ -318,6 +318,7 @@ class HiveDaemon:
                     agent.agent_id, "goal_pursuit", False, 0, "autonomy_loop",
                 )
 
+            await self._check_parent_rollup(active_goal["goal_id"])
             await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
 
         else:
@@ -463,6 +464,23 @@ class HiveDaemon:
         if agent_id not in self._memories:
             self._memories[agent_id] = SemanticMemory(self._hive_dir, agent_id)
         return self._memories[agent_id]
+
+    async def _check_parent_rollup(self, goal_id: str) -> None:
+        """If this goal has a parent, check if all subtasks are done."""
+        goal_data = await self._store.get_goal_by_id(goal_id)
+        parent_id = goal_data.get("parent_goal_id") if goal_data else None
+        if not parent_id:
+            return
+        from hive.memory.goals import GoalEngine
+
+        ge = GoalEngine(self._store)
+        rollup = await ge.check_subtask_rollup(parent_id)
+        if rollup == "completed":
+            await self._store.complete_goal(parent_id)
+            logger.info("Parent goal %s completed (all subtasks done)", parent_id)
+        elif rollup == "abandoned":
+            await self._store.abandon_goal(parent_id)
+            logger.info("Parent goal %s abandoned (subtask failed)", parent_id)
 
     def _load_profile(self, name: str) -> AgentProfile:
         from hive.agents.profile import default_profiles_dir
