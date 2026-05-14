@@ -23,7 +23,7 @@ class FileToolkit(Toolkit):
     def _resolve(self, path: str) -> Path:
         """Resolve a path within the workspace, preventing escape."""
         resolved = (self._workspace / path).resolve()
-        if not str(resolved).startswith(str(self._workspace)):
+        if not resolved.is_relative_to(self._workspace):
             raise PermissionError(f"Path escapes workspace: {path}")
         return resolved
 
@@ -135,10 +135,35 @@ class FileToolkit(Toolkit):
 class ShellToolkit(Toolkit):
     """Sandboxed shell execution within a workspace directory."""
 
-    def __init__(self, workspace: Path, timeout: int = 30):
+    ALLOWED_COMMANDS = {
+        "ls", "cat", "head", "tail", "grep", "find", "wc", "sort", "uniq",
+        "diff", "echo", "printf", "touch", "mkdir", "cp", "mv", "rm",
+        "python", "python3", "pip", "uv", "node", "npm", "npx",
+        "git", "ruff", "mypy", "pytest", "cargo", "go", "make",
+        "curl", "wget", "jq", "sed", "awk", "tr", "cut", "tee",
+        "which", "env", "date", "pwd", "cd", "test",
+    }
+
+    def __init__(
+        self, workspace: Path, timeout: int = 30, restrict: bool = True
+    ):
         self._workspace = workspace.resolve()
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._timeout = timeout
+        self._restrict = restrict
+
+    def _check_command(self, command: str) -> str | None:
+        """Return error message if command is blocked, None if allowed."""
+        if not self._restrict:
+            return None
+        first_token = command.strip().split()[0] if command.strip() else ""
+        base = first_token.split("/")[-1]
+        if base not in self.ALLOWED_COMMANDS:
+            return (
+                f"Error: command '{base}' not in allowlist. "
+                f"Allowed: {', '.join(sorted(self.ALLOWED_COMMANDS)[:20])}..."
+            )
+        return None
 
     @tool()
     async def shell_exec(self, command: str) -> str:
@@ -147,10 +172,9 @@ class ShellToolkit(Toolkit):
         Args:
             command: The shell command to run.
         """
-        blocked = ["rm -rf /", "rm -rf ~", "sudo", "mkfs", "dd if="]
-        for pattern in blocked:
-            if pattern in command:
-                return f"Error: blocked command pattern: {pattern}"
+        rejection = self._check_command(command)
+        if rejection:
+            return rejection
 
         try:
             proc = await asyncio.create_subprocess_shell(

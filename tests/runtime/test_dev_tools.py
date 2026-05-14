@@ -79,7 +79,7 @@ class TestShellToolkit:
 
     @pytest.mark.asyncio
     async def test_exit_code(self, st: ShellToolkit) -> None:
-        result = await st.shell_exec("true")
+        result = await st.shell_exec("ls")
         assert "exit code: 0" in result
 
     @pytest.mark.asyncio
@@ -90,13 +90,19 @@ class TestShellToolkit:
     @pytest.mark.asyncio
     async def test_blocked_command(self, st: ShellToolkit) -> None:
         result = await st.shell_exec("sudo rm -rf /")
-        assert "blocked" in result.lower()
+        assert "not in allowlist" in result
 
     @pytest.mark.asyncio
     async def test_timeout(self, tmp_path: Path) -> None:
-        st = ShellToolkit(tmp_path, timeout=1)
+        st = ShellToolkit(tmp_path, timeout=1, restrict=False)
         result = await st.shell_exec("sleep 10")
         assert "timed out" in result
+
+    @pytest.mark.asyncio
+    async def test_unrestricted_mode(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path, restrict=False)
+        result = await st.shell_exec("true")
+        assert "exit code: 0" in result
 
 
 class TestGitToolkit:

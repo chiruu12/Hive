@@ -310,21 +310,38 @@ class OpenAIRuntimeProvider:
         self._is_local = base_url is not None and (
             "localhost" in base_url or "127.0.0.1" in base_url
         )
+        self._health_cache: bool | None = None
+        self._health_cache_time: float = 0.0
 
     @property
     def available(self) -> bool:
         if self._is_local:
-            return self._check_local_health()
+            now = time.time()
+            if self._health_cache is not None and (now - self._health_cache_time) < 30:
+                return self._health_cache
+            result = self._check_local_health()
+            self._health_cache = result
+            self._health_cache_time = now
+            return result
         return self._has_key
 
     def _check_local_health(self) -> bool:
-        """Check if a local model server is reachable."""
+        """Check if a local model server is reachable (runs in thread to avoid blocking)."""
+        import concurrent.futures
+
         import httpx
 
+        def _probe() -> bool:
+            try:
+                url = f"{self._base_url}/models" if self._base_url else ""
+                resp = httpx.get(url, timeout=2.0)
+                return resp.status_code == 200
+            except Exception:
+                return False
+
         try:
-            url = f"{self._base_url}/models" if self._base_url else ""
-            resp = httpx.get(url, timeout=2.0)
-            return resp.status_code == 200
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(_probe).result(timeout=3.0)
         except Exception:
             return False
 

@@ -62,7 +62,7 @@ class AgentServer:
                 c.print("[dim]Goodbye.[/dim]")
                 break
             if user_input == "/tools":
-                tools = self._agent._collect_tools()
+                tools = self._agent.get_tools()
                 if tools:
                     for t in tools:
                         c.print(f"  [cyan]{t.name}[/cyan] — {t.description}")

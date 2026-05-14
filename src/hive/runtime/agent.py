@@ -64,7 +64,8 @@ class Agent:
         self._total_cost = 0.0
         self._total_tokens = 0
 
-    def _collect_tools(self) -> list[Tool]:
+    def get_tools(self) -> list[Tool]:
+        """Return all tools available to this agent."""
         all_tools: list[Tool] = list(self._extra_tools)
         for tk in self._toolkits:
             all_tools.extend(tk.get_tools())
@@ -72,9 +73,11 @@ class Agent:
 
     async def run(self, task: Task) -> TaskResult:
         """Execute a task using the ReAct loop."""
+        self._total_cost = 0.0
+        self._total_tokens = 0
         t0 = time.time()
 
-        tools = self._collect_tools()
+        tools = self.get_tools()
         tool_map = {t.name: t for t in tools}
         tool_schemas = [t.to_schema() for t in tools] if tools else None
 
@@ -218,6 +221,8 @@ class Agent:
         output_type: type[Any],
     ) -> StructuredTaskResult[Any]:
         """One-shot structured output — returns a validated Pydantic model."""
+        self._total_cost = 0.0
+        self._total_tokens = 0
         from hive.runtime.structured import (
             StructuredGenerateResult,
             generate_structured_fallback,
