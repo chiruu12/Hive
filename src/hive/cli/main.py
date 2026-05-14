@@ -564,6 +564,44 @@ def biography(
     console.print(Markdown(bio))
 
 
+@app.command()
+def doctor() -> None:
+    """Check environment health and diagnose common issues."""
+    from hive.daemon.diagnostics import run_all_checks
+
+    hive_dir = Path.cwd() / ".hive"
+    checks = run_all_checks(hive_dir)
+
+    status_icons = {
+        "ok": "[green]OK[/green]",
+        "warn": "[yellow]WARN[/yellow]",
+        "fail": "[red]FAIL[/red]",
+    }
+
+    table = Table(title="Hive Doctor", show_lines=False)
+    table.add_column("Check", style="bold")
+    table.add_column("Status")
+    table.add_column("Details", style="dim")
+
+    for c in checks:
+        table.add_row(c.name, status_icons[c.status], c.message)
+
+    console.print(table)
+
+    fixes = [c for c in checks if c.fix and c.status in ("warn", "fail")]
+    if fixes:
+        console.print("\n[bold]Suggestions:[/bold]")
+        for c in fixes:
+            icon = "[red]![/red]" if c.status == "fail" else "[yellow]?[/yellow]"
+            console.print(f"  {icon} {c.name}: {c.fix}")
+
+    fails = sum(1 for c in checks if c.status == "fail")
+    if fails:
+        console.print(f"\n[red]{fails} critical issue(s) found.[/red]")
+    else:
+        console.print("\n[green]All checks passed or optional.[/green]")
+
+
 agent_app = typer.Typer(
     name="agent",
     help="Run individual agents interactively.",
