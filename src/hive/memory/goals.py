@@ -110,11 +110,7 @@ class GoalEngine:
         return sum(1 for g in goals if g.get("status") == "abandoned")
 
     async def _get_record(self, goal_id: str) -> dict[str, Any] | None:
-        goals = await self._store.list_agent_goals("", limit=1000)
-        for g in goals:
-            if g.get("goal_id") == goal_id:
-                return g
-        return None
+        return await self._store.get_goal_by_id(goal_id)
 
     @staticmethod
     def _row_to_record(row: dict[str, Any]) -> GoalRecord:

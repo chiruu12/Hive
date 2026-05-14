@@ -376,7 +376,7 @@ class HiveDaemon:
     def _process_payday(self, agents: list[AgentState]) -> None:
         for agent in agents:
             if self._ctx.world is None:
-                return
+                continue
             job = self._ctx.world.agent_job(agent.agent_id)
             if job:
                 self._ctx.world.work(agent.agent_id)

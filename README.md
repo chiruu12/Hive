@@ -73,6 +73,11 @@ src/hive/
 │   ├── store.py      # SQLite (agents, goals, nudges, sessions)
 │   ├── semantic.py   # TF-IDF semantic memory with JSONL storage
 │   └── events.py     # JSONL append-only event log
+├── world/            # Simulated economy and life events
+│   ├── state.py      # Jobs, skills, finances
+│   ├── event_engine.py # Life event rolls and branching outcomes
+│   └── stats.py      # Agent statistics tracking
+├── checkpoint.py     # Save/restore agent state snapshots
 ├── context.py        # ExecutionContext (injected state for tools)
 └── logging/          # Structured run logs
     ├── models.py     # RunLog, CycleLog, GoalLog, DecisionLog, ToolLog
