@@ -95,6 +95,14 @@ class HiveDaemon:
         self._profiles = profiles or []
         self._fresh = fresh
 
+        from hive.runtime.plugin_loader import PluginLoader
+
+        self._plugin_loader = PluginLoader([
+            hive_dir / "plugins",
+            hive_dir.parent / "plugins",
+        ])
+        self._plugin_toolkits: list[type[Any]] = []
+
     def _build_toolkits(self, agent_id: str) -> list[Any]:
         workspace = self._hive_dir / "workspaces" / agent_id
         workspace.mkdir(parents=True, exist_ok=True)
@@ -111,6 +119,13 @@ class HiveDaemon:
         ]
         if self._economy_enabled and self._ctx.world is not None:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
+        for tk_cls in self._plugin_toolkits:
+            try:
+                toolkits.append(tk_cls())
+            except Exception as e:
+                logger.warning(
+                    "Plugin toolkit %s failed: %s", tk_cls.__name__, e,
+                )
         return toolkits
 
     def _get_tool_names(self) -> list[str]:
@@ -161,8 +176,19 @@ class HiveDaemon:
         goals_completed = 0
         goals_abandoned = 0
 
+        new_plugins = self._plugin_loader.discover()
+        self._plugin_toolkits.extend(new_plugins)
+        if new_plugins:
+            logger.info("Loaded %d plugin toolkits", len(new_plugins))
+
         while self._running:
             self._cycle_count += 1
+
+            if self._cycle_count % 10 == 0:
+                new = self._plugin_loader.discover()
+                self._plugin_toolkits.extend(new)
+                if new:
+                    logger.info("Hot-loaded %d new plugin toolkits", len(new))
             agents = await self._store.list_agents()
             alive = [a for a in agents if a.is_alive()]
             crisis_count = sum(1 for a in alive if self._get_suffering(a.agent_id).in_crisis)

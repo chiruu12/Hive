@@ -5,6 +5,7 @@ from hive.runtime.bridge import DaemonAgentAdapter, GoalOutcome
 from hive.runtime.delegation import DelegationToolkit
 from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
 from hive.runtime.memory import ConversationMemory, PersistentMemory
+from hive.runtime.plugin_loader import PluginLoader
 from hive.runtime.providers import (
     AnthropicRuntimeProvider,
     OpenAIRuntimeProvider,
@@ -47,6 +48,7 @@ __all__ = [
     "MemoryToolkit",
     "Message",
     "OpenAIRuntimeProvider",
+    "PluginLoader",
     "PersistentMemory",
     "Role",
     "RuntimeProvider",
