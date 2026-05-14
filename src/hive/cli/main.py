@@ -37,6 +37,7 @@ def start(
     profiles: str = typer.Option(
         "coder", "--profiles", "-p", help="Comma-separated profiles to spawn"
     ),
+    fresh: bool = typer.Option(False, "--fresh", help="Ignore saved state, start clean"),
 ) -> None:
     """Start the hive daemon. Agents come alive autonomously."""
     from hive.agents.profile import AgentProfile
@@ -52,31 +53,39 @@ def start(
     store = HiveStore(hive_dir / "hive.db")
     asyncio.run(store.initialize())
 
+    existing = asyncio.run(store.list_agents())
+    resumable = [a for a in existing if a.status != AgentStatus.DEAD]
+    resuming = not fresh and len(resumable) > 0
+
     profiles_dir = Path.cwd() / "profiles"
     profile_names = [p.strip() for p in profiles.split(",")]
 
-    for name in profile_names:
-        try:
-            profile = AgentProfile.from_preset(name, profiles_dir)
-            agent_id = f"{profile.name}-{uuid4().hex[:8]}"
-            state = AgentState(
-                agent_id=agent_id,
-                name=profile.name,
-                role=profile.role,
-                model=profile.model,
-                status=AgentStatus.IDLE,
-                workspace=str(hive_dir / "workspaces" / agent_id),
-            )
-            asyncio.run(store.save_agent(state))
-            console.print(f"  [green]✓[/green] Spawned {name} ({agent_id[:20]})")
-        except FileNotFoundError:
-            console.print(f"  [red]✗[/red] Profile not found: {name}")
+    if resuming:
+        console.print(f"[cyan]Resuming {len(resumable)} agents from previous run.[/cyan]")
+    else:
+        for name in profile_names:
+            try:
+                profile = AgentProfile.from_preset(name, profiles_dir)
+                agent_id = f"{profile.name}-{uuid4().hex[:8]}"
+                state = AgentState(
+                    agent_id=agent_id,
+                    name=profile.name,
+                    role=profile.role,
+                    model=profile.model,
+                    status=AgentStatus.IDLE,
+                    workspace=str(hive_dir / "workspaces" / agent_id),
+                )
+                asyncio.run(store.save_agent(state))
+                console.print(f"  [green]✓[/green] Spawned {name} ({agent_id[:20]})")
+            except FileNotFoundError:
+                console.print(f"  [red]✗[/red] Profile not found: {name}")
 
     daemon = HiveDaemon(
         hive_dir,
         heartbeat=heartbeat,
         logs_dir=Path.cwd() / "logs",
         profiles=profile_names,
+        fresh=fresh,
     )
 
     console.print(

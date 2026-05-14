@@ -44,6 +44,7 @@ class HiveDaemon:
         heartbeat: int | None = None,
         logs_dir: Path | None = None,
         profiles: list[str] | None = None,
+        fresh: bool = False,
     ):
         self._hive_dir = hive_dir
         cfg = load_config(hive_dir)
@@ -91,6 +92,7 @@ class HiveDaemon:
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
+        self._fresh = fresh
 
     def _build_toolkits(self, agent_id: str) -> list[Any]:
         workspace = self._hive_dir / "workspaces" / agent_id
@@ -125,6 +127,9 @@ class HiveDaemon:
     async def start(self) -> None:
         """Initialize store, start heartbeat."""
         await self._store.initialize()
+
+        if not self._fresh:
+            await self._resume_agents()
 
         agents = await self._store.list_agents()
         agent_ids = [a.agent_id for a in agents if a.is_alive()]
@@ -488,7 +493,55 @@ class HiveDaemon:
         self._running = False
         self._pending_shutdown = True
 
+    async def _resume_agents(self) -> None:
+        """Resume agents from a previous run, restoring suffering from checkpoints."""
+        try:
+            existing = await self._store.list_agents()
+        except Exception:
+            return
+        resumable = [a for a in existing if a.status != AgentStatus.DEAD]
+        if not resumable:
+            return
+        logger.info("Resuming %d agents from previous run", len(resumable))
+        for agent in resumable:
+            await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
+            cps = self._checkpoint.list_checkpoints(agent.agent_id)
+            if cps:
+                snap = cps[0].suffering_snapshot
+                try:
+                    restored = SufferingState.model_validate(snap)
+                    self._suffering[agent.agent_id] = restored
+                    logger.info(
+                        "Restored checkpoint for %s (load=%.0f%%)",
+                        agent.agent_id, restored.cumulative_load * 100,
+                    )
+                except Exception:
+                    logger.warning("Could not restore suffering for %s", agent.agent_id)
+            active = await self._store.get_active_goal(agent.agent_id)
+            if active:
+                await self._store.abandon_goal(active["goal_id"])
+                logger.info("Abandoned stale goal %s for %s", active["goal_id"], agent.agent_id)
+
     async def _shutdown(self) -> None:
+        """Checkpoint all agents, then write life summaries if economy is on."""
+        try:
+            agents = await self._store.list_agents()
+            for agent in agents:
+                if not agent.is_alive():
+                    continue
+                suffering = self._get_suffering(agent.agent_id)
+                identity = self._identity.load(agent.agent_id)
+                goals = await self._store.list_agent_goals(agent.agent_id, limit=10)
+                self._checkpoint.save(
+                    agent.agent_id, "daemon_shutdown", suffering, identity, self._ctx, goals
+                )
+                active = await self._store.get_active_goal(agent.agent_id)
+                if active:
+                    await self._store.abandon_goal(active["goal_id"])
+                logger.info("Checkpointed %s on shutdown", agent.agent_id)
+        except Exception as e:
+            logger.warning("Checkpoint on shutdown failed: %s", e)
+
         if not self._economy_enabled or not self._life_writer:
             return
 
