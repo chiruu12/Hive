@@ -112,6 +112,12 @@ class ExistenceLoop:
         if not goal_text:
             return None
 
+        recent_goals = await self._store.list_agent_goals(self._agent_id, limit=5)
+        rejection = self._validate_goal(goal_text, recent_goals)
+        if rejection:
+            logger.info("Goal rejected for %s: %s", self._agent_id, rejection)
+            return None
+
         goal_id = f"goal-{uuid4().hex[:8]}"
         await self._store.save_goal(goal_id, self._agent_id, goal_text)
 
@@ -135,6 +141,32 @@ class ExistenceLoop:
         )
 
         return goal_text
+
+    @staticmethod
+    def _validate_goal(
+        goal_text: str, recent_goals: list[dict[str, Any]]
+    ) -> str | None:
+        """Return rejection reason if goal is invalid, None if acceptable."""
+        if len(goal_text) < 10:
+            return "too short (< 10 chars)"
+        if len(goal_text) > 500:
+            return "too long (> 500 chars)"
+
+        goal_lower = goal_text.lower()
+        for g in recent_goals:
+            prev = g.get("objective", "").lower()
+            if not prev:
+                continue
+            if g.get("status") in ("abandoned", "active") and prev == goal_lower:
+                return f"duplicate of recent goal: {prev[:60]}"
+            words_new = set(goal_lower.split())
+            words_old = set(prev.split())
+            if words_old and words_new:
+                overlap = len(words_new & words_old) / max(len(words_new), len(words_old))
+                if overlap > 0.8 and g.get("status") == "abandoned":
+                    return f"too similar to recently abandoned goal ({overlap:.0%} overlap)"
+
+        return None
 
     def _build_prompt(
         self,

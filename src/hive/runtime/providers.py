@@ -2,14 +2,52 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from hive.runtime.types import GenerateResult, Message, Role, ToolCall
 
 logger = logging.getLogger(__name__)
+
+R = TypeVar("R")
+
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
+MAX_RETRIES = 3
+BASE_DELAY = 1.0
+
+
+async def _retry_with_backoff(
+    fn: Any,
+    *args: Any,
+    max_retries: int = MAX_RETRIES,
+    base_delay: float = BASE_DELAY,
+    **kwargs: Any,
+) -> Any:
+    """Call an async function with exponential backoff on transient errors."""
+    last_error: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as e:
+            status = getattr(e, "status_code", getattr(e, "status", 0))
+            is_timeout = "timeout" in type(e).__name__.lower() or isinstance(e, TimeoutError)
+            is_retryable = status in RETRYABLE_STATUS_CODES or is_timeout
+
+            if not is_retryable or attempt >= max_retries:
+                raise
+
+            delay = base_delay * (2**attempt)
+            logger.warning(
+                "Retryable error (attempt %d/%d, retry in %.1fs): %s",
+                attempt + 1, max_retries + 1, delay, e,
+            )
+            last_error = e
+            await asyncio.sleep(delay)
+
+    raise last_error or RuntimeError("Retry exhausted")
 
 
 @runtime_checkable
@@ -93,7 +131,7 @@ class AnthropicRuntimeProvider:
                 for t in tools
             ]
 
-        response = await self._client.messages.create(**kwargs)
+        response = await _retry_with_backoff(self._client.messages.create, **kwargs)
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = response.usage.input_tokens
@@ -154,13 +192,14 @@ class AnthropicRuntimeProvider:
                 )
 
             elif msg.role == Role.TOOL:
-                pending_tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": msg.tool_call_id,
-                        "content": msg.content,
-                    }
-                )
+                tool_result: dict[str, Any] = {
+                    "type": "tool_result",
+                    "tool_use_id": msg.tool_call_id,
+                    "content": msg.content,
+                }
+                if msg.is_error:
+                    tool_result["is_error"] = True
+                pending_tool_results.append(tool_result)
 
         if pending_tool_results:
             api_messages.append({"role": "user", "content": pending_tool_results})
@@ -219,7 +258,7 @@ class AnthropicRuntimeProvider:
         if system:
             kwargs["system"] = system
 
-        response = await self._client.messages.create(**kwargs)
+        response = await _retry_with_backoff(self._client.messages.create, **kwargs)
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = response.usage.input_tokens
@@ -320,7 +359,9 @@ class OpenAIRuntimeProvider:
         if tools:
             kwargs["tools"] = self._tools_to_openai(tools)
 
-        response = await self._client.chat.completions.create(**kwargs)
+        response = await _retry_with_backoff(
+            self._client.chat.completions.create, **kwargs
+        )
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = 0
@@ -442,7 +483,9 @@ class OpenAIRuntimeProvider:
             "response_format": pydantic_to_response_format(output_type),
         }
 
-        response = await self._client.chat.completions.create(**kwargs)
+        response = await _retry_with_backoff(
+            self._client.chat.completions.create, **kwargs
+        )
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = 0

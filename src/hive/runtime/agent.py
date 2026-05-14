@@ -46,6 +46,8 @@ class Agent:
         temperature: float = 0.0,
         log_writer: LogWriter | None = None,
         agent_id: str = "",
+        max_cost_usd: float = 0.0,
+        max_tokens: int = 0,
     ):
         self.name = name
         self._model = model
@@ -57,6 +59,10 @@ class Agent:
         self._temperature = temperature
         self._log_writer = log_writer
         self._agent_id = agent_id or name
+        self._max_cost_usd = max_cost_usd
+        self._max_tokens = max_tokens
+        self._total_cost = 0.0
+        self._total_tokens = 0
 
     def _collect_tools(self) -> list[Tool]:
         all_tools: list[Tool] = list(self._extra_tools)
@@ -117,6 +123,19 @@ class Agent:
                 )
                 response = result.message
                 self._log_decision(steps, result)
+                self._total_tokens += result.input_tokens + result.output_tokens
+                self._total_cost += result.cost_usd or 0.0
+                budget_msg = self._check_budget()
+                if budget_msg:
+                    return TaskResult(
+                        task_id=task.id,
+                        status=TaskStatus.FAILED,
+                        output=response.content,
+                        error=budget_msg,
+                        steps_taken=steps,
+                        tool_calls_made=tool_calls_total,
+                        duration_seconds=time.time() - t0,
+                    )
             except Exception as e:
                 logger.error("Model generation failed: %s", e)
                 self._log_decision_failure(steps, e)
@@ -249,6 +268,18 @@ class Agent:
                 duration_seconds=time.time() - t0,
                 parsed=output_type.model_construct(),
             )
+
+    def _check_budget(self) -> str | None:
+        """Return an error message if budget exceeded, None otherwise."""
+        if self._max_cost_usd and self._total_cost >= self._max_cost_usd:
+            return (
+                f"Cost budget exceeded: ${self._total_cost:.4f} >= ${self._max_cost_usd:.4f}"
+            )
+        if self._max_tokens and self._total_tokens >= self._max_tokens:
+            return (
+                f"Token budget exceeded: {self._total_tokens:,} >= {self._max_tokens:,}"
+            )
+        return None
 
     def _log_decision(self, step: int, result: GenerateResult) -> None:
         if not self._log_writer:

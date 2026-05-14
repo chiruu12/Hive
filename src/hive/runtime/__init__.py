@@ -2,6 +2,7 @@
 
 from hive.runtime.agent import Agent
 from hive.runtime.bridge import DaemonAgentAdapter, GoalOutcome
+from hive.runtime.delegation import DelegationToolkit
 from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.providers import (
@@ -32,6 +33,7 @@ __all__ = [
     "CommsToolkit",
     "ConversationMemory",
     "DaemonAgentAdapter",
+    "DelegationToolkit",
     "FileToolkit",
     "GenerateResult",
     "GitToolkit",
