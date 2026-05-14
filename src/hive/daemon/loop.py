@@ -31,6 +31,7 @@ from hive.runtime import (
     create_runtime_provider,
 )
 from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
+from hive.runtime.toolkits import DaemonDelegationToolkit
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,9 @@ class HiveDaemon:
             GitToolkit(workspace),
             MemoryToolkit(self._ctx.memory_dir, agent_id),
             CommsToolkit(self._ctx.comms_dir, agent_id),
+            DaemonDelegationToolkit(
+                self._delegation, agent_id, self._store,
+            ),
         ]
         if self._economy_enabled and self._ctx.world is not None:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
