@@ -555,5 +555,38 @@ def biography(
     console.print(Markdown(bio))
 
 
+agent_app = typer.Typer(
+    name="agent",
+    help="Run individual agents interactively.",
+    no_args_is_help=True,
+)
+app.add_typer(agent_app, name="agent")
+
+
+@agent_app.command("run")
+def agent_run(
+    config: Path = typer.Argument(help="Path to agent YAML config file"),
+) -> None:
+    """Run an agent from a YAML config as an interactive assistant."""
+    from hive.serve import serve_from_yaml
+
+    if not config.exists():
+        console.print(f"[red]Config file not found: {config}[/red]")
+        raise typer.Exit(1)
+    serve_from_yaml(config)
+
+
+@agent_app.command("chat")
+def agent_chat(
+    model: str = typer.Option("claude-haiku-4-5", "--model", "-m", help="Model to use"),
+    no_tools: bool = typer.Option(False, "--no-tools", help="Disable file/shell/git tools"),
+    workspace: str = typer.Option(".", "--workspace", "-w", help="Working directory for tools"),
+) -> None:
+    """Quick-start an interactive agent with tools."""
+    from hive.serve import serve_quick
+
+    serve_quick(model=model, tools=not no_tools, workspace=workspace)
+
+
 if __name__ == "__main__":
     app()

@@ -1,0 +1,26 @@
+# CLI Agent Config — run with: hive agent run examples/06_cli_agent.yaml
+#
+# This creates an interactive coding assistant with file, shell,
+# and git access in the current directory.
+
+name: code-assistant
+model: claude-haiku-4-5
+
+system_prompt: |
+  You are a senior developer helping the user with coding tasks.
+  You have access to the filesystem, shell, and git.
+  Be concise. Show code, not explanations.
+  When modifying files, use file_edit for surgical changes.
+  Commit after each logical unit of work.
+
+tools:
+  - file_read
+  - file_write
+  - file_edit
+  - list_dir
+  - shell_exec
+  - git
+
+workspace: "."
+max_steps: 20
+max_cost_usd: 0.50
