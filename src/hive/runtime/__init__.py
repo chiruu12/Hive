@@ -12,7 +12,12 @@ from hive.runtime.providers import (
     create_runtime_provider,
 )
 from hive.runtime.structured import StructuredGenerateResult
-from hive.runtime.toolkits import CommsToolkit, MemoryToolkit, WorldToolkit
+from hive.runtime.toolkits import (
+    CommsToolkit,
+    DaemonDelegationToolkit,
+    MemoryToolkit,
+    WorldToolkit,
+)
 from hive.runtime.tools import Tool, Toolkit, tool
 from hive.runtime.types import (
     GenerateResult,
@@ -33,6 +38,7 @@ __all__ = [
     "CommsToolkit",
     "ConversationMemory",
     "DaemonAgentAdapter",
+    "DaemonDelegationToolkit",
     "DelegationToolkit",
     "FileToolkit",
     "GenerateResult",
