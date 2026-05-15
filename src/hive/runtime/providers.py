@@ -499,9 +499,21 @@ class OpenAIRuntimeProvider:
             "response_format": pydantic_to_response_format(output_type),
         }
 
-        response = await _retry_with_backoff(
-            self._client.chat.completions.create, **kwargs
-        )
+        try:
+            response = await _retry_with_backoff(
+                self._client.chat.completions.create, **kwargs
+            )
+        except Exception as e:
+            if "response format" in str(e).lower() or "json_schema" in str(e).lower():
+                logger.info(
+                    "Model %s doesn't support json_schema, using fallback",
+                    self._model,
+                )
+                return await generate_structured_fallback(
+                    self, messages, output_type, temperature, max_tokens
+                )
+            raise
+
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = 0
