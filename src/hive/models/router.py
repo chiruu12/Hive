@@ -77,6 +77,12 @@ def detect_models() -> dict[str, list[ModelInfo]]:
             ModelInfo(m.id, "fireworks", has_fireworks) for m in reg.fireworks
         ]
 
+    has_groq = bool(get_env("GROQ_API_KEY"))
+    if reg.groq:
+        providers["Groq"] = [
+            ModelInfo(m.id, "groq", has_groq) for m in reg.groq
+        ]
+
     has_openai = bool(get_env("OPENAI_API_KEY"))
     if reg.openai:
         providers["OpenAI"] = [ModelInfo(m.id, "openai", has_openai) for m in reg.openai]

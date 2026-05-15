@@ -45,6 +45,24 @@ fireworks:
     cost_output_per_1k: 0.00060
     tier: planning
 
+# Groq models (fast inference, via API key)
+groq:
+  - id: groq:llama-3.3-70b-versatile
+    display: Llama 3.3 70B (Groq)
+    cost_input_per_1k: 0.00059
+    cost_output_per_1k: 0.00079
+    tier: planning
+  - id: groq:gemma2-9b-it
+    display: Gemma2 9B IT (Groq)
+    cost_input_per_1k: 0.00020
+    cost_output_per_1k: 0.00020
+    tier: routine
+  - id: groq:llama-3.1-8b-instant
+    display: Llama 3.1 8B (Groq)
+    cost_input_per_1k: 0.00005
+    cost_output_per_1k: 0.00008
+    tier: routine
+
 # OpenAI models (via API key)
 openai:
   - id: gpt-4o-mini

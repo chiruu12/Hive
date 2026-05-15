@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -61,6 +62,7 @@ class Agent:
         self._agent_id = agent_id or name
         self._max_cost_usd = max_cost_usd
         self._max_tokens = max_tokens
+        self._gen_max_tokens = max_tokens or 4096
         self._total_cost = 0.0
         self._total_tokens = 0
 
@@ -123,6 +125,7 @@ class Agent:
                     messages=conversation.get_messages(),
                     tools=tool_schemas,
                     temperature=self._temperature,
+                    max_tokens=self._gen_max_tokens,
                 )
                 response = result.message
                 self._log_decision(steps, result)
@@ -247,11 +250,13 @@ class Agent:
                         messages,
                         output_type=output_type,
                         temperature=self._temperature,
+                        max_tokens=self._gen_max_tokens,
                     )
                 )
             else:
                 structured = await generate_structured_fallback(
-                    self._model, messages, output_type, self._temperature
+                    self._model, messages, output_type,
+                    self._temperature, self._gen_max_tokens,
                 )
 
             return StructuredTaskResult(
@@ -272,6 +277,136 @@ class Agent:
                 steps_taken=1,
                 duration_seconds=time.time() - t0,
                 parsed=output_type.model_construct(),
+            )
+
+    async def run_once(
+        self,
+        message: str,
+        context: str | None = None,
+    ) -> str:
+        """Run a single request-response cycle. No persistence.
+
+        Args:
+            message: The user message to process.
+            context: Optional extra context injected as a system message.
+
+        Returns:
+            The agent's final text response.
+        """
+        tools = self.get_tools()
+        tool_map = {t.name: t for t in tools}
+        tool_schemas = [t.to_schema() for t in tools] if tools else None
+
+        messages: list[Message] = []
+        if self._system_prompt:
+            messages.append(Message.system(self._system_prompt))
+        if context:
+            messages.append(Message.system(context))
+        messages.append(Message.user(message))
+
+        result = await self._model.generate_with_metadata(
+            messages, tool_schemas, self._temperature, self._gen_max_tokens,
+        )
+        response = result.message
+
+        if not response.tool_calls:
+            return response.content
+
+        messages.append(response)
+        for tc in response.tool_calls:
+            tool = tool_map.get(tc.name)
+            if tool:
+                try:
+                    output = await tool.call(**tc.arguments)
+                except Exception as e:
+                    output = f"Error: {e}"
+            else:
+                output = f"Unknown tool: {tc.name}"
+            messages.append(Message.tool_result(tc.id, output))
+
+        final = await self._model.generate(
+            messages, tool_schemas, self._temperature, self._gen_max_tokens,
+        )
+        return final.content
+
+    def run_once_sync(
+        self, message: str, context: str | None = None,
+    ) -> str:
+        """Synchronous version of run_once."""
+        try:
+            asyncio.get_running_loop()
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(
+                    asyncio.run, self.run_once(message, context),
+                ).result()
+        except RuntimeError:
+            return asyncio.run(self.run_once(message, context))
+
+    async def run_once_structured(
+        self,
+        message: str,
+        output_type: type[Any],
+        context: str | None = None,
+    ) -> Any:
+        """One-shot structured output. Returns a validated Pydantic model.
+
+        Args:
+            message: The user message to process.
+            output_type: Pydantic model class for the response.
+            context: Optional extra context injected as a system message.
+
+        Returns:
+            An instance of output_type validated from the LLM response.
+        """
+        from hive.runtime.structured import (
+            StructuredGenerateResult,
+            generate_structured_fallback,
+        )
+
+        messages: list[Message] = []
+        if self._system_prompt:
+            messages.append(Message.system(self._system_prompt))
+        if context:
+            messages.append(Message.system(context))
+        messages.append(Message.user(message))
+
+        if hasattr(self._model, "generate_structured"):
+            result: StructuredGenerateResult[Any] = (
+                await self._model.generate_structured(
+                    messages,
+                    output_type=output_type,
+                    temperature=self._temperature,
+                    max_tokens=self._gen_max_tokens,
+                )
+            )
+        else:
+            result = await generate_structured_fallback(
+                self._model, messages, output_type,
+                self._temperature, self._gen_max_tokens,
+            )
+        return result.parsed
+
+    def run_once_structured_sync(
+        self,
+        message: str,
+        output_type: type[Any],
+        context: str | None = None,
+    ) -> Any:
+        """Synchronous version of run_once_structured."""
+        try:
+            asyncio.get_running_loop()
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(
+                    asyncio.run,
+                    self.run_once_structured(message, output_type, context),
+                ).result()
+        except RuntimeError:
+            return asyncio.run(
+                self.run_once_structured(message, output_type, context),
             )
 
     def _check_budget(self) -> str | None:

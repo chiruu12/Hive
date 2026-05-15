@@ -35,6 +35,7 @@ class ModelRegistry(BaseModel):
     routing: RoutingConfig = RoutingConfig()
     anthropic: list[ModelEntry] = []
     fireworks: list[ModelEntry] = []
+    groq: list[ModelEntry] = []
     openai: list[ModelEntry] = []
     local: list[ModelEntry] = []
 
@@ -44,6 +45,8 @@ class ModelRegistry(BaseModel):
             result.append(("anthropic", m))
         for m in self.fireworks:
             result.append(("fireworks", m))
+        for m in self.groq:
+            result.append(("groq", m))
         for m in self.openai:
             result.append(("openai", m))
         for m in self.local:
