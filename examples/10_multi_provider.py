@@ -1,9 +1,9 @@
 """Multi-Provider — use different models for different tasks.
 
 Shows how to:
-1. Create providers for different backends
-2. Use cheap models for simple tasks, powerful models for complex ones
-3. Compare model outputs on the same prompt
+1. Use tier presets (.lite(), .standard(), .pro()) for each provider
+2. Compare model outputs across providers
+3. Use cheap models for simple tasks, powerful models for complex ones
 
 Run: uv run python examples/10_multi_provider.py
 
@@ -12,14 +12,19 @@ Requires at least one API key set. Skips unavailable providers.
 
 import asyncio
 
-from hive import Agent, create_runtime_provider
-from hive.runtime.providers import RuntimeProvider
+from hive import Agent
+from hive.models.anthropic import Anthropic
+from hive.models.base import BaseProvider
+from hive.models.fireworks import Fireworks
+from hive.models.groq import Groq
+from hive.models.openai import OpenAI
 
-MODELS = [
-    ("claude-haiku-4-5", "Anthropic Claude Haiku"),
-    ("gpt-5.4-nano", "OpenAI GPT-5.4 Nano"),
-    ("groq:llama-3.3-70b-versatile", "Groq Llama 3.3 70B"),
-    ("fireworks:accounts/fireworks/models/deepseek-v4-pro", "Fireworks DeepSeek V4"),
+# Each provider has tier presets: .lite(), .standard(), .pro()
+PROVIDERS: list[tuple[str, callable]] = [
+    ("Anthropic (lite)", Anthropic.lite),
+    ("OpenAI (lite)", OpenAI.lite),
+    ("Groq (lite)", Groq.lite),
+    ("Fireworks (lite)", Fireworks.lite),
 ]
 
 
@@ -28,9 +33,9 @@ async def compare_models(prompt: str) -> None:
     print(f"Prompt: {prompt}\n")
     print("-" * 60)
 
-    for model_name, label in MODELS:
+    for label, factory in PROVIDERS:
         try:
-            provider: RuntimeProvider = create_runtime_provider(model_name)
+            provider: BaseProvider = factory()
         except Exception:
             print(f"  [{label}] — skipped (provider unavailable)")
             continue
@@ -56,22 +61,23 @@ async def compare_models(prompt: str) -> None:
 
 
 async def tiered_agents() -> None:
-    """Use different models for different cost/capability tiers."""
+    """Use tier presets for different cost/capability tiers."""
     print("=== Tiered Agent Strategy ===\n")
 
     try:
-        cheap = create_runtime_provider("claude-haiku-4-5")
+        lite = Anthropic.lite()
     except Exception:
         print("Need at least ANTHROPIC_API_KEY for this demo.")
         return
 
-    if not cheap.available:
+    if not lite.available:
         print("Need at least ANTHROPIC_API_KEY for this demo.")
         return
 
+    # Use .lite() for fast/cheap triage
     triage_agent = Agent(
         name="triage",
-        model=cheap,
+        model=lite,
         system_prompt=(
             "Classify the user's request as 'simple' or 'complex'. Reply with just the word."
         ),
@@ -79,9 +85,12 @@ async def tiered_agents() -> None:
 
     simple_agent = Agent(
         name="simple-handler",
-        model=cheap,
+        model=lite,
         system_prompt="You are a fast assistant for simple questions. Be brief.",
     )
+
+    # For complex tasks, you would use Anthropic.standard() or Anthropic.pro()
+    # complex_agent = Agent(name="complex-handler", model=Anthropic.standard(), ...)
 
     questions = [
         "What is 2 + 2?",
@@ -94,11 +103,11 @@ async def tiered_agents() -> None:
 
         if is_complex:
             print(f"Q: {q}")
-            print("  Routed to: complex handler (would use a stronger model)")
+            print("  Routed to: complex handler (would use Anthropic.standard())")
             result = await simple_agent.run_once(q)
         else:
             print(f"Q: {q}")
-            print("  Routed to: simple handler (cheap model)")
+            print("  Routed to: simple handler (Anthropic.lite())")
             result = await simple_agent.run_once(q)
 
         print(f"  Answer: {result.strip()[:200]}\n")

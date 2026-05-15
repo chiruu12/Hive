@@ -8,13 +8,10 @@
 Build AI agents in Python with tools, structured output, multi-model support, and MCP integration.
 
 ```python
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
-agent = Agent(
-    name="assistant",
-    model=create_runtime_provider("claude-haiku-4-5"),
-    system_prompt="You are a helpful assistant.",
-)
+agent = Agent(name="assistant", model=Anthropic.lite())
 result = agent.run_once_sync("What is the capital of France?")
 print(result)
 ```
@@ -30,10 +27,10 @@ uv add hive-agent
 Set an API key for at least one provider:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...     # Claude (Haiku, Sonnet)
-export OPENAI_API_KEY=sk-...            # GPT-4o, GPT-4o-mini
-export FIREWORKS_API_KEY=...            # DeepSeek, Kimi, MiniMax, etc.
-export GROQ_API_KEY=gsk_...             # Llama, Gemma
+export ANTHROPIC_API_KEY=sk-ant-...     # Anthropic (Haiku, Sonnet)
+export OPENAI_API_KEY=sk-...            # OpenAI (GPT-5.4 Nano/Mini)
+export FIREWORKS_API_KEY=...            # Fireworks (DeepSeek, Kimi, etc.)
+export GROQ_API_KEY=gsk_...             # Groq (Llama, Gemma)
 # Or use local models (Ollama, LM Studio) — no key needed
 ```
 
@@ -44,7 +41,8 @@ export GROQ_API_KEY=gsk_...             # Llama, Gemma
 Decorate any function with `@tool` — JSON Schema is auto-extracted from type hints and docstrings.
 
 ```python
-from hive import Agent, tool, collect_tools, create_runtime_provider
+from hive import Agent, tool, collect_tools
+from hive.models.anthropic import Anthropic
 
 @tool()
 def search(query: str) -> str:
@@ -62,7 +60,7 @@ def calculate(expression: str) -> str:
 
 agent = Agent(
     name="researcher",
-    model=create_runtime_provider("claude-haiku-4-5"),
+    model=Anthropic.lite(),
     tools=collect_tools(search, calculate),
 )
 ```
@@ -89,39 +87,54 @@ Get validated Pydantic models directly from agents:
 
 ```python
 from pydantic import BaseModel
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
 class MovieReview(BaseModel):
     title: str
     rating: float
     summary: str
 
-agent = Agent(name="critic", model=create_runtime_provider("claude-haiku-4-5"))
+agent = Agent(name="critic", model=Anthropic.lite())
 review = agent.run_once_structured_sync("Review The Matrix", output_type=MovieReview)
 print(review.title, review.rating)  # The Matrix 9.0
 ```
 
 ### Multi-Model Support
 
-Switch between 6 providers with one line:
+Switch between 6 providers with one line. Each provider has tier presets -- `.lite()`, `.standard()`, `.pro()`:
 
-| Provider | Prefix | Env Var |
-|----------|--------|---------|
-| Anthropic | `claude-haiku-4-5`, `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
-| OpenAI | `gpt-5.4-nano`, `gpt-5.4-mini` | `OPENAI_API_KEY` |
-| Fireworks | `fireworks:deepseek-v4-pro` | `FIREWORKS_API_KEY` |
-| Groq | `groq:llama-3.3-70b-versatile` | `GROQ_API_KEY` |
-| Ollama | `ollama:llama3.2` | none (localhost) |
-| LM Studio | `lmstudio:loaded-model` | none (localhost) |
+| Provider | Class | Env Var |
+|----------|-------|---------|
+| Anthropic | `Anthropic` | `ANTHROPIC_API_KEY` |
+| OpenAI | `OpenAI` | `OPENAI_API_KEY` |
+| Fireworks | `Fireworks` | `FIREWORKS_API_KEY` |
+| Groq | `Groq` | `GROQ_API_KEY` |
+| Ollama | `Ollama` | none (localhost) |
+| LM Studio | `LMStudio` | none (localhost) |
+
+```python
+from hive.models.anthropic import Anthropic
+from hive.models.openai import OpenAI
+from hive.models.groq import Groq
+from hive.models.fireworks import Fireworks
+from hive.models.ollama import Ollama
+
+provider = Anthropic.lite()        # Claude Haiku
+provider = Anthropic.standard()    # Claude Sonnet
+provider = OpenAI.lite()           # GPT-5.4 Nano
+provider = Groq.lite()             # Llama on Groq
+provider = Ollama.lite()           # Local model
+```
+
+The `create_runtime_provider()` factory still works for string-based routing:
 
 ```python
 from hive import create_runtime_provider
 
 provider = create_runtime_provider("claude-haiku-4-5")      # Anthropic
 provider = create_runtime_provider("gpt-5.4-nano")           # OpenAI
-provider = create_runtime_provider("fireworks:kimi-k2p6")   # Fireworks
 provider = create_runtime_provider("groq:llama-3.3-70b-versatile")  # Groq
-provider = create_runtime_provider("ollama:llama3.2")       # Local
 ```
 
 ### MCP Integration
@@ -129,12 +142,13 @@ provider = create_runtime_provider("ollama:llama3.2")       # Local
 Connect to any MCP server and use its tools:
 
 ```python
-from hive import Agent, MCPToolkit, create_runtime_provider
+from hive import Agent, MCPToolkit
+from hive.models.anthropic import Anthropic
 
 async with await MCPToolkit.from_stdio("npx", ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]) as mcp:
     agent = Agent(
         name="file-agent",
-        model=create_runtime_provider("claude-haiku-4-5"),
+        model=Anthropic.lite(),
         toolkits=[mcp],
     )
     result = await agent.run_once("List files in /tmp")
@@ -145,10 +159,11 @@ async with await MCPToolkit.from_stdio("npx", ["-y", "@modelcontextprotocol/serv
 Build teams where a lead agent delegates to specialists:
 
 ```python
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 from hive.runtime import DelegationToolkit, FileToolkit
 
-provider = create_runtime_provider("claude-haiku-4-5")
+provider = Anthropic.lite()
 
 coder = Agent(name="coder", model=provider, toolkits=[FileToolkit(workspace)])
 reviewer = Agent(name="reviewer", model=provider, toolkits=[FileToolkit(workspace)])
@@ -231,13 +246,23 @@ src/hive/
 ├── runtime/          # Agent framework (core SDK)
 │   ├── agent.py      # Agent with ReAct loop
 │   ├── tools.py      # @tool decorator, Tool, Toolkit
-│   ├── providers.py  # Multi-model provider implementations
 │   ├── types.py      # Message, Task, TaskResult, ToolCall
 │   ├── structured.py # Structured output with Pydantic
 │   ├── dev_tools.py  # FileToolkit, ShellToolkit, GitToolkit
 │   ├── delegation.py # DelegationToolkit
 │   ├── memory.py     # Conversation and persistent memory
 │   └── workflow.py   # Multi-step pipelines
+├── models/           # Model providers and registry
+│   ├── base.py       # BaseProvider base class
+│   ├── anthropic.py  # Anthropic provider
+│   ├── openai.py     # OpenAI provider
+│   ├── groq.py       # Groq provider
+│   ├── fireworks.py  # Fireworks provider
+│   ├── ollama.py     # Ollama provider (local)
+│   ├── lmstudio.py   # LM Studio provider (local)
+│   ├── factory.py    # create_runtime_provider() factory
+│   ├── registry.py   # YAML catalog with pricing
+│   └── router.py     # Provider routing
 ├── mcp/              # MCP server and client
 │   ├── server.py     # Expose Hive as MCP tools
 │   └── client.py     # MCPToolkit — consume MCP servers
@@ -259,9 +284,6 @@ src/hive/
 │   ├── state.py      # Jobs, skills, finances
 │   ├── event_engine.py # Life events with branching outcomes
 │   └── stats.py      # Agent statistics
-├── models/           # Model registry
-│   ├── registry.py   # YAML catalog with pricing
-│   └── router.py     # Provider factory
 ├── logging/          # Structured run logs
 │   ├── writer.py     # JSONL log writer
 │   └── reader.py     # Log aggregation and analysis

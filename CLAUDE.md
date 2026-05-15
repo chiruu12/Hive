@@ -11,9 +11,9 @@ src/hive/
 ├── cli/              # Typer CLI (commands map 1:1 to user actions)
 ├── daemon/           # Background service (lifecycle, heartbeat loop, diagnostics)
 ├── agents/           # Agent profiles, state, suffering, identity, delegation
-├── runtime/          # Standalone agent framework (ReAct loop, tools, providers)
+├── runtime/          # Standalone agent framework (ReAct loop, tools)
 ├── memory/           # Persistence (SQLite store, JSONL events, semantic memory)
-├── models/           # Model registry (YAML catalog, router, cost estimation)
+├── models/           # Model providers (Anthropic, OpenAI, Groq, etc.), registry, factory
 ├── interactions/     # Multi-agent interaction patterns (round-table, pairs, freeform)
 ├── world/            # Simulated economy (jobs, skills, finances, life events)
 ├── logging/          # Structured run logs (decisions, tools, goals, suffering)
@@ -111,9 +111,10 @@ uv run pytest && uv run ruff check src/ && uv run mypy src/
 
 ## Adding a New Model Provider
 
-1. Implement `RuntimeProvider` protocol in `src/hive/runtime/providers.py`
-2. Add routing logic in `create_runtime_provider()` factory
-3. Add model entries to `models.yaml`
+1. Subclass `BaseProvider` from `src/hive/models/base.py` in a new file under `src/hive/models/`
+2. Implement `.lite()`, `.standard()`, `.pro()` tier classmethods
+3. Add routing logic in `src/hive/models/factory.py` (`create_runtime_provider()`)
+4. Add model entries to `models.yaml`
 
 ## Adding a New Agent Preset
 

@@ -66,11 +66,11 @@ Create a `.env` file with your API key, then run your first agent in under 10 li
 
 ```python
 import asyncio
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 
 async def main():
-    provider = create_runtime_provider("claude-haiku-4-5")
-    agent = Agent(name="assistant", model=provider)
+    agent = Agent(name="assistant", model=Anthropic.lite())
     result = await agent.run(Task(instruction="What is the capital of France?"))
     print(result.output)
 
@@ -80,10 +80,10 @@ asyncio.run(main())
 Or use the synchronous one-shot API for scripts where you do not need the full ReAct loop:
 
 ```python
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
-provider = create_runtime_provider("claude-haiku-4-5")
-agent = Agent(name="assistant", model=provider)
+agent = Agent(name="assistant", model=Anthropic.lite())
 answer = agent.run_once_sync("What is the capital of France?")
 print(answer)
 ```
@@ -111,14 +111,13 @@ The SDK is organized around a few key abstractions:
 ### Creating an Agent
 
 ```python
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 from hive.runtime import FileToolkit, ShellToolkit
-
-provider = create_runtime_provider("claude-haiku-4-5")
 
 agent = Agent(
     name="coder",
-    model=provider,
+    model=Anthropic.lite(),
     system_prompt="You are an expert Python developer.",
     toolkits=[
         FileToolkit(workspace=Path("./project")),
@@ -153,14 +152,14 @@ The `run()` method executes a multi-step ReAct loop. The agent reasons, calls to
 ```python
 import asyncio
 from pathlib import Path
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 from hive.runtime import FileToolkit
 
 async def main():
-    provider = create_runtime_provider("claude-haiku-4-5")
     agent = Agent(
         name="analyst",
-        model=provider,
+        model=Anthropic.lite(),
         system_prompt="You are a code analyst.",
         toolkits=[FileToolkit(workspace=Path("./repo"))],
     )
@@ -208,11 +207,11 @@ For simple tasks that do not need multi-step reasoning, use `run_once()`. It sen
 
 ```python
 import asyncio
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
 async def main():
-    provider = create_runtime_provider("claude-haiku-4-5")
-    agent = Agent(name="helper", model=provider)
+    agent = Agent(name="helper", model=Anthropic.lite())
 
     # Async version
     answer = await agent.run_once("Explain the GIL in Python in two sentences.")
@@ -231,10 +230,10 @@ asyncio.run(main())
 **Synchronous wrappers** work anywhere, including inside scripts that do not have an async event loop:
 
 ```python
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
-provider = create_runtime_provider("claude-haiku-4-5")
-agent = Agent(name="helper", model=provider)
+agent = Agent(name="helper", model=Anthropic.lite())
 
 # No asyncio.run needed
 answer = agent.run_once_sync("Explain the GIL in Python in two sentences.")
@@ -259,7 +258,8 @@ Return validated Pydantic models instead of raw text. The SDK uses native provid
 ```python
 import asyncio
 from pydantic import BaseModel
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
 class Sentiment(BaseModel):
     label: str
@@ -267,8 +267,7 @@ class Sentiment(BaseModel):
     reasoning: str
 
 async def main():
-    provider = create_runtime_provider("claude-haiku-4-5")
-    agent = Agent(name="classifier", model=provider)
+    agent = Agent(name="classifier", model=Anthropic.lite())
 
     result = await agent.run_once_structured(
         "Analyze sentiment: 'This product is amazing!'",
@@ -286,7 +285,8 @@ asyncio.run(main())
 ```python
 import asyncio
 from pydantic import BaseModel
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 
 class CodeReview(BaseModel):
     summary: str
@@ -294,8 +294,7 @@ class CodeReview(BaseModel):
     score: int
 
 async def main():
-    provider = create_runtime_provider("claude-sonnet-4-6")
-    agent = Agent(name="reviewer", model=provider)
+    agent = Agent(name="reviewer", model=Anthropic.standard())
 
     task = Task(instruction="Review this code for quality issues: def f(x): return x+1")
     result = await agent.run_structured(task, output_type=CodeReview)
@@ -314,15 +313,15 @@ The `StructuredTaskResult` extends `TaskResult` with a `parsed: T` field contain
 
 ```python
 from pydantic import BaseModel
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
 class City(BaseModel):
     name: str
     country: str
     population: int
 
-provider = create_runtime_provider("claude-haiku-4-5")
-agent = Agent(name="geo", model=provider)
+agent = Agent(name="geo", model=Anthropic.lite())
 
 city = agent.run_once_structured_sync("Tell me about Tokyo.", output_type=City)
 print(f"{city.name}, {city.country} - pop. {city.population:,}")
@@ -347,31 +346,89 @@ When a budget is exceeded, the `TaskResult` will have `status=FAILED` and the `e
 
 ## Model Providers
 
+Each provider is a standalone class with tier presets -- `.lite()`, `.standard()`, `.pro()` -- for easy model selection. All providers extend `BaseProvider` from `hive.models.base`.
+
+### Tier Presets
+
+Every provider offers three classmethods that return a preconfigured instance:
+
+```python
+from hive.models.anthropic import Anthropic
+from hive.models.openai import OpenAI
+from hive.models.groq import Groq
+from hive.models.fireworks import Fireworks
+from hive.models.ollama import Ollama
+from hive.models.lmstudio import LMStudio
+
+# Anthropic
+provider = Anthropic.lite()        # Claude Haiku (fast, cheap)
+provider = Anthropic.standard()    # Claude Sonnet (balanced)
+provider = Anthropic.pro()         # Claude Opus (most capable)
+
+# OpenAI
+provider = OpenAI.lite()           # GPT-5.4 Nano
+provider = OpenAI.standard()       # GPT-5.4 Mini
+provider = OpenAI.pro()            # GPT-5.4
+
+# Groq (requires GROQ_API_KEY)
+provider = Groq.lite()
+provider = Groq.standard()
+
+# Fireworks (requires FIREWORKS_API_KEY)
+provider = Fireworks.lite()
+provider = Fireworks.standard()
+
+# Ollama (no key needed, localhost:11434)
+provider = Ollama.lite()
+
+# LM Studio (no key needed, localhost:1234)
+provider = LMStudio.lite()
+```
+
+### Direct Provider Construction
+
+For full control, construct providers directly with explicit parameters:
+
+```python
+from hive.models.anthropic import Anthropic
+from hive.models.openai import OpenAI
+from hive.models.ollama import Ollama
+
+# Anthropic with explicit key
+provider = Anthropic(
+    model="claude-haiku-4-5",
+    api_key="sk-ant-...",
+)
+
+# OpenAI with explicit key
+provider = OpenAI(
+    model="gpt-5.4-nano",
+    api_key="sk-...",
+)
+
+# Any OpenAI-compatible endpoint
+provider = OpenAI(
+    model="my-model",
+    api_key="my-key",
+    base_url="https://my-provider.com/v1",
+)
+
+# Local Ollama model
+provider = Ollama(model="llama3.2")
+```
+
 ### Provider Factory
 
-The `create_runtime_provider()` factory routes model names to the correct provider class:
+The `create_runtime_provider()` factory is still available for string-based routing. It is now located in `hive.models.factory` but remains importable from the top-level `hive` package:
 
 ```python
 from hive import create_runtime_provider
 
-# Anthropic (requires ANTHROPIC_API_KEY in .env or environment)
 claude_haiku = create_runtime_provider("claude-haiku-4-5")
-claude_sonnet = create_runtime_provider("claude-sonnet-4-6")
-
-# OpenAI (requires OPENAI_API_KEY)
 gpt_nano = create_runtime_provider("gpt-5.4-nano")
-gpt_mini = create_runtime_provider("gpt-5.4-mini")
-
-# Fireworks (requires FIREWORKS_API_KEY)
-fireworks = create_runtime_provider("fireworks:accounts/fireworks/models/llama-v3-70b")
-
-# Groq (requires GROQ_API_KEY)
-groq = create_runtime_provider("groq:llama-3.1-70b-versatile")
-
-# Ollama (no key needed, localhost:11434)
+fireworks = create_runtime_provider("fireworks:deepseek-v4-pro")
+groq = create_runtime_provider("groq:llama-3.3-70b-versatile")
 ollama = create_runtime_provider("ollama:llama3.1")
-
-# LM Studio (no key needed, localhost:1234)
 lmstudio = create_runtime_provider("lmstudio:qwen2.5-coder-7b")
 ```
 
@@ -379,47 +436,22 @@ lmstudio = create_runtime_provider("lmstudio:qwen2.5-coder-7b")
 
 | Model name pattern | Provider | Required env var |
 |-------------------|----------|-----------------|
-| Contains `"claude"` | `AnthropicRuntimeProvider` | `ANTHROPIC_API_KEY` |
-| Starts with `"gpt-"` | `OpenAIRuntimeProvider` | `OPENAI_API_KEY` |
-| Starts with `"fireworks:"` | `OpenAIRuntimeProvider` (Fireworks URL) | `FIREWORKS_API_KEY` |
-| Starts with `"groq:"` | `OpenAIRuntimeProvider` (Groq URL) | `GROQ_API_KEY` |
-| Starts with `"ollama:"` | `OpenAIRuntimeProvider` (localhost:11434) | None |
-| Starts with `"lmstudio:"` | `OpenAIRuntimeProvider` (localhost:1234) | None |
-| Anything else | `OpenAIRuntimeProvider` (Ollama fallback) | None |
-
-### Direct Provider Construction
-
-For full control, construct providers directly:
-
-```python
-from hive.runtime.providers import AnthropicRuntimeProvider, OpenAIRuntimeProvider
-
-# Anthropic with explicit key
-provider = AnthropicRuntimeProvider(
-    model="claude-haiku-4-5",
-    api_key="sk-ant-...",
-)
-
-# OpenAI with explicit key
-provider = OpenAIRuntimeProvider(
-    model="gpt-5.4-nano",
-    api_key="sk-...",
-)
-
-# Any OpenAI-compatible endpoint
-provider = OpenAIRuntimeProvider(
-    model="my-model",
-    api_key="my-key",
-    base_url="https://my-provider.com/v1",
-)
-```
+| Contains `"claude"` | `Anthropic` | `ANTHROPIC_API_KEY` |
+| Starts with `"gpt-"` | `OpenAI` | `OPENAI_API_KEY` |
+| Starts with `"fireworks:"` | `Fireworks` | `FIREWORKS_API_KEY` |
+| Starts with `"groq:"` | `Groq` | `GROQ_API_KEY` |
+| Starts with `"ollama:"` | `Ollama` (localhost:11434) | None |
+| Starts with `"lmstudio:"` | `LMStudio` (localhost:1234) | None |
+| Anything else | `Ollama` (fallback) | None |
 
 ### Local Models (Ollama, LM Studio)
 
 Local providers check server health before use. The `available` property probes the `/models` endpoint and caches the result for 30 seconds.
 
 ```python
-provider = create_runtime_provider("ollama:llama3.1")
+from hive.models.ollama import Ollama
+
+provider = Ollama.lite()
 
 if provider.available:
     agent = Agent(name="local", model=provider)
@@ -690,11 +722,10 @@ Connect to any MCP (Model Context Protocol) server and use its tools as native H
 
 ```python
 import asyncio
-from hive import Agent, Task, MCPToolkit, create_runtime_provider
+from hive import Agent, Task, MCPToolkit
+from hive.models.anthropic import Anthropic
 
 async def main():
-    provider = create_runtime_provider("claude-haiku-4-5")
-
     # Connect to an MCP server via stdio
     async with await MCPToolkit.from_stdio(
         "npx", ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
@@ -703,7 +734,7 @@ async def main():
 
         agent = Agent(
             name="fs-agent",
-            model=provider,
+            model=Anthropic.lite(),
             toolkits=[mcp],
         )
         result = await agent.run(Task(instruction="List all files in /tmp"))
@@ -753,16 +784,17 @@ A lead agent delegates subtasks to specialist agents at runtime via tool calls:
 ```python
 import asyncio
 from pathlib import Path
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 from hive.runtime import FileToolkit, ShellToolkit, DelegationToolkit
 
 async def main():
-    provider = create_runtime_provider("claude-sonnet-4-6")
+    provider = Anthropic.standard()
     workspace = Path("./project")
 
     researcher = Agent(
         name="researcher",
-        model=create_runtime_provider("claude-haiku-4-5"),
+        model=Anthropic.lite(),
         system_prompt="You research topics and provide detailed summaries.",
     )
 
@@ -801,15 +833,16 @@ Chain agents into sequential pipelines where each step's output feeds into the n
 
 ```python
 import asyncio
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 from hive.runtime import Step, Workflow
 
 async def main():
-    haiku = create_runtime_provider("claude-haiku-4-5")
+    lite = Anthropic.lite()
 
-    planner = Agent(name="planner", model=haiku, system_prompt="You create project plans.")
-    writer = Agent(name="writer", model=haiku, system_prompt="You write code based on plans.")
-    reviewer = Agent(name="reviewer", model=haiku, system_prompt="You review code for quality.")
+    planner = Agent(name="planner", model=lite, system_prompt="You create project plans.")
+    writer = Agent(name="writer", model=lite, system_prompt="You write code based on plans.")
+    reviewer = Agent(name="reviewer", model=lite, system_prompt="You review code for quality.")
 
     workflow = Workflow(
         name="build-feature",
@@ -863,16 +896,16 @@ Give agents cross-session memory that persists between runs. The `PersistentMemo
 ```python
 import asyncio
 from pathlib import Path
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 from hive.runtime import PersistentMemory
 
 async def main():
-    provider = create_runtime_provider("claude-haiku-4-5")
     memory = PersistentMemory(agent_name="assistant", hive_dir=Path("./.hive"))
 
     agent = Agent(
         name="assistant",
-        model=provider,
+        model=Anthropic.lite(),
         system_prompt="You are a helpful assistant with long-term memory.",
         memory=memory,
     )
@@ -1047,11 +1080,17 @@ Agent profiles live in `profiles/*.yaml` and define the agent's name, role, mode
 # Core
 from hive import Agent, Task, TaskResult, TaskStatus, StructuredTaskResult
 
-# Provider factory
+# Provider factory (string-based routing)
 from hive import create_runtime_provider
 
-# Direct providers
-from hive.runtime.providers import AnthropicRuntimeProvider, OpenAIRuntimeProvider
+# Direct providers (recommended)
+from hive.models.anthropic import Anthropic
+from hive.models.openai import OpenAI
+from hive.models.groq import Groq
+from hive.models.fireworks import Fireworks
+from hive.models.ollama import Ollama
+from hive.models.lmstudio import LMStudio
+from hive.models.base import BaseProvider
 
 # Tool system
 from hive import tool, make_tool, collect_tools, Tool, Toolkit
