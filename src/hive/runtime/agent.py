@@ -95,22 +95,17 @@ class Agent:
                 relevant = await self._memory.recall(task.instruction, limit=3)
                 if relevant:
                     context_lines = [
-                        f"- {m.get('thought', m.get('content', str(m)))}"
-                        for m in relevant
+                        f"- {m.get('thought', m.get('content', str(m)))}" for m in relevant
                     ]
                     conversation.add(
-                        Message.system(
-                            "Relevant memories:\n" + "\n".join(context_lines)
-                        )
+                        Message.system("Relevant memories:\n" + "\n".join(context_lines))
                     )
             except Exception:
                 logger.debug("Failed to recall persistent memory", exc_info=True)
 
         if task.context:
             context_str = "\n".join(f"{k}: {v}" for k, v in task.context.items())
-            conversation.add(
-                Message.user(f"{task.instruction}\n\nContext:\n{context_str}")
-            )
+            conversation.add(Message.user(f"{task.instruction}\n\nContext:\n{context_str}"))
         else:
             conversation.add(Message.user(task.instruction))
 
@@ -187,11 +182,13 @@ class Agent:
                 tool_t0 = time.time()
                 try:
                     result_text = await tool.call(**tc.arguments)
-                    conversation.add(
-                        Message.tool_result(tc.id, result_text, name=tc.name)
-                    )
+                    conversation.add(Message.tool_result(tc.id, result_text, name=tc.name))
                     self._log_tool(
-                        tc.name, tc.arguments, True, result_text[:500], None,
+                        tc.name,
+                        tc.arguments,
+                        True,
+                        result_text[:500],
+                        None,
                         int((time.time() - tool_t0) * 1000),
                     )
                 except Exception as e:
@@ -205,7 +202,11 @@ class Agent:
                         )
                     )
                     self._log_tool(
-                        tc.name, tc.arguments, False, "", str(e),
+                        tc.name,
+                        tc.arguments,
+                        False,
+                        "",
+                        str(e),
                         int((time.time() - tool_t0) * 1000),
                     )
 
@@ -237,26 +238,25 @@ class Agent:
             messages.append(Message.system(self._system_prompt))
         if task.context:
             context_str = "\n".join(f"{k}: {v}" for k, v in task.context.items())
-            messages.append(
-                Message.user(f"{task.instruction}\n\nContext:\n{context_str}")
-            )
+            messages.append(Message.user(f"{task.instruction}\n\nContext:\n{context_str}"))
         else:
             messages.append(Message.user(task.instruction))
 
         try:
             if hasattr(self._model, "generate_structured"):
-                structured: StructuredGenerateResult[Any] = (
-                    await self._model.generate_structured(
-                        messages,
-                        output_type=output_type,
-                        temperature=self._temperature,
-                        max_tokens=self._gen_max_tokens,
-                    )
+                structured: StructuredGenerateResult[Any] = await self._model.generate_structured(
+                    messages,
+                    output_type=output_type,
+                    temperature=self._temperature,
+                    max_tokens=self._gen_max_tokens,
                 )
             else:
                 structured = await generate_structured_fallback(
-                    self._model, messages, output_type,
-                    self._temperature, self._gen_max_tokens,
+                    self._model,
+                    messages,
+                    output_type,
+                    self._temperature,
+                    self._gen_max_tokens,
                 )
 
             return StructuredTaskResult(
@@ -305,7 +305,10 @@ class Agent:
         messages.append(Message.user(message))
 
         result = await self._model.generate_with_metadata(
-            messages, tool_schemas, self._temperature, self._gen_max_tokens,
+            messages,
+            tool_schemas,
+            self._temperature,
+            self._gen_max_tokens,
         )
         response = result.message
 
@@ -325,12 +328,17 @@ class Agent:
             messages.append(Message.tool_result(tc.id, output))
 
         final = await self._model.generate(
-            messages, tool_schemas, self._temperature, self._gen_max_tokens,
+            messages,
+            tool_schemas,
+            self._temperature,
+            self._gen_max_tokens,
         )
         return final.content
 
     def run_once_sync(
-        self, message: str, context: str | None = None,
+        self,
+        message: str,
+        context: str | None = None,
     ) -> str:
         """Synchronous version of run_once."""
         try:
@@ -339,7 +347,8 @@ class Agent:
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(
-                    asyncio.run, self.run_once(message, context),
+                    asyncio.run,
+                    self.run_once(message, context),
                 ).result()
         except RuntimeError:
             return asyncio.run(self.run_once(message, context))
@@ -373,18 +382,19 @@ class Agent:
         messages.append(Message.user(message))
 
         if hasattr(self._model, "generate_structured"):
-            result: StructuredGenerateResult[Any] = (
-                await self._model.generate_structured(
-                    messages,
-                    output_type=output_type,
-                    temperature=self._temperature,
-                    max_tokens=self._gen_max_tokens,
-                )
+            result: StructuredGenerateResult[Any] = await self._model.generate_structured(
+                messages,
+                output_type=output_type,
+                temperature=self._temperature,
+                max_tokens=self._gen_max_tokens,
             )
         else:
             result = await generate_structured_fallback(
-                self._model, messages, output_type,
-                self._temperature, self._gen_max_tokens,
+                self._model,
+                messages,
+                output_type,
+                self._temperature,
+                self._gen_max_tokens,
             )
         return result.parsed
 
@@ -412,13 +422,9 @@ class Agent:
     def _check_budget(self) -> str | None:
         """Return an error message if budget exceeded, None otherwise."""
         if self._max_cost_usd and self._total_cost >= self._max_cost_usd:
-            return (
-                f"Cost budget exceeded: ${self._total_cost:.4f} >= ${self._max_cost_usd:.4f}"
-            )
+            return f"Cost budget exceeded: ${self._total_cost:.4f} >= ${self._max_cost_usd:.4f}"
         if self._max_tokens and self._total_tokens >= self._max_tokens:
-            return (
-                f"Token budget exceeded: {self._total_tokens:,} >= {self._max_tokens:,}"
-            )
+            return f"Token budget exceeded: {self._total_tokens:,} >= {self._max_tokens:,}"
         return None
 
     def _log_decision(self, step: int, result: GenerateResult) -> None:

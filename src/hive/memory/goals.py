@@ -39,7 +39,11 @@ class GoalEngine:
     ) -> GoalRecord:
         goal_id = f"goal-{uuid4().hex[:8]}"
         await self._store.save_goal(
-            goal_id, agent_id, objective, priority, parent_id,
+            goal_id,
+            agent_id,
+            objective,
+            priority,
+            parent_id,
         )
 
         return GoalRecord(
@@ -94,7 +98,8 @@ class GoalEngine:
         await self._store.abandon_goal(goal_id)
 
     async def check_subtask_rollup(
-        self, parent_goal_id: str,
+        self,
+        parent_goal_id: str,
     ) -> str | None:
         """Check if parent should complete/abandon based on subtasks.
 

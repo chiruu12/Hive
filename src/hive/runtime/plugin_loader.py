@@ -37,7 +37,9 @@ class PluginLoader:
                     new_toolkits.extend(tks)
                 except Exception as e:
                     logger.warning(
-                        "Failed to load plugin %s: %s", py_file.name, e,
+                        "Failed to load plugin %s: %s",
+                        py_file.name,
+                        e,
                     )
         return new_toolkits
 
@@ -64,7 +66,8 @@ class PluginLoader:
                 toolkits.append(obj)
                 logger.info(
                     "Loaded plugin toolkit: %s from %s",
-                    attr_name, path.name,
+                    attr_name,
+                    path.name,
                 )
         return toolkits
 

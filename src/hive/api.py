@@ -58,7 +58,9 @@ class Hive:
         initialize_hive(self._root)
 
     def spawn(
-        self, preset: str, model: str | None = None,
+        self,
+        preset: str,
+        model: str | None = None,
     ) -> str:
         """Spawn an agent from a preset profile. Returns agent_id."""
         profiles_dir = default_profiles_dir()
@@ -118,13 +120,15 @@ class Hive:
                             await daemon._run_agent_cycle(a)
                         except Exception as e:
                             logger.error(
-                                "Cycle failed for %s: %s", a.agent_id, e,
+                                "Cycle failed for %s: %s",
+                                a.agent_id,
+                                e,
                             )
                     if count < cycles:
                         await asyncio.sleep(daemon._heartbeat)
                 daemon._running = False
 
-            daemon._run = _bounded_run  # type: ignore[assignment]
+            daemon._run = _bounded_run  # type: ignore[method-assign]
 
         asyncio.run(self._daemon.start())
 
@@ -140,14 +144,16 @@ class Hive:
         result = []
         for a in agents:
             goal = _run_sync(store.get_active_goal(a.agent_id))
-            result.append({
-                "agent_id": a.agent_id,
-                "name": a.name,
-                "role": a.role,
-                "model": a.model,
-                "status": a.status.value,
-                "goal": goal["objective"] if goal else None,
-            })
+            result.append(
+                {
+                    "agent_id": a.agent_id,
+                    "name": a.name,
+                    "role": a.role,
+                    "model": a.model,
+                    "status": a.status.value,
+                    "goal": goal["objective"] if goal else None,
+                }
+            )
         return result
 
     def nudge(self, agent: str, message: str) -> None:
@@ -173,7 +179,7 @@ class Hive:
     def _resolve_agent(self, name_or_id: str) -> str:
         """Resolve an agent name, ID, or prefix to a full agent_id."""
         store = self._get_store()
-        agents = _run_sync(store.list_agents())
+        agents: list[AgentState] = _run_sync(store.list_agents())
         for a in agents:
             if a.agent_id == name_or_id:
                 return a.agent_id

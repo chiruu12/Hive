@@ -48,23 +48,34 @@ class MockResumeProvider:
         prompt = " ".join(m.content for m in messages).lower()
 
         if "what is the single most valuable" in prompt or "your task" in prompt:
-            content = json.dumps({
-                "goal": "Learn testing patterns",
-                "reasoning": "Improve code quality",
-            })
+            content = json.dumps(
+                {
+                    "goal": "Learn testing patterns",
+                    "reasoning": "Improve code quality",
+                }
+            )
             msg = Message.assistant(content)
         elif tools:
             msg = Message.assistant(
                 "Storing results.",
-                [ToolCall(id=f"tc-{self._call_count}", name="memory_set",
-                          arguments={"key": "data", "value": "test"})],
+                [
+                    ToolCall(
+                        id=f"tc-{self._call_count}",
+                        name="memory_set",
+                        arguments={"key": "data", "value": "test"},
+                    )
+                ],
             )
         else:
             msg = Message.assistant("Done.")
 
         return GenerateResult(
-            message=msg, model="mock", input_tokens=10,
-            output_tokens=5, cost_usd=0.0, duration_ms=10,
+            message=msg,
+            model="mock",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0,
+            duration_ms=10,
         )
 
 
@@ -87,8 +98,12 @@ def hive_dir(tmp_path: Path) -> Path:
 
 async def _seed_agent(store: HiveStore, agent_id: str = "coder-test01") -> AgentState:
     state = AgentState(
-        agent_id=agent_id, name="coder", role="developer",
-        model="mock", status=AgentStatus.IDLE, workspace=".",
+        agent_id=agent_id,
+        name="coder",
+        role="developer",
+        model="mock",
+        status=AgentStatus.IDLE,
+        workspace=".",
     )
     await store.save_agent(state)
     return state
@@ -153,11 +168,16 @@ class TestResumeOnStart:
 
         suffering = SufferingState(agent_id="agent-r1")
         suffering.add_stressor(
-            StressorType.FUTILITY, "stuck", "complete a goal", initial_severity=0.42,
+            StressorType.FUTILITY,
+            "stuck",
+            "complete a goal",
+            initial_severity=0.42,
         )
         cp_mgr = CheckpointManager(hive_dir)
         ctx = ExecutionContext(
-            store=store, comms_dir=hive_dir / "comms", memory_dir=hive_dir / "agent_memory",
+            store=store,
+            comms_dir=hive_dir / "comms",
+            memory_dir=hive_dir / "agent_memory",
         )
         cp_mgr.save("agent-r1", "daemon_shutdown", suffering, None, ctx, [])
 
@@ -185,11 +205,16 @@ class TestResumeOnStart:
 
         suffering = SufferingState(agent_id="agent-f1")
         suffering.add_stressor(
-            StressorType.FUTILITY, "stuck", "complete a goal", initial_severity=0.75,
+            StressorType.FUTILITY,
+            "stuck",
+            "complete a goal",
+            initial_severity=0.75,
         )
         cp_mgr = CheckpointManager(hive_dir)
         ctx = ExecutionContext(
-            store=store, comms_dir=hive_dir / "comms", memory_dir=hive_dir / "agent_memory",
+            store=store,
+            comms_dir=hive_dir / "comms",
+            memory_dir=hive_dir / "agent_memory",
         )
         cp_mgr.save("agent-f1", "daemon_shutdown", suffering, None, ctx, [])
 

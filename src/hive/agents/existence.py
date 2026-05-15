@@ -83,7 +83,9 @@ class ExistenceLoop:
 
         result = await self._provider.generate_with_metadata(
             messages=[
-                Message.system(self._profile.build_system_prompt(economy_enabled=self._economy_enabled)),
+                Message.system(
+                    self._profile.build_system_prompt(economy_enabled=self._economy_enabled)
+                ),
                 Message.user(prompt),
             ],
         )
@@ -143,9 +145,7 @@ class ExistenceLoop:
         return goal_text
 
     @staticmethod
-    def _validate_goal(
-        goal_text: str, recent_goals: list[dict[str, Any]]
-    ) -> str | None:
+    def _validate_goal(goal_text: str, recent_goals: list[dict[str, Any]]) -> str | None:
         """Return rejection reason if goal is invalid, None if acceptable."""
         if len(goal_text) < 10:
             return "too short (< 10 chars)"
@@ -194,7 +194,8 @@ class ExistenceLoop:
 
         if self._economy_enabled:
             sections.insert(
-                2, "You participate in an economy where you earn money, "
+                2,
+                "You participate in an economy where you earn money, "
                 "learn skills, and pursue goals.",
             )
 
@@ -231,13 +232,14 @@ class ExistenceLoop:
         actions = ["send messages to peers", "store things in memory"]
         if self._economy_enabled:
             actions = [
-                "work", "apply_job", "quit_job", "learn skills",
-                "gamble", "query the world",
+                "work",
+                "apply_job",
+                "quit_job",
+                "learn skills",
+                "gamble",
+                "query the world",
             ] + actions
-        sections.append(
-            "\n--- Available actions ---\n"
-            f"You can: {', '.join(actions)}.\n"
-        )
+        sections.append(f"\n--- Available actions ---\nYou can: {', '.join(actions)}.\n")
 
         sections.append(
             "\n--- Your task ---\n"

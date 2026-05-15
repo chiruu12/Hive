@@ -130,7 +130,9 @@ class TestExchangeRunner:
                 return "ok"
 
         config = ExchangeConfig(
-            pattern="round_table", num_rounds=1, topic="AI ethics",
+            pattern="round_table",
+            num_rounds=1,
+            topic="AI ethics",
         )
         runner = ExchangeRunner(config)
         await runner.run([CapturingParticipant()])
@@ -150,9 +152,11 @@ class TestEnvironmentParticipant:
         env = EnvironmentParticipant(
             response_fn=lambda msgs: f"Got {len(msgs)} messages",
         )
-        result = await env.respond([
-            InteractionMessage(round=0, sender_id="a", sender_name="A", content="hi"),
-        ])
+        result = await env.respond(
+            [
+                InteractionMessage(round=0, sender_id="a", sender_name="A", content="hi"),
+            ]
+        )
         assert result == "Got 1 messages"
 
     @pytest.mark.asyncio

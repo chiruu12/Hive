@@ -137,10 +137,12 @@ class TestDelegationToolkit:
 
     @pytest.mark.asyncio
     async def test_list_agents(self) -> None:
-        toolkit = DelegationToolkit({
-            "coder": Agent(name="coder", model=MockProvider([])),
-            "reviewer": Agent(name="reviewer", model=MockProvider([])),
-        })
+        toolkit = DelegationToolkit(
+            {
+                "coder": Agent(name="coder", model=MockProvider([])),
+                "reviewer": Agent(name="reviewer", model=MockProvider([])),
+            }
+        )
         tools = toolkit.get_tools()
 
         list_tool = next(t for t in tools if t.name == "list_agents")
@@ -159,17 +161,21 @@ class TestDelegationToolkit:
 
         leader = Agent(
             name="leader",
-            model=MockProvider([
-                Message.assistant(
-                    "I'll delegate this.",
-                    [ToolCall(
-                        id="d1",
-                        name="delegate_task",
-                        arguments={"agent_name": "worker", "task": "do the work"},
-                    )],
-                ),
-                Message.assistant("Worker completed the task."),
-            ]),
+            model=MockProvider(
+                [
+                    Message.assistant(
+                        "I'll delegate this.",
+                        [
+                            ToolCall(
+                                id="d1",
+                                name="delegate_task",
+                                arguments={"agent_name": "worker", "task": "do the work"},
+                            )
+                        ],
+                    ),
+                    Message.assistant("Worker completed the task."),
+                ]
+            ),
             toolkits=[delegation],
         )
 
@@ -204,9 +210,7 @@ class TestGoalValidation:
     def test_similar_to_abandoned(self) -> None:
         from hive.agents.existence import ExistenceLoop
 
-        recent = [
-            {"objective": "Learn Python programming and write tests", "status": "abandoned"}
-        ]
+        recent = [{"objective": "Learn Python programming and write tests", "status": "abandoned"}]
         result = ExistenceLoop._validate_goal(
             "Learn Python programming and write documentation", recent
         )
@@ -226,7 +230,5 @@ class TestGoalValidation:
         from hive.agents.existence import ExistenceLoop
 
         recent = [{"objective": "Learn Python", "status": "abandoned"}]
-        result = ExistenceLoop._validate_goal(
-            "Write documentation for the API endpoints", recent
-        )
+        result = ExistenceLoop._validate_goal("Write documentation for the API endpoints", recent)
         assert result is None

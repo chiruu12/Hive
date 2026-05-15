@@ -60,9 +60,7 @@ class AgentParticipant:
         )
         return response.content.strip() if response.content else ""
 
-    def _build_prompt(
-        self, messages: list[InteractionMessage], context: str
-    ) -> str:
+    def _build_prompt(self, messages: list[InteractionMessage], context: str) -> str:
         lines: list[str] = []
         if self._persona:
             lines.append(f"You are {self._name}. {self._persona}")
@@ -74,9 +72,7 @@ class AgentParticipant:
                 target = ""
                 if m.recipient_id != "all":
                     target = f" → {m.recipient_id}"
-                lines.append(
-                    f"[Round {m.round}] {m.sender_name}{target}: {m.content}"
-                )
+                lines.append(f"[Round {m.round}] {m.sender_name}{target}: {m.content}")
         lines.append("\nRespond in character. Be concise (1-3 sentences).")
         return "\n".join(lines)
 
@@ -84,9 +80,7 @@ class AgentParticipant:
 class HumanParticipant:
     """CLI-based human participant for interactive sessions."""
 
-    def __init__(
-        self, participant_id: str = "human", name: str = "Human"
-    ):
+    def __init__(self, participant_id: str = "human", name: str = "Human"):
         self._id = participant_id
         self._name = name
 
@@ -107,9 +101,7 @@ class HumanParticipant:
         for m in messages[-3:]:
             print(f"  [{m.sender_name}]: {m.content}")
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None, lambda: input(f"  {self._name}> ")
-        )
+        return await loop.run_in_executor(None, lambda: input(f"  {self._name}> "))
 
 
 class EnvironmentParticipant:
@@ -123,10 +115,7 @@ class EnvironmentParticipant:
         self,
         participant_id: str = "environment",
         name: str = "Environment",
-        response_fn: Callable[
-            [list[InteractionMessage]], str | Awaitable[str]
-        ]
-        | None = None,
+        response_fn: Callable[[list[InteractionMessage]], str | Awaitable[str]] | None = None,
     ):
         self._id = participant_id
         self._name = name

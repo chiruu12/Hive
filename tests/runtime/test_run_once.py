@@ -34,7 +34,10 @@ class MockOnceProvider:
         max_tokens: int = 4096,
     ) -> Message:
         result = await self.generate_with_metadata(
-            messages, tools, temperature, max_tokens,
+            messages,
+            tools,
+            temperature,
+            max_tokens,
         )
         return result.message
 
@@ -49,8 +52,12 @@ class MockOnceProvider:
         msg = self._responses[min(self._idx, len(self._responses) - 1)]
         self._idx += 1
         return GenerateResult(
-            message=msg, model="mock", input_tokens=10,
-            output_tokens=5, cost_usd=0.0, duration_ms=10,
+            message=msg,
+            model="mock",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0,
+            duration_ms=10,
         )
 
 
@@ -87,26 +94,30 @@ class TestRunOnceWithTools:
             """Add two numbers."""
             return str(a + b)
 
-        provider = MockOnceProvider([
-            Message.assistant(
-                "Let me add those.",
-                [ToolCall(id="tc-1", name="add", arguments={"a": 3, "b": 4})],
-            ),
-            Message.assistant("The answer is 7."),
-        ])
+        provider = MockOnceProvider(
+            [
+                Message.assistant(
+                    "Let me add those.",
+                    [ToolCall(id="tc-1", name="add", arguments={"a": 3, "b": 4})],
+                ),
+                Message.assistant("The answer is 7."),
+            ]
+        )
         agent = Agent("test", provider, tools=[make_tool(add)])
         result = await agent.run_once("What is 3+4?")
         assert "7" in result
 
     @pytest.mark.asyncio
     async def test_unknown_tool(self) -> None:
-        provider = MockOnceProvider([
-            Message.assistant(
-                "Calling unknown.",
-                [ToolCall(id="tc-1", name="nonexistent", arguments={})],
-            ),
-            Message.assistant("I couldn't find that tool."),
-        ])
+        provider = MockOnceProvider(
+            [
+                Message.assistant(
+                    "Calling unknown.",
+                    [ToolCall(id="tc-1", name="nonexistent", arguments={})],
+                ),
+                Message.assistant("I couldn't find that tool."),
+            ]
+        )
         agent = Agent("test", provider)
         result = await agent.run_once("Do something")
         assert isinstance(result, str)
@@ -118,13 +129,15 @@ class TestRunOnceWithTools:
             """Always fails."""
             raise ValueError("boom")
 
-        provider = MockOnceProvider([
-            Message.assistant(
-                "Trying.",
-                [ToolCall(id="tc-1", name="fail_tool", arguments={})],
-            ),
-            Message.assistant("That failed."),
-        ])
+        provider = MockOnceProvider(
+            [
+                Message.assistant(
+                    "Trying.",
+                    [ToolCall(id="tc-1", name="fail_tool", arguments={})],
+                ),
+                Message.assistant("That failed."),
+            ]
+        )
         agent = Agent("test", provider, tools=[make_tool(fail_tool)])
         result = await agent.run_once("Try the tool")
         assert isinstance(result, str)
@@ -141,18 +154,25 @@ class TestRunOnceWithCollectTools:
             """Say goodbye."""
             return f"Bye, {name}!"
 
-        provider = MockOnceProvider([
-            Message.assistant(
-                "Greeting.",
-                [ToolCall(
-                    id="tc-1", name="greet",
-                    arguments={"name": "Alice"},
-                )],
-            ),
-            Message.assistant("I greeted Alice."),
-        ])
+        provider = MockOnceProvider(
+            [
+                Message.assistant(
+                    "Greeting.",
+                    [
+                        ToolCall(
+                            id="tc-1",
+                            name="greet",
+                            arguments={"name": "Alice"},
+                        )
+                    ],
+                ),
+                Message.assistant("I greeted Alice."),
+            ]
+        )
         agent = Agent(
-            "test", provider, tools=collect_tools(greet, farewell),
+            "test",
+            provider,
+            tools=collect_tools(greet, farewell),
         )
         result = await agent.run_once("Greet Alice")
         assert "Alice" in result
@@ -183,8 +203,11 @@ class MockStructuredProvider(MockOnceProvider):
         parsed = output_type.model_validate(self._structured_data)
         gen = GenerateResult(
             message=Message.assistant(json.dumps(self._structured_data)),
-            model="mock", input_tokens=10, output_tokens=10,
-            cost_usd=0.0, duration_ms=10,
+            model="mock",
+            input_tokens=10,
+            output_tokens=10,
+            cost_usd=0.0,
+            duration_ms=10,
         )
         return StructuredGenerateResult(result=gen, parsed=parsed)
 
@@ -208,7 +231,8 @@ class TestRunOnceStructured:
         )
         agent = Agent("test", provider)
         result = await agent.run_once_structured(
-            "Create a task", output_type=TaskItem,
+            "Create a task",
+            output_type=TaskItem,
         )
         assert isinstance(result, TaskItem)
         assert result.title == "Buy groceries"
@@ -221,7 +245,8 @@ class TestRunOnceStructured:
         )
         agent = Agent("test", provider)
         result = await agent.run_once_structured(
-            "Analyze this", output_type=SentimentResult,
+            "Analyze this",
+            output_type=SentimentResult,
             context="The user is happy.",
         )
         assert isinstance(result, SentimentResult)
@@ -235,7 +260,8 @@ class TestRunOnceStructured:
         )
         agent = Agent("test", provider, system_prompt="Be structured.")
         result = await agent.run_once_structured(
-            "Make a task", output_type=TaskItem,
+            "Make a task",
+            output_type=TaskItem,
         )
         assert result.done is True
 
@@ -245,7 +271,8 @@ class TestRunOnceStructured:
         )
         agent = Agent("test", provider)
         result = agent.run_once_structured_sync(
-            "Create task", output_type=TaskItem,
+            "Create task",
+            output_type=TaskItem,
         )
         assert isinstance(result, TaskItem)
         assert result.title == "Sync task"

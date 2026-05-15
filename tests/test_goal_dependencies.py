@@ -27,7 +27,10 @@ class TestSaveGoalWithParent:
     async def test_save_with_parent(self, store: HiveStore) -> None:
         await store.save_goal("parent-1", "agent-a", "Big task")
         await store.save_goal(
-            "child-1", "agent-a", "Sub task", parent_goal_id="parent-1",
+            "child-1",
+            "agent-a",
+            "Sub task",
+            parent_goal_id="parent-1",
         )
         child = await store.get_goal_by_id("child-1")
         assert child is not None
@@ -46,10 +49,16 @@ class TestGetSubgoals:
     async def test_returns_children(self, store: HiveStore) -> None:
         await store.save_goal("p-1", "agent-a", "Parent")
         await store.save_goal(
-            "c-1", "agent-a", "Child 1", parent_goal_id="p-1",
+            "c-1",
+            "agent-a",
+            "Child 1",
+            parent_goal_id="p-1",
         )
         await store.save_goal(
-            "c-2", "agent-a", "Child 2", parent_goal_id="p-1",
+            "c-2",
+            "agent-a",
+            "Child 2",
+            parent_goal_id="p-1",
         )
         subs = await store.get_subgoals("p-1")
         assert len(subs) == 2
@@ -82,7 +91,10 @@ class TestGoalEngineCreate:
     async def test_create_with_parent(self, engine: GoalEngine) -> None:
         parent = await engine.create("agent-a", "Big project", priority=8)
         child = await engine.create(
-            "agent-a", "Step 1", priority=6, parent_id=parent.goal_id,
+            "agent-a",
+            "Step 1",
+            priority=6,
+            parent_id=parent.goal_id,
         )
         assert child.parent_goal_id == parent.goal_id
 
@@ -94,14 +106,20 @@ class TestGoalEngineCreate:
 class TestSubtaskRollup:
     @pytest.mark.asyncio
     async def test_all_completed_rolls_up(
-        self, engine: GoalEngine, store: HiveStore,
+        self,
+        engine: GoalEngine,
+        store: HiveStore,
     ) -> None:
         parent = await engine.create("agent-a", "Main goal")
         c1 = await engine.create(
-            "agent-a", "Sub 1", parent_id=parent.goal_id,
+            "agent-a",
+            "Sub 1",
+            parent_id=parent.goal_id,
         )
         c2 = await engine.create(
-            "agent-a", "Sub 2", parent_id=parent.goal_id,
+            "agent-a",
+            "Sub 2",
+            parent_id=parent.goal_id,
         )
         await store.complete_goal(c1.goal_id)
         await store.complete_goal(c2.goal_id)
@@ -111,14 +129,20 @@ class TestSubtaskRollup:
 
     @pytest.mark.asyncio
     async def test_one_abandoned_rolls_up(
-        self, engine: GoalEngine, store: HiveStore,
+        self,
+        engine: GoalEngine,
+        store: HiveStore,
     ) -> None:
         parent = await engine.create("agent-a", "Main goal")
         c1 = await engine.create(
-            "agent-a", "Sub 1", parent_id=parent.goal_id,
+            "agent-a",
+            "Sub 1",
+            parent_id=parent.goal_id,
         )
         c2 = await engine.create(
-            "agent-a", "Sub 2", parent_id=parent.goal_id,
+            "agent-a",
+            "Sub 2",
+            parent_id=parent.goal_id,
         )
         await store.complete_goal(c1.goal_id)
         await store.abandon_goal(c2.goal_id)
@@ -128,14 +152,20 @@ class TestSubtaskRollup:
 
     @pytest.mark.asyncio
     async def test_still_active_no_rollup(
-        self, engine: GoalEngine, store: HiveStore,
+        self,
+        engine: GoalEngine,
+        store: HiveStore,
     ) -> None:
         parent = await engine.create("agent-a", "Main goal")
         await engine.create(
-            "agent-a", "Sub 1", parent_id=parent.goal_id,
+            "agent-a",
+            "Sub 1",
+            parent_id=parent.goal_id,
         )
         c2 = await engine.create(
-            "agent-a", "Sub 2", parent_id=parent.goal_id,
+            "agent-a",
+            "Sub 2",
+            parent_id=parent.goal_id,
         )
         await store.complete_goal(c2.goal_id)
 
@@ -144,7 +174,8 @@ class TestSubtaskRollup:
 
     @pytest.mark.asyncio
     async def test_no_subtasks_no_rollup(
-        self, engine: GoalEngine,
+        self,
+        engine: GoalEngine,
     ) -> None:
         parent = await engine.create("agent-a", "Leaf goal")
         result = await engine.check_subtask_rollup(parent.goal_id)
@@ -181,7 +212,10 @@ class TestSchemaMigration:
         await store.initialize()
 
         await store.save_goal(
-            "new-1", "a1", "new goal", parent_goal_id="old-1",
+            "new-1",
+            "a1",
+            "new goal",
+            parent_goal_id="old-1",
         )
         goal = await store.get_goal_by_id("new-1")
         assert goal is not None

@@ -76,8 +76,7 @@ class AgentProfile(BaseModel):
         ]
         if economy_enabled:
             parts.append(
-                "You participate in an economy, pursue goals, "
-                "earn money, and learn skills.",
+                "You participate in an economy, pursue goals, earn money, and learn skills.",
             )
         else:
             parts.append("You make decisions and pursue goals autonomously.")

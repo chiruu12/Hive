@@ -42,7 +42,10 @@ async def _retry_with_backoff(
             delay = base_delay * (2**attempt)
             logger.warning(
                 "Retryable error (attempt %d/%d, retry in %.1fs): %s",
-                attempt + 1, max_retries + 1, delay, e,
+                attempt + 1,
+                max_retries + 1,
+                delay,
+                e,
             )
             last_error = e
             await asyncio.sleep(delay)
@@ -147,9 +150,7 @@ class AnthropicRuntimeProvider:
             duration_ms=duration_ms,
         )
 
-    def _messages_to_anthropic(
-        self, messages: list[Message]
-    ) -> tuple[str, list[dict[str, Any]]]:
+    def _messages_to_anthropic(self, messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
         system = ""
         api_messages: list[dict[str, Any]] = []
 
@@ -162,17 +163,13 @@ class AnthropicRuntimeProvider:
 
             if msg.role == Role.USER:
                 if pending_tool_results:
-                    api_messages.append(
-                        {"role": "user", "content": pending_tool_results}
-                    )
+                    api_messages.append({"role": "user", "content": pending_tool_results})
                     pending_tool_results = []
                 api_messages.append({"role": "user", "content": msg.content})
 
             elif msg.role == Role.ASSISTANT:
                 if pending_tool_results:
-                    api_messages.append(
-                        {"role": "user", "content": pending_tool_results}
-                    )
+                    api_messages.append({"role": "user", "content": pending_tool_results})
                     pending_tool_results = []
 
                 content: list[dict[str, Any]] = []
@@ -187,9 +184,7 @@ class AnthropicRuntimeProvider:
                             "input": tc.arguments,
                         }
                     )
-                api_messages.append(
-                    {"role": "assistant", "content": content or msg.content}
-                )
+                api_messages.append({"role": "assistant", "content": content or msg.content})
 
             elif msg.role == Role.TOOL:
                 tool_result: dict[str, Any] = {
@@ -289,7 +284,7 @@ class OpenAIRuntimeProvider:
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5.4-nano",
         api_key: str | None = None,
         base_url: str | None = None,
     ):
@@ -375,9 +370,7 @@ class OpenAIRuntimeProvider:
         if tools:
             kwargs["tools"] = self._tools_to_openai(tools)
 
-        response = await _retry_with_backoff(
-            self._client.chat.completions.create, **kwargs
-        )
+        response = await _retry_with_backoff(self._client.chat.completions.create, **kwargs)
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = 0
@@ -463,9 +456,7 @@ class OpenAIRuntimeProvider:
                     args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError:
                     args = {}
-                tool_calls.append(
-                    ToolCall(id=tc.id, name=tc.function.name, arguments=args)
-                )
+                tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=args))
 
         return Message.assistant(content, tool_calls or None)
 
@@ -500,9 +491,7 @@ class OpenAIRuntimeProvider:
         }
 
         try:
-            response = await _retry_with_backoff(
-                self._client.chat.completions.create, **kwargs
-            )
+            response = await _retry_with_backoff(self._client.chat.completions.create, **kwargs)
         except Exception as e:
             if "response format" in str(e).lower() or "json_schema" in str(e).lower():
                 logger.info(

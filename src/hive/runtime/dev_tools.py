@@ -136,17 +136,54 @@ class ShellToolkit(Toolkit):
     """Sandboxed shell execution within a workspace directory."""
 
     ALLOWED_COMMANDS = {
-        "ls", "cat", "head", "tail", "grep", "find", "wc", "sort", "uniq",
-        "diff", "echo", "printf", "touch", "mkdir", "cp", "mv", "rm",
-        "python", "python3", "pip", "uv", "node", "npm", "npx",
-        "git", "ruff", "mypy", "pytest", "cargo", "go", "make",
-        "curl", "wget", "jq", "sed", "awk", "tr", "cut", "tee",
-        "which", "env", "date", "pwd", "cd", "test",
+        "ls",
+        "cat",
+        "head",
+        "tail",
+        "grep",
+        "find",
+        "wc",
+        "sort",
+        "uniq",
+        "diff",
+        "echo",
+        "printf",
+        "touch",
+        "mkdir",
+        "cp",
+        "mv",
+        "rm",
+        "python",
+        "python3",
+        "pip",
+        "uv",
+        "node",
+        "npm",
+        "npx",
+        "git",
+        "ruff",
+        "mypy",
+        "pytest",
+        "cargo",
+        "go",
+        "make",
+        "curl",
+        "wget",
+        "jq",
+        "sed",
+        "awk",
+        "tr",
+        "cut",
+        "tee",
+        "which",
+        "env",
+        "date",
+        "pwd",
+        "cd",
+        "test",
     }
 
-    def __init__(
-        self, workspace: Path, timeout: int = 30, restrict: bool = True
-    ):
+    def __init__(self, workspace: Path, timeout: int = 30, restrict: bool = True):
         self._workspace = workspace.resolve()
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._timeout = timeout
@@ -184,9 +221,7 @@ class ShellToolkit(Toolkit):
                 cwd=str(self._workspace),
                 env={**os.environ, "HOME": str(self._workspace)},
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=self._timeout
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self._timeout)
             output = stdout.decode(errors="replace")
             err = stderr.decode(errors="replace")
             result_parts = []

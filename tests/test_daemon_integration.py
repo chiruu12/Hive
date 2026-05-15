@@ -47,19 +47,23 @@ class MockDaemonProvider:
         prompt = " ".join(m.content for m in messages).lower()
 
         if "what is the single most valuable" in prompt or "your task" in prompt:
-            content = json.dumps({
-                "goal": "Research Python testing best practices",
-                "reasoning": "Testing knowledge helps the team",
-            })
+            content = json.dumps(
+                {
+                    "goal": "Research Python testing best practices",
+                    "reasoning": "Testing knowledge helps the team",
+                }
+            )
             msg = Message.assistant(content)
         elif tools:
             msg = Message.assistant(
                 "I'll store my findings.",
-                [ToolCall(
-                    id=f"tc-{self._call_count}",
-                    name="memory_set",
-                    arguments={"key": "research", "value": "pytest is great"},
-                )],
+                [
+                    ToolCall(
+                        id=f"tc-{self._call_count}",
+                        name="memory_set",
+                        arguments={"key": "research", "value": "pytest is great"},
+                    )
+                ],
             )
         else:
             msg = Message.assistant("Done researching.")

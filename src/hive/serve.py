@@ -80,9 +80,7 @@ class AgentServer:
             self._history.append(user_input)
 
             with c.status("[bold yellow]Thinking...[/bold yellow]"):
-                result = await self._agent.run(
-                    Task(instruction=user_input)
-                )
+                result = await self._agent.run(Task(instruction=user_input))
 
             if result.status == TaskStatus.COMPLETED:
                 c.print()

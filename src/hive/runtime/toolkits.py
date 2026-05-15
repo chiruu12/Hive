@@ -82,8 +82,7 @@ class WorldToolkit(Toolkit):
         if query_type == "finances":
             fin = self._world.get_finances(self._agent_id)
             return (
-                f"Balance: ${fin.balance}, "
-                f"Earned: ${fin.total_earned}, Spent: ${fin.total_spent}"
+                f"Balance: ${fin.balance}, Earned: ${fin.total_earned}, Spent: ${fin.total_spent}"
             )
         if query_type == "jobs":
             jobs = self._world.available_jobs()
@@ -209,7 +208,9 @@ class DaemonDelegationToolkit(Toolkit):
 
     @tool()
     async def delegate_task(
-        self, agent_name: str, objective: str,
+        self,
+        agent_name: str,
+        objective: str,
     ) -> str:
         """Delegate a task to another agent in the hive.
 
@@ -232,15 +233,14 @@ class DaemonDelegationToolkit(Toolkit):
                 target = a
                 break
         if not target:
-            alive = [
-                a for a in agents
-                if a.is_alive() and a.agent_id != self._agent_id
-            ]
+            alive = [a for a in agents if a.is_alive() and a.agent_id != self._agent_id]
             names = ", ".join(a.name for a in alive)
             return f"Agent not found: {agent_name}. Available: {names}"
 
         record = await self._engine.delegate(
-            self._agent_id, target.agent_id, objective,
+            self._agent_id,
+            target.agent_id,
+            objective,
         )
         return (
             f"Delegated to {target.name} "
@@ -258,19 +258,13 @@ class DaemonDelegationToolkit(Toolkit):
         record = await self._engine.check_completion(delegation_id)
         if not record:
             return f"Delegation not found: {delegation_id}"
-        return (
-            f"Status: {record.status}. "
-            f"Result: {record.result or 'pending'}"
-        )
+        return f"Status: {record.status}. Result: {record.result or 'pending'}"
 
     @tool()
     async def list_peers(self) -> str:
         """List all alive agents you can delegate to."""
         agents = await self._store.list_agents()
-        alive = [
-            a for a in agents
-            if a.is_alive() and a.agent_id != self._agent_id
-        ]
+        alive = [a for a in agents if a.is_alive() and a.agent_id != self._agent_id]
         if not alive:
             return "No other agents available."
         lines = []
