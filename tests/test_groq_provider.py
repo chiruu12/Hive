@@ -5,10 +5,10 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from hive.daemon.diagnostics import check_groq_key
-from hive.models.registry import load_model_registry
-from hive.models.router import detect_models
 from hive.models.factory import create_runtime_provider
 from hive.models.groq import Groq
+from hive.models.registry import load_model_registry
+from hive.models.router import detect_models
 
 
 class TestGroqProviderRouting:

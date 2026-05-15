@@ -13,28 +13,20 @@ from hive.agents.state import AgentState, AgentStatus
 from hive.config import HiveConfig, set_config
 from hive.daemon.loop import HiveDaemon
 from hive.memory.store import HiveStore
+from hive.models.base import BaseProvider
 from hive.runtime.types import GenerateResult, Message, ToolCall
 
 
-class MockDaemonProvider:
+class MockDaemonProvider(BaseProvider):
     """Provider that returns a goal JSON for existence loop, then tool calls for pursuit."""
 
     def __init__(self) -> None:
+        super().__init__("mock-model")
         self._call_count = 0
 
     @property
     def available(self) -> bool:
         return True
-
-    async def generate(
-        self,
-        messages: list[Message],
-        tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
-        max_tokens: int = 4096,
-    ) -> Message:
-        result = await self.generate_with_metadata(messages, tools, temperature, max_tokens)
-        return result.message
 
     async def generate_with_metadata(
         self,
@@ -76,6 +68,15 @@ class MockDaemonProvider:
             cost_usd=0.0001,
             duration_ms=100,
         )
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        raise NotImplementedError("MockDaemonProvider does not support structured output")
 
 
 def _mock_create_provider(model_name: str) -> MockDaemonProvider:

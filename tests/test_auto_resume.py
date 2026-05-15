@@ -16,26 +16,18 @@ from hive.config import HiveConfig, set_config
 from hive.context import ExecutionContext
 from hive.daemon.loop import HiveDaemon
 from hive.memory.store import HiveStore
+from hive.models.base import BaseProvider
 from hive.runtime.types import GenerateResult, Message, ToolCall
 
 
-class MockResumeProvider:
+class MockResumeProvider(BaseProvider):
     def __init__(self) -> None:
+        super().__init__("mock")
         self._call_count = 0
 
     @property
     def available(self) -> bool:
         return True
-
-    async def generate(
-        self,
-        messages: list[Message],
-        tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
-        max_tokens: int = 4096,
-    ) -> Message:
-        result = await self.generate_with_metadata(messages, tools, temperature, max_tokens)
-        return result.message
 
     async def generate_with_metadata(
         self,
@@ -77,6 +69,15 @@ class MockResumeProvider:
             cost_usd=0.0,
             duration_ms=10,
         )
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        raise NotImplementedError("MockResumeProvider does not support structured output")
 
 
 def _mock_provider(model_name: str) -> MockResumeProvider:

@@ -6,16 +6,18 @@ from typing import Any
 
 import pytest
 
+from hive.models.base import BaseProvider
 from hive.runtime.agent import Agent
 from hive.runtime.delegation import DelegationToolkit
 from hive.runtime.tools import Toolkit, tool
 from hive.runtime.types import GenerateResult, Message, Task, TaskStatus, ToolCall
 
 
-class MockProvider:
+class MockProvider(BaseProvider):
     """Provider with configurable responses."""
 
     def __init__(self, responses: list[Message], cost_per_call: float = 0.001) -> None:
+        super().__init__("mock")
         self._responses = list(responses)
         self._call_count = 0
         self._cost = cost_per_call
@@ -23,10 +25,6 @@ class MockProvider:
     @property
     def available(self) -> bool:
         return True
-
-    async def generate(self, messages: list[Message], **kwargs: Any) -> Message:
-        result = await self.generate_with_metadata(messages, **kwargs)
-        return result.message
 
     async def generate_with_metadata(
         self, messages: list[Message], **kwargs: Any
@@ -43,6 +41,15 @@ class MockProvider:
             output_tokens=50,
             cost_usd=self._cost,
         )
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        raise NotImplementedError("MockProvider does not support structured output")
 
 
 class TestBudgetEnforcement:
