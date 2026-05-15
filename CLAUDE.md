@@ -2,20 +2,25 @@
 
 ## Project Overview
 
-Hive is a local-first agent operating system. Users spawn persistent AI agents via CLI that collaborate, write code, and use tools autonomously. Config-driven with YAML agent profiles, multi-model support (Claude, Codex, LM Studio), and built-in safety via workspace isolation and Oracle review.
+Hive is a local-first agent operating system. Users spawn persistent AI agents via CLI that collaborate, write code, and use tools autonomously. Config-driven with YAML agent profiles, multi-model support (Anthropic, OpenAI, Fireworks, Ollama, LM Studio), and built-in safety via workspace isolation.
 
 ## Architecture
 
 ```
 src/hive/
 ├── cli/              # Typer CLI (commands map 1:1 to user actions)
-├── daemon/           # Background service (lifecycle, scheduler, events)
-├── agents/           # Agent runtime (loop, profile loading, state)
-├── execution/        # Tool execution (sandbox, registry, synthesis)
-├── memory/           # Persistence (SQLite store, JSONL events)
-├── models/           # LLM abstraction (router, claude, codex, local)
-├── rooms/            # Multi-agent collaboration (rooms, messaging)
-└── skills/           # Skill loader (markdown workflow parser)
+├── daemon/           # Background service (lifecycle, heartbeat loop, diagnostics)
+├── agents/           # Agent profiles, state, suffering, identity, delegation
+├── runtime/          # Standalone agent framework (ReAct loop, tools, providers)
+├── memory/           # Persistence (SQLite store, JSONL events, semantic memory)
+├── models/           # Model registry (YAML catalog, router, cost estimation)
+├── interactions/     # Multi-agent interaction patterns (round-table, pairs, freeform)
+├── world/            # Simulated economy (jobs, skills, finances, life events)
+├── logging/          # Structured run logs (decisions, tools, goals, suffering)
+├── mcp/              # MCP client and server
+├── checkpoint.py     # Save/restore agent state snapshots
+├── api.py            # Programmatic Python API (Hive facade class)
+└── config.py         # Config loading (YAML + env vars)
 ```
 
 ## Tech Stack
@@ -24,7 +29,7 @@ src/hive/
 - **CLI**: Typer + Rich (terminal UI)
 - **Async**: asyncio (concurrent agent execution)
 - **Database**: SQLite via aiosqlite
-- **LLM**: anthropic SDK, OpenAI-compatible API, subprocess for Codex
+- **LLM**: anthropic SDK, OpenAI SDK (also for Fireworks, Ollama, LM Studio)
 - **Packaging**: uv, pyproject.toml
 - **Testing**: pytest + pytest-asyncio
 
@@ -44,7 +49,7 @@ src/hive/
 - One class per file when the class is substantial (>100 lines)
 - Related small classes can share a file
 - Prefix private modules with underscore only if truly internal
-- Tests mirror src structure: `tests/agents/test_loop.py` tests `src/hive/agents/loop.py`
+- Tests mirror src structure: `tests/runtime/test_agent.py` tests `src/hive/runtime/agent.py`
 
 ### Naming
 
@@ -63,7 +68,6 @@ src/hive/
 
 ### Error Handling
 
-- Custom exception hierarchy rooted at `HiveError`
 - Never catch bare `Exception` unless re-raising
 - Agent failures don't crash the daemon (isolated per-agent error handling)
 - Log errors with context (agent_id, task_id, step number)
@@ -78,19 +82,18 @@ src/hive/
 ## Key Design Decisions
 
 1. **Agents are records, not processes.** The daemon drives agent execution. Agents don't run independently.
-2. **Results flow between steps via substitution.** Plan = list of steps. Each step's output substitutes into the next step's params.
-3. **Tools are just functions.** The execution engine is a dispatcher: resolve tool_id -> call function -> return result.
-4. **YAML profiles define agents.** Role, model, tools, autonomy level, system prompt. No code needed to create an agent.
-5. **Event log is immutable.** JSONL append-only. Enables replay, debugging, and recovery.
-6. **Model router is pluggable.** Protocol-based. Add new providers without changing agent code.
-7. **Skills are markdown.** Parsed at runtime, loaded into agent context when relevant.
+2. **Tools are Toolkit classes.** Extend `Toolkit`, decorate methods with `@tool()`. JSON Schema extracted from type hints.
+3. **YAML profiles define agents.** Role, model, tools, autonomy level, system prompt. No code needed to create an agent.
+4. **Event log is immutable.** JSONL append-only. Enables replay, debugging, and recovery.
+5. **Model router is pluggable.** Protocol-based. Add new providers without changing agent code.
+6. **Plugins extend toolkits.** Drop a Python file in `.hive/plugins/` with a Toolkit subclass — auto-discovered.
 
 ## Commands
 
 ```bash
 # Development
 uv run pytest                    # Run tests
-uv run pytest tests/agents/      # Run specific test module
+uv run pytest tests/runtime/     # Run specific test module
 uv run python -m hive.cli        # Run CLI locally
 uv run ruff check src/           # Lint
 uv run ruff format src/          # Format
@@ -102,17 +105,15 @@ uv run pytest && uv run ruff check src/ && uv run mypy src/
 
 ## Adding a New Tool
 
-1. Create function in `src/hive/execution/tools/`
-2. Decorate with `@tool(name="tool_name", description="...")`
-3. Tool is auto-registered on startup
-4. Add to relevant agent profiles in `profiles/`
+1. Create a `Toolkit` subclass in `src/hive/runtime/toolkits.py` (or a plugin file)
+2. Decorate methods with `@tool()` — JSON Schema auto-extracted from type hints
+3. Instantiate in `daemon/loop.py:_build_toolkits()` or drop in `.hive/plugins/`
 
 ## Adding a New Model Provider
 
-1. Implement `ModelProvider` protocol in `src/hive/models/`
-2. Register in `src/hive/models/router.py`
-3. Add detection logic (API key? binary exists? endpoint responding?)
-4. Add to config schema
+1. Implement `RuntimeProvider` protocol in `src/hive/runtime/providers.py`
+2. Add routing logic in `create_runtime_provider()` factory
+3. Add model entries to `models.yaml`
 
 ## Adding a New Agent Preset
 

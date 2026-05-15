@@ -106,7 +106,7 @@ class GoalEngine:
         statuses = [s.get("status", "active") for s in subs]
         if all(s == "completed" for s in statuses):
             return "completed"
-        if any(s == "abandoned" for s in statuses):
+        if any(s == "abandoned" for s in statuses) and not any(s == "active" for s in statuses):
             return "abandoned"
         return None
 
