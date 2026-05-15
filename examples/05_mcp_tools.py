@@ -34,7 +34,7 @@ async def main() -> None:
         )
 
         result = await agent.run(
-            Task(instruction="Create a file called notes.txt with today's date, then list the directory.")
+            Task(instruction=("Create notes.txt with today's date, then list the directory."))
         )
 
         print(f"\nStatus: {result.status}")

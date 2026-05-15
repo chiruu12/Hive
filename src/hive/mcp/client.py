@@ -67,9 +67,7 @@ class MCPToolkit(Toolkit):
         await session.initialize()
         tools_result = await session.list_tools()
 
-        logger.info(
-            "MCP connected: %s (%d tools)", command, len(tools_result.tools)
-        )
+        logger.info("MCP connected: %s (%d tools)", command, len(tools_result.tools))
 
         return cls(
             session=session,

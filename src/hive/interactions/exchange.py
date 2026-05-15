@@ -62,12 +62,14 @@ class ExchangeRunner:
 
         for participant in participants:
             visible = [
-                m for m in history + messages
+                m
+                for m in history + messages
                 if not m.visible_to or participant.participant_id in m.visible_to
             ]
 
             content = await participant.respond(
-                visible, context=context,
+                visible,
+                context=context,
             )
 
             messages.append(
@@ -106,10 +108,7 @@ class ExchangeRunner:
         for p1, p2 in pairs:
             pair_ids = (p1.participant_id, p2.participant_id)
 
-            visible = [
-                m for m in history
-                if not m.visible_to or p1.participant_id in m.visible_to
-            ]
+            visible = [m for m in history if not m.visible_to or p1.participant_id in m.visible_to]
             c1 = await p1.respond(visible, context=context)
             msg1 = InteractionMessage(
                 round=round_num,
@@ -121,10 +120,7 @@ class ExchangeRunner:
             )
             messages.append(msg1)
 
-            visible2 = [
-                m for m in history
-                if not m.visible_to or p2.participant_id in m.visible_to
-            ]
+            visible2 = [m for m in history if not m.visible_to or p2.participant_id in m.visible_to]
             visible2.append(msg1)
             c2 = await p2.respond(visible2, context=context)
             messages.append(
@@ -153,7 +149,8 @@ class ExchangeRunner:
 
         for participant in participants:
             visible = [
-                m for m in history + messages
+                m
+                for m in history + messages
                 if not m.visible_to or participant.participant_id in m.visible_to
             ]
 

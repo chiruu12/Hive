@@ -97,10 +97,12 @@ class HiveDaemon:
 
         from hive.runtime.plugin_loader import PluginLoader
 
-        self._plugin_loader = PluginLoader([
-            hive_dir / "plugins",
-            hive_dir.parent / "plugins",
-        ])
+        self._plugin_loader = PluginLoader(
+            [
+                hive_dir / "plugins",
+                hive_dir.parent / "plugins",
+            ]
+        )
         self._plugin_toolkits: list[type[Any]] = []
 
     def _build_toolkits(self, agent_id: str) -> list[Any]:
@@ -114,7 +116,9 @@ class HiveDaemon:
             MemoryToolkit(self._ctx.memory_dir, agent_id),
             CommsToolkit(self._ctx.comms_dir, agent_id),
             DaemonDelegationToolkit(
-                self._delegation, agent_id, self._store,
+                self._delegation,
+                agent_id,
+                self._store,
             ),
         ]
         if self._economy_enabled and self._ctx.world is not None:
@@ -124,7 +128,9 @@ class HiveDaemon:
                 toolkits.append(tk_cls())
             except Exception as e:
                 logger.warning(
-                    "Plugin toolkit %s failed: %s", tk_cls.__name__, e,
+                    "Plugin toolkit %s failed: %s",
+                    tk_cls.__name__,
+                    e,
                 )
         return toolkits
 
@@ -318,7 +324,11 @@ class HiveDaemon:
                     goals_snap,
                 )
                 self._specialization.record(
-                    agent.agent_id, "goal_pursuit", True, 0, "autonomy_loop",
+                    agent.agent_id,
+                    "goal_pursuit",
+                    True,
+                    0,
+                    "autonomy_loop",
                 )
             elif outcome.steps_failed > outcome.steps_done:
                 await self._store.abandon_goal(active_goal["goal_id"])
@@ -341,7 +351,11 @@ class HiveDaemon:
                 )
                 result = "abandoned"
                 self._specialization.record(
-                    agent.agent_id, "goal_pursuit", False, 0, "autonomy_loop",
+                    agent.agent_id,
+                    "goal_pursuit",
+                    False,
+                    0,
+                    "autonomy_loop",
                 )
 
             await self._check_parent_rollup(active_goal["goal_id"])
@@ -451,22 +465,32 @@ class HiveDaemon:
                     else:
                         logger.warning(
                             "Agent %s gave invalid choice '%s' for event %s, defaulting",
-                            agent.agent_id, raw, event.name,
+                            agent.agent_id,
+                            raw,
+                            event.name,
                         )
                         choice_id = event.choices[0].id
                 except Exception as e:
                     logger.warning(
-                        "LLM error for event %s agent %s: %s", event.name, agent.agent_id, e,
+                        "LLM error for event %s agent %s: %s",
+                        event.name,
+                        agent.agent_id,
+                        e,
                     )
                     choice_id = event.choices[0].id
 
                 outcome = self._event_engine.apply_choice(
-                    agent.agent_id, event, choice_id, self._cycle_count,
+                    agent.agent_id,
+                    event,
+                    choice_id,
+                    self._cycle_count,
                 )
 
                 session_id = f"sess-{agent.agent_id}"
                 await self._emit(
-                    agent.agent_id, session_id, EventType.EXISTENCE_CYCLE,
+                    agent.agent_id,
+                    session_id,
+                    EventType.EXISTENCE_CYCLE,
                     {
                         "life_event": event.name,
                         "choice": outcome.choice_description,
@@ -533,7 +557,10 @@ class HiveDaemon:
         self, agent_id: str, session_id: str, event_type: EventType, data: dict[str, Any]
     ) -> None:
         event = HiveEvent(
-            event_type=event_type, agent_id=agent_id, session_id=session_id, data=data,
+            event_type=event_type,
+            agent_id=agent_id,
+            session_id=session_id,
+            data=data,
         )
         await self._events.append(event)
 
@@ -561,7 +588,8 @@ class HiveDaemon:
                     self._suffering[agent.agent_id] = restored
                     logger.info(
                         "Restored checkpoint for %s (load=%.0f%%)",
-                        agent.agent_id, restored.cumulative_load * 100,
+                        agent.agent_id,
+                        restored.cumulative_load * 100,
                     )
                 except Exception:
                     logger.warning("Could not restore suffering for %s", agent.agent_id)
@@ -607,8 +635,13 @@ class HiveDaemon:
                 continue
             try:
                 summary = self._life_writer.generate(
-                    agent.agent_id, self._identity, self._stats,
-                    self._ctx.world, self._event_engine, self._store, self._cycle_count,
+                    agent.agent_id,
+                    self._identity,
+                    self._stats,
+                    self._ctx.world,
+                    self._event_engine,
+                    self._store,
+                    self._cycle_count,
                 )
                 path = self._life_writer.write(summary)
                 logger.info("Life summary written: %s", path)

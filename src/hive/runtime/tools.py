@@ -43,6 +43,7 @@ class Tool:
             return ""
         if isinstance(result, (dict, list)):
             import json
+
             return json.dumps(result, default=str)
         return str(result)
 
@@ -101,6 +102,7 @@ def _python_type_to_json_schema(tp: Any) -> dict[str, Any]:
 def _is_pydantic_model(tp: Any) -> bool:
     try:
         from pydantic import BaseModel
+
         return isinstance(tp, type) and issubclass(tp, BaseModel)
     except ImportError:
         return False
@@ -108,6 +110,7 @@ def _is_pydantic_model(tp: Any) -> bool:
 
 def _is_dataclass(tp: Any) -> bool:
     import dataclasses
+
     return dataclasses.is_dataclass(tp) and isinstance(tp, type)
 
 
@@ -120,7 +123,8 @@ def _pydantic_to_inline_schema(model: type[Any]) -> dict[str, Any]:
 
 
 def _resolve_refs(
-    schema: dict[str, Any], defs: dict[str, Any],
+    schema: dict[str, Any],
+    defs: dict[str, Any],
 ) -> dict[str, Any]:
     """Recursively inline $ref references."""
     if "$ref" in schema:
@@ -136,10 +140,7 @@ def _resolve_refs(
         if isinstance(value, dict):
             result[key] = _resolve_refs(value, defs)
         elif isinstance(value, list):
-            result[key] = [
-                _resolve_refs(v, defs) if isinstance(v, dict) else v
-                for v in value
-            ]
+            result[key] = [_resolve_refs(v, defs) if isinstance(v, dict) else v for v in value]
         else:
             result[key] = value
     return result
@@ -156,10 +157,7 @@ def _dataclass_to_schema(dc: type[Any]) -> dict[str, Any]:
         tp = hints.get(field.name, str)
         prop = _python_type_to_json_schema(tp)
         properties[field.name] = prop
-        if (
-            field.default is dataclasses.MISSING
-            and field.default_factory is dataclasses.MISSING  # type: ignore[comparison-overlap]
-        ):
+        if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING:
             required.append(field.name)
     result: dict[str, Any] = {"type": "object", "properties": properties}
     if required:
@@ -209,17 +207,14 @@ def _extract_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
 
-    user_params = [
-        (n, p) for n, p in sig.parameters.items()
-        if n not in ("self", "cls", "return")
-    ]
+    user_params = [(n, p) for n, p in sig.parameters.items() if n not in ("self", "cls", "return")]
 
     for param_name, param in user_params:
         if param_name not in hints:
             logger.warning(
-                "Tool '%s': parameter '%s' has no type annotation, "
-                "defaulting to str",
-                fn_name, param_name,
+                "Tool '%s': parameter '%s' has no type annotation, defaulting to str",
+                fn_name,
+                param_name,
             )
 
         tp = hints.get(param_name, str)
@@ -232,7 +227,8 @@ def _extract_schema(fn: Callable[..., Any]) -> dict[str, Any]:
                 logger.debug(
                     "Tool '%s': parameter '%s' has no description "
                     "(add an Args: section to the docstring)",
-                    fn_name, param_name,
+                    fn_name,
+                    param_name,
                 )
 
         properties[param_name] = schema

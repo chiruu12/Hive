@@ -56,9 +56,7 @@ class TestGroqRegistry:
 class TestGroqDetection:
     def test_detect_models_includes_groq(self) -> None:
         with patch("hive.config.get_env") as mock_env:
-            mock_env.side_effect = lambda k: (
-                "gsk-test" if k == "GROQ_API_KEY" else None
-            )
+            mock_env.side_effect = lambda k: "gsk-test" if k == "GROQ_API_KEY" else None
             models = detect_models()
         assert "Groq" in models
         assert len(models["Groq"]) >= 1

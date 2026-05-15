@@ -25,7 +25,9 @@ def check_python_version() -> CheckResult:
     if v >= (3, 11):
         return CheckResult("Python version", "ok", version_str)
     return CheckResult(
-        "Python version", "fail", f"{version_str} (need >=3.11)",
+        "Python version",
+        "fail",
+        f"{version_str} (need >=3.11)",
         fix="Install Python 3.11+ from python.org",
     )
 
@@ -36,7 +38,9 @@ def check_anthropic_key() -> CheckResult:
         masked = key[:8] + "..." + key[-4:]
         return CheckResult("Anthropic API key", "ok", f"Set ({masked})")
     return CheckResult(
-        "Anthropic API key", "warn", "Not set",
+        "Anthropic API key",
+        "warn",
+        "Not set",
         fix="Set ANTHROPIC_API_KEY in .env or environment",
     )
 
@@ -47,7 +51,9 @@ def check_openai_key() -> CheckResult:
         masked = key[:8] + "..." + key[-4:]
         return CheckResult("OpenAI API key", "ok", f"Set ({masked})")
     return CheckResult(
-        "OpenAI API key", "warn", "Not set (optional)",
+        "OpenAI API key",
+        "warn",
+        "Not set (optional)",
         fix="Set OPENAI_API_KEY in .env if using OpenAI models",
     )
 
@@ -58,7 +64,9 @@ def check_groq_key() -> CheckResult:
         masked = key[:8] + "..." + key[-4:]
         return CheckResult("Groq API key", "ok", f"Set ({masked})")
     return CheckResult(
-        "Groq API key", "warn", "Not set (optional)",
+        "Groq API key",
+        "warn",
+        "Not set (optional)",
         fix="Set GROQ_API_KEY in .env if using Groq models",
     )
 
@@ -71,12 +79,16 @@ def check_local_model(name: str, url: str) -> CheckResult:
         if resp.status_code == 200:
             return CheckResult(name, "ok", f"Reachable at {url}")
         return CheckResult(
-            name, "warn", f"HTTP {resp.status_code}",
+            name,
+            "warn",
+            f"HTTP {resp.status_code}",
             fix=f"Check {name} is running",
         )
     except Exception:
         return CheckResult(
-            name, "warn", "Not reachable (optional)",
+            name,
+            "warn",
+            "Not reachable (optional)",
             fix=f"Start {name} if you want local models",
         )
 
@@ -84,14 +96,17 @@ def check_local_model(name: str, url: str) -> CheckResult:
 def check_hive_dir(hive_dir: Path) -> CheckResult:
     if not hive_dir.exists():
         return CheckResult(
-            ".hive directory", "fail", "Not found",
+            ".hive directory",
+            "fail",
+            "Not found",
             fix="Run `hive init` to create it",
         )
     required = ["hive.db", "config.yaml"]
     missing = [f for f in required if not (hive_dir / f).exists()]
     if missing:
         return CheckResult(
-            ".hive directory", "warn",
+            ".hive directory",
+            "warn",
             f"Missing: {', '.join(missing)}",
             fix="Run `hive init` to recreate",
         )
@@ -102,7 +117,9 @@ def check_sqlite_integrity(hive_dir: Path) -> CheckResult:
     db_path = hive_dir / "hive.db"
     if not db_path.exists():
         return CheckResult(
-            "SQLite database", "warn", "No database yet",
+            "SQLite database",
+            "warn",
+            "No database yet",
         )
     try:
         conn = sqlite3.connect(str(db_path))
@@ -110,10 +127,14 @@ def check_sqlite_integrity(hive_dir: Path) -> CheckResult:
         conn.close()
         if result and result[0] == "ok":
             return CheckResult(
-                "SQLite database", "ok", "Integrity check passed",
+                "SQLite database",
+                "ok",
+                "Integrity check passed",
             )
         return CheckResult(
-            "SQLite database", "fail", f"Integrity: {result}",
+            "SQLite database",
+            "fail",
+            f"Integrity: {result}",
         )
     except Exception as e:
         return CheckResult("SQLite database", "fail", str(e))
@@ -122,8 +143,14 @@ def check_sqlite_integrity(hive_dir: Path) -> CheckResult:
 def check_dependencies() -> CheckResult:
     missing = []
     for pkg in [
-        "typer", "rich", "aiosqlite", "pydantic",
-        "anthropic", "openai", "yaml", "httpx",
+        "typer",
+        "rich",
+        "aiosqlite",
+        "pydantic",
+        "anthropic",
+        "openai",
+        "yaml",
+        "httpx",
     ]:
         try:
             __import__(pkg)
@@ -131,7 +158,8 @@ def check_dependencies() -> CheckResult:
             missing.append(pkg)
     if missing:
         return CheckResult(
-            "Dependencies", "fail",
+            "Dependencies",
+            "fail",
             f"Missing: {', '.join(missing)}",
             fix="Run `uv sync` or `pip install hive-agent`",
         )

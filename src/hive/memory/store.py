@@ -182,8 +182,12 @@ class HiveStore:
                     parent_goal_id, created_at)
                    VALUES (?, ?, ?, 'active', ?, ?, ?)""",
                 (
-                    goal_id, agent_id, objective, priority,
-                    parent_goal_id, datetime.now(UTC).isoformat(),
+                    goal_id,
+                    agent_id,
+                    objective,
+                    priority,
+                    parent_goal_id,
+                    datetime.now(UTC).isoformat(),
                 ),
             )
             await db.commit()
@@ -201,20 +205,18 @@ class HiveStore:
     async def get_goal_by_id(self, goal_id: str) -> dict[str, Any] | None:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM goals WHERE goal_id = ?", (goal_id,)
-            ) as cursor:
+            async with db.execute("SELECT * FROM goals WHERE goal_id = ?", (goal_id,)) as cursor:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
     async def get_subgoals(
-        self, parent_goal_id: str,
+        self,
+        parent_goal_id: str,
     ) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM goals WHERE parent_goal_id = ?"
-                " ORDER BY priority DESC",
+                "SELECT * FROM goals WHERE parent_goal_id = ? ORDER BY priority DESC",
                 (parent_goal_id,),
             ) as cursor:
                 return [dict(row) async for row in cursor]

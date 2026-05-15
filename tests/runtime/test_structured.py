@@ -169,9 +169,7 @@ class TestGenerateStructuredFallback:
     @pytest.mark.asyncio
     async def test_fallback_parses_response(self) -> None:
         provider = MockStructuredProvider('{"name": "Test", "age": 1, "active": true}')
-        result = await generate_structured_fallback(
-            provider, [Message.user("test")], SimpleModel
-        )
+        result = await generate_structured_fallback(provider, [Message.user("test")], SimpleModel)
         assert isinstance(result, StructuredGenerateResult)
         assert result.parsed.name == "Test"
         assert result.parsed.age == 1
@@ -180,9 +178,7 @@ class TestGenerateStructuredFallback:
     async def test_fallback_invalid_raises(self) -> None:
         provider = MockStructuredProvider("not valid json")
         with pytest.raises(Exception):
-            await generate_structured_fallback(
-                provider, [Message.user("test")], SimpleModel
-            )
+            await generate_structured_fallback(provider, [Message.user("test")], SimpleModel)
 
 
 class TestAgentRunStructured:

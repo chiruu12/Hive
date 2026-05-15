@@ -276,9 +276,11 @@ class TestCollectTools:
 
 class TestWarnings:
     def test_warns_missing_docstring(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+
             @tool()
             def no_docs(x: int) -> str:
                 return str(x)
@@ -286,9 +288,11 @@ class TestWarnings:
         assert "no docstring" in caplog.text.lower()
 
     def test_warns_missing_type_hint(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+
             @tool()
             def untyped(x) -> str:  # type: ignore[no-untyped-def]
                 """Do something."""
@@ -297,9 +301,11 @@ class TestWarnings:
         assert "no type annotation" in caplog.text.lower()
 
     def test_no_warning_for_proper_tool(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+
             @tool()
             def good(name: str) -> str:
                 """A good tool.
@@ -313,9 +319,11 @@ class TestWarnings:
         assert "no type annotation" not in caplog.text.lower()
 
     def test_explicit_description_skips_docstring_warning(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+
             @tool(description="Explicit description")
             def also_fine(x: int) -> str:
                 return str(x)

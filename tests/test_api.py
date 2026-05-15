@@ -30,7 +30,10 @@ class MockAPIProvider:
         max_tokens: int = 4096,
     ) -> Message:
         result = await self.generate_with_metadata(
-            messages, tools, temperature, max_tokens,
+            messages,
+            tools,
+            temperature,
+            max_tokens,
         )
         return result.message
 
@@ -45,25 +48,34 @@ class MockAPIProvider:
         prompt = " ".join(m.content for m in messages).lower()
 
         if "what is the single most valuable" in prompt:
-            content = json.dumps({
-                "goal": "Learn API testing",
-                "reasoning": "Improves reliability",
-            })
+            content = json.dumps(
+                {
+                    "goal": "Learn API testing",
+                    "reasoning": "Improves reliability",
+                }
+            )
             msg = Message.assistant(content)
         elif tools:
             msg = Message.assistant(
                 "Storing.",
-                [ToolCall(
-                    id=f"tc-{self._call_count}", name="memory_set",
-                    arguments={"key": "test", "value": "data"},
-                )],
+                [
+                    ToolCall(
+                        id=f"tc-{self._call_count}",
+                        name="memory_set",
+                        arguments={"key": "test", "value": "data"},
+                    )
+                ],
             )
         else:
             msg = Message.assistant("Done.")
 
         return GenerateResult(
-            message=msg, model="mock", input_tokens=10,
-            output_tokens=5, cost_usd=0.0, duration_ms=10,
+            message=msg,
+            model="mock",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0,
+            duration_ms=10,
         )
 
 
@@ -117,7 +129,12 @@ class TestHiveStatus:
         agents = h.status()
         keys = set(agents[0].keys())
         assert keys == {
-            "agent_id", "name", "role", "model", "status", "goal",
+            "agent_id",
+            "name",
+            "role",
+            "model",
+            "status",
+            "goal",
         }
 
 

@@ -134,10 +134,7 @@ class PersistentMemory:
         semantic = self._get_semantic()
         if semantic:
             results = await semantic.search(query, top_k=limit)
-            return [
-                {"thought": r.thought, "metadata": r.metadata}
-                for r in results
-            ]
+            return [{"thought": r.thought, "metadata": r.metadata} for r in results]
 
         entries = list(self._fallback.values())[-limit:]
         return entries

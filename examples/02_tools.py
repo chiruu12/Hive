@@ -36,7 +36,7 @@ async def main() -> None:
         Task(
             instruction=(
                 "1. Initialize a git repo\n"
-                "2. Create a Python file called fibonacci.py that prints the first 10 fibonacci numbers\n"
+                "2. Create fibonacci.py that prints the first 10 fibonacci numbers\n"
                 "3. Run it to verify the output\n"
                 "4. Commit the file with a descriptive message"
             )

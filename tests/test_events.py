@@ -50,12 +50,14 @@ def test_list_sessions(tmp_dir):
 
     async def _run():
         for sid in ["sess-a", "sess-b"]:
-            await log.append(HiveEvent(
-                event_type=EventType.TASK_STARTED,
-                agent_id="agent-1",
-                session_id=sid,
-                data={},
-            ))
+            await log.append(
+                HiveEvent(
+                    event_type=EventType.TASK_STARTED,
+                    agent_id="agent-1",
+                    session_id=sid,
+                    data={},
+                )
+            )
         sessions = await log.list_sessions("agent-1")
         assert "sess-a" in sessions
         assert "sess-b" in sessions

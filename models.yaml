@@ -65,15 +65,15 @@ groq:
 
 # OpenAI models (via API key)
 openai:
-  - id: gpt-4o-mini
-    display: GPT-4o Mini
-    cost_input_per_1k: 0.00015
-    cost_output_per_1k: 0.0006
+  - id: gpt-5.4-nano
+    display: GPT-5.4 Nano
+    cost_input_per_1k: 0.0002
+    cost_output_per_1k: 0.00125
     tier: routine
-  - id: gpt-4o
-    display: GPT-4o
-    cost_input_per_1k: 0.005
-    cost_output_per_1k: 0.015
+  - id: gpt-5.4-mini
+    display: GPT-5.4 Mini
+    cost_input_per_1k: 0.00075
+    cost_output_per_1k: 0.0045
     tier: planning
 
 # Local models (no API key needed)

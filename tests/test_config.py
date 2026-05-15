@@ -1,6 +1,5 @@
 """Tests for config system."""
 
-
 from hive.config import HiveConfig, load_config, set_config
 
 
@@ -14,9 +13,7 @@ def test_default_config():
 
 def test_config_from_yaml(tmp_dir):
     config_path = tmp_dir / "config.yaml"
-    config_path.write_text(
-        "daemon:\n  heartbeat: 30\neconomy:\n  starting_balance: 500.0\n"
-    )
+    config_path.write_text("daemon:\n  heartbeat: 30\neconomy:\n  starting_balance: 500.0\n")
     cfg = HiveConfig.load(tmp_dir)
     assert cfg.daemon.heartbeat == 30
     assert cfg.economy.starting_balance == 500.0
