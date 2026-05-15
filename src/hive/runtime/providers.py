@@ -299,8 +299,7 @@ class OpenAIRuntimeProvider:
 
         key = api_key or get_env("OPENAI_API_KEY") or None
         kwargs: dict[str, Any] = {}
-        if key:
-            kwargs["api_key"] = key
+        kwargs["api_key"] = key or "not-set"
         if base_url:
             kwargs["base_url"] = base_url
         self._client = openai.AsyncOpenAI(**kwargs)
@@ -543,6 +542,15 @@ def create_runtime_provider(model_name: str) -> RuntimeProvider:
             model=clean,
             api_key=key,
             base_url="https://api.fireworks.ai/inference/v1",
+        )
+
+    if model_name.startswith("groq:"):
+        clean = model_name.removeprefix("groq:")
+        key = get_env("GROQ_API_KEY")
+        return OpenAIRuntimeProvider(
+            model=clean,
+            api_key=key,
+            base_url="https://api.groq.com/openai/v1",
         )
 
     if model_name.startswith("lmstudio:"):

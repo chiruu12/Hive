@@ -52,6 +52,17 @@ def check_openai_key() -> CheckResult:
     )
 
 
+def check_groq_key() -> CheckResult:
+    key = get_env("GROQ_API_KEY")
+    if key:
+        masked = key[:8] + "..." + key[-4:]
+        return CheckResult("Groq API key", "ok", f"Set ({masked})")
+    return CheckResult(
+        "Groq API key", "warn", "Not set (optional)",
+        fix="Set GROQ_API_KEY in .env if using Groq models",
+    )
+
+
 def check_local_model(name: str, url: str) -> CheckResult:
     try:
         import httpx
@@ -134,6 +145,7 @@ def run_all_checks(hive_dir: Path | None = None) -> list[CheckResult]:
         check_dependencies(),
         check_anthropic_key(),
         check_openai_key(),
+        check_groq_key(),
         check_local_model("Ollama", "http://localhost:11434/v1"),
         check_local_model("LM Studio", "http://localhost:1234/v1"),
         check_hive_dir(hive),
