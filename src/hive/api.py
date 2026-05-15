@@ -106,6 +106,7 @@ class Hive:
             daemon = self._daemon
 
             async def _bounded_run() -> None:
+                daemon._plugin_toolkits.extend(daemon._plugin_loader.discover())
                 count = 0
                 while daemon._running and count < cycles:
                     daemon._cycle_count += 1
