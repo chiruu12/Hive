@@ -66,6 +66,15 @@ class Agent:
         self._total_cost = 0.0
         self._total_tokens = 0
 
+    def __repr__(self) -> str:
+        return (
+            f"Agent(name={self.name!r}, model={self._model.__class__.__name__}, "
+            f"tools={len(self.get_tools())}, max_steps={self._max_steps})"
+        )
+
+    def __str__(self) -> str:
+        return f"Agent({self.name})"
+
     def get_tools(self) -> list[Tool]:
         """Return all tools available to this agent."""
         all_tools: list[Tool] = list(self._extra_tools)
@@ -73,18 +82,8 @@ class Agent:
             all_tools.extend(tk.get_tools())
         return all_tools
 
-    async def run(self, task: Task) -> TaskResult:
-        """Execute a task using the ReAct loop."""
-        self._total_cost = 0.0
-        self._total_tokens = 0
-        t0 = time.time()
-
-        tools = self.get_tools()
-        tool_map = {t.name: t for t in tools}
-        tool_schemas = [t.to_schema() for t in tools] if tools else None
-
-        max_steps = task.max_steps or self._max_steps
-
+    async def _prepare_conversation(self, task: Task, max_steps: int) -> ConversationMemory:
+        """Build the initial conversation with system prompt, memories, and task."""
         conversation = ConversationMemory(
             system_prompt=self._system_prompt,
             max_messages=max_steps * 4,
@@ -108,6 +107,78 @@ class Agent:
             conversation.add(Message.user(f"{task.instruction}\n\nContext:\n{context_str}"))
         else:
             conversation.add(Message.user(task.instruction))
+
+        return conversation
+
+    async def _execute_tool_calls(
+        self,
+        tool_calls: tuple[Any, ...],
+        tool_map: dict[str, Tool],
+        conversation: ConversationMemory,
+    ) -> int:
+        """Execute tool calls and add results to conversation. Returns count."""
+        count = 0
+        for tc in tool_calls:
+            count += 1
+            tool = tool_map.get(tc.name)
+
+            if tool is None:
+                available = ", ".join(tool_map.keys())
+                conversation.add(
+                    Message.tool_result(
+                        tc.id,
+                        f"Error: unknown tool '{tc.name}'. Available: {available}",
+                        is_error=True,
+                        name=tc.name,
+                    )
+                )
+                self._log_tool(tc.name, tc.arguments, False, "", "unknown tool", 0)
+                continue
+
+            tool_t0 = time.time()
+            try:
+                result_text = await tool.call(**tc.arguments)
+                conversation.add(Message.tool_result(tc.id, result_text, name=tc.name))
+                self._log_tool(
+                    tc.name,
+                    tc.arguments,
+                    True,
+                    result_text[:500],
+                    None,
+                    int((time.time() - tool_t0) * 1000),
+                )
+            except Exception as e:
+                logger.warning("Tool %s failed: %s", tc.name, e)
+                conversation.add(
+                    Message.tool_result(
+                        tc.id,
+                        f"Error: {e}",
+                        is_error=True,
+                        name=tc.name,
+                    )
+                )
+                self._log_tool(
+                    tc.name,
+                    tc.arguments,
+                    False,
+                    "",
+                    str(e),
+                    int((time.time() - tool_t0) * 1000),
+                )
+        return count
+
+    async def run(self, task: Task) -> TaskResult:
+        """Execute a task using the ReAct loop."""
+        self._total_cost = 0.0
+        self._total_tokens = 0
+        t0 = time.time()
+
+        tools = self.get_tools()
+        tool_map = {t.name: t for t in tools}
+        tool_schemas = [t.to_schema() for t in tools] if tools else None
+        max_steps = task.max_steps or self._max_steps
+
+        conversation = await self._prepare_conversation(task, max_steps)
 
         steps = 0
         tool_calls_total = 0
@@ -162,53 +233,9 @@ class Agent:
                     duration_seconds=time.time() - t0,
                 )
 
-            for tc in response.tool_calls:
-                tool_calls_total += 1
-                tool = tool_map.get(tc.name)
-
-                if tool is None:
-                    available = ", ".join(tool_map.keys())
-                    conversation.add(
-                        Message.tool_result(
-                            tc.id,
-                            f"Error: unknown tool '{tc.name}'. Available: {available}",
-                            is_error=True,
-                            name=tc.name,
-                        )
-                    )
-                    self._log_tool(tc.name, tc.arguments, False, "", "unknown tool", 0)
-                    continue
-
-                tool_t0 = time.time()
-                try:
-                    result_text = await tool.call(**tc.arguments)
-                    conversation.add(Message.tool_result(tc.id, result_text, name=tc.name))
-                    self._log_tool(
-                        tc.name,
-                        tc.arguments,
-                        True,
-                        result_text[:500],
-                        None,
-                        int((time.time() - tool_t0) * 1000),
-                    )
-                except Exception as e:
-                    logger.warning("Tool %s failed: %s", tc.name, e)
-                    conversation.add(
-                        Message.tool_result(
-                            tc.id,
-                            f"Error: {e}",
-                            is_error=True,
-                            name=tc.name,
-                        )
-                    )
-                    self._log_tool(
-                        tc.name,
-                        tc.arguments,
-                        False,
-                        "",
-                        str(e),
-                        int((time.time() - tool_t0) * 1000),
-                    )
+            tool_calls_total += await self._execute_tool_calls(
+                response.tool_calls, tool_map, conversation
+            )
 
         return TaskResult(
             task_id=task.id,
