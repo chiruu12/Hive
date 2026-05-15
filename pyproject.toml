@@ -6,7 +6,7 @@ authors = [{ name = "chiruu12" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.11"
-keywords = ["ai-agents", "multi-agent", "autonomous", "claude", "codex", "local-llm", "agent-os"]
+keywords = ["ai-agents", "multi-agent", "autonomous", "claude", "openai", "fireworks", "local-llm", "agent-os"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
