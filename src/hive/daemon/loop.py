@@ -21,6 +21,7 @@ from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
+from hive.models.factory import create_runtime_provider
 from hive.runtime import (
     Agent,
     CommsToolkit,
@@ -28,7 +29,6 @@ from hive.runtime import (
     MemoryToolkit,
     Message,
     WorldToolkit,
-    create_runtime_provider,
 )
 from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
 from hive.runtime.toolkits import DaemonDelegationToolkit

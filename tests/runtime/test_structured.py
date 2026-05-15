@@ -7,6 +7,7 @@ from typing import Any, Literal
 import pytest
 from pydantic import BaseModel
 
+from hive.models.base import BaseProvider
 from hive.runtime.structured import (
     StructuredGenerateResult,
     generate_structured_fallback,
@@ -131,24 +132,16 @@ class TestParseStructuredResponse:
             parse_structured_response('{"name": 123, "age": "old"}', SimpleModel)
 
 
-class MockStructuredProvider:
+class MockStructuredProvider(BaseProvider):
     """Provider that returns structured JSON content."""
 
     def __init__(self, response_content: str) -> None:
+        super().__init__("mock")
         self._content = response_content
 
     @property
     def available(self) -> bool:
         return True
-
-    async def generate(
-        self,
-        messages: list[Message],
-        tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
-        max_tokens: int = 4096,
-    ) -> Message:
-        return Message.assistant(self._content)
 
     async def generate_with_metadata(
         self,
@@ -162,6 +155,17 @@ class MockStructuredProvider:
             model="mock",
             input_tokens=10,
             output_tokens=5,
+        )
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        return await generate_structured_fallback(
+            self, messages, output_type, temperature, max_tokens
         )
 
 

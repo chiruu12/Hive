@@ -6,16 +6,18 @@ from typing import Any
 
 import pytest
 
+from hive.models.base import BaseProvider
 from hive.runtime.agent import Agent
 from hive.runtime.memory import ConversationMemory
 from hive.runtime.tools import Toolkit, tool
 from hive.runtime.types import GenerateResult, Message, Role, Task, TaskStatus, ToolCall
 
 
-class MockProvider:
+class MockProvider(BaseProvider):
     """Provider that returns pre-programmed responses."""
 
     def __init__(self, responses: list[Message]):
+        super().__init__("mock-model")
         self._responses = list(responses)
         self._call_count = 0
         self.calls: list[dict[str, Any]] = []
@@ -23,16 +25,6 @@ class MockProvider:
     @property
     def available(self) -> bool:
         return True
-
-    async def generate(
-        self,
-        messages: list[Message],
-        tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
-        max_tokens: int = 4096,
-    ) -> Message:
-        result = await self.generate_with_metadata(messages, tools, temperature, max_tokens)
-        return result.message
 
     async def generate_with_metadata(
         self,
@@ -59,6 +51,15 @@ class MockProvider:
             input_tokens=10,
             output_tokens=5,
         )
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        raise NotImplementedError("MockProvider does not support structured output")
 
 
 class CalculatorToolkit(Toolkit):

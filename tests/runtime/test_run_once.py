@@ -8,16 +8,18 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from hive.models.base import BaseProvider
 from hive.runtime.agent import Agent
 from hive.runtime.structured import StructuredGenerateResult
 from hive.runtime.tools import collect_tools, make_tool, tool
 from hive.runtime.types import GenerateResult, Message, ToolCall
 
 
-class MockOnceProvider:
+class MockOnceProvider(BaseProvider):
     """Provider that returns pre-programmed responses."""
 
     def __init__(self, responses: list[Message]):
+        super().__init__("mock")
         self._responses = list(responses)
         self._idx = 0
         self.calls: list[list[Message]] = []
@@ -25,21 +27,6 @@ class MockOnceProvider:
     @property
     def available(self) -> bool:
         return True
-
-    async def generate(
-        self,
-        messages: list[Message],
-        tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
-        max_tokens: int = 4096,
-    ) -> Message:
-        result = await self.generate_with_metadata(
-            messages,
-            tools,
-            temperature,
-            max_tokens,
-        )
-        return result.message
 
     async def generate_with_metadata(
         self,
@@ -59,6 +46,15 @@ class MockOnceProvider:
             cost_usd=0.0,
             duration_ms=10,
         )
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> Any:
+        raise NotImplementedError("MockOnceProvider does not support structured output")
 
 
 class TestRunOnceTextOnly:
@@ -193,7 +189,7 @@ class MockStructuredProvider(MockOnceProvider):
         super().__init__([])
         self._structured_data = structured_data
 
-    async def generate_structured(
+    async def generate_structured(  # type: ignore[override]
         self,
         messages: list[Message],
         output_type: type[Any],

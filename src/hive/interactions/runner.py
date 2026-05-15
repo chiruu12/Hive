@@ -19,7 +19,7 @@ from hive.interactions.patterns.freeform import FreeformPattern
 from hive.interactions.patterns.pairs import PairsPattern
 from hive.interactions.patterns.round_table import RoundTablePattern
 from hive.interactions.transcript import Transcript
-from hive.runtime.providers import create_runtime_provider
+from hive.models.factory import create_runtime_provider
 from hive.runtime.types import Message as RuntimeMessage
 
 logger = logging.getLogger(__name__)

@@ -14,6 +14,8 @@ from hive.daemon.setup import initialize_hive
 from hive.mcp.client import MCPToolkit
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
+from hive.models.base import BaseProvider
+from hive.models.factory import create_runtime_provider
 from hive.runtime import (
     Agent,
     CommsToolkit,
@@ -38,7 +40,6 @@ from hive.runtime import (
     Workflow,
     WorldToolkit,
     collect_tools,
-    create_runtime_provider,
     make_tool,
     tool,
 )
@@ -47,6 +48,7 @@ from hive.world.state import WorldState
 __all__ = [
     "Agent",
     "AgentProfile",
+    "BaseProvider",
     "Hive",
     "AgentState",
     "AgentStatus",

@@ -27,13 +27,26 @@ Toolkit, tool, Workflow, WorldState, WorldToolkit
 ### Runtime (`from hive.runtime import ...`)
 
 ```
-Agent, AnthropicRuntimeProvider, collect_tools, CommsToolkit,
+Agent, collect_tools, CommsToolkit,
 ConversationMemory, DaemonAgentAdapter, DaemonDelegationToolkit,
 DelegationToolkit, FileToolkit, GenerateResult, GitToolkit, GoalOutcome,
-make_tool, MemoryToolkit, Message, OpenAIRuntimeProvider, PersistentMemory,
+make_tool, MemoryToolkit, Message, PersistentMemory,
 PluginLoader, Role, RuntimeProvider, ShellToolkit, Step,
 StructuredGenerateResult, StructuredTaskResult, Task, TaskResult, TaskStatus,
 Tool, ToolCall, ToolResult, Toolkit, tool, Workflow, WorldToolkit
+```
+
+### Models (`from hive.models.* import ...`)
+
+```
+BaseProvider              # from hive.models.base
+Anthropic                 # from hive.models.anthropic
+OpenAI                    # from hive.models.openai
+Groq                      # from hive.models.groq
+Fireworks                 # from hive.models.fireworks
+Ollama                    # from hive.models.ollama
+LMStudio                  # from hive.models.lmstudio
+create_runtime_provider   # from hive.models.factory (also from hive)
 ```
 
 ---
@@ -43,7 +56,8 @@ Tool, ToolCall, ToolResult, Toolkit, tool, Workflow, WorldToolkit
 ### Constructor
 
 ```python
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic  # or any provider
 
 agent = Agent(
     name: str,                          # required
@@ -75,11 +89,12 @@ agent = Agent(
 
 ```python
 import asyncio
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 
 agent = Agent(
     name="helper",
-    model=create_runtime_provider("claude-haiku-4-5"),
+    model=Anthropic.lite(),
     system_prompt="You are a helpful assistant.",
 )
 
@@ -90,9 +105,10 @@ print(result.output)
 ### Sync One-Shot Example
 
 ```python
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
-agent = Agent(name="q", model=create_runtime_provider("claude-haiku-4-5"))
+agent = Agent(name="q", model=Anthropic.lite())
 answer = agent.run_once_sync("What is the capital of France?")
 print(answer)
 ```
@@ -161,7 +177,8 @@ Message.tool_result(tool_call_id="id", content="output", is_error=False, name="t
 ### Pattern 1: `@tool` on Toolkit Methods
 
 ```python
-from hive import Agent, Toolkit, tool, create_runtime_provider
+from hive import Agent, Toolkit, tool
+from hive.models.anthropic import Anthropic
 
 class SearchToolkit(Toolkit):
     @tool()
@@ -176,7 +193,7 @@ class SearchToolkit(Toolkit):
 
 agent = Agent(
     name="researcher",
-    model=create_runtime_provider("claude-haiku-4-5"),
+    model=Anthropic.lite(),
     toolkits=[SearchToolkit()],
 )
 ```
@@ -342,7 +359,27 @@ leader = Agent(name="lead", model=provider, toolkits=[delegation])
 
 ## Providers
 
-### Factory (Recommended)
+### Tier Presets (Recommended)
+
+Each provider class has `.lite()`, `.standard()`, `.pro()` classmethods:
+
+```python
+from hive.models.anthropic import Anthropic
+from hive.models.openai import OpenAI
+from hive.models.groq import Groq
+from hive.models.fireworks import Fireworks
+from hive.models.ollama import Ollama
+from hive.models.lmstudio import LMStudio
+
+provider = Anthropic.lite()        # Claude Haiku (fast, cheap)
+provider = Anthropic.standard()    # Claude Sonnet (balanced)
+provider = Anthropic.pro()         # Claude Opus (most capable)
+provider = OpenAI.lite()           # GPT-5.4 Nano
+provider = Groq.lite()             # Llama on Groq
+provider = Ollama.lite()           # Local model
+```
+
+### Factory (String-Based Routing)
 
 ```python
 from hive import create_runtime_provider
@@ -350,43 +387,43 @@ from hive import create_runtime_provider
 provider = create_runtime_provider("claude-haiku-4-5")
 ```
 
+`create_runtime_provider` is located in `hive.models.factory` and re-exported from `hive`.
+
 ### Routing Table
 
 | Model String | Provider | Env Var Required |
 |-------------|----------|-----------------|
-| `claude-haiku-4-5` | `AnthropicRuntimeProvider` | `ANTHROPIC_API_KEY` |
-| `claude-sonnet-4-6` | `AnthropicRuntimeProvider` | `ANTHROPIC_API_KEY` |
-| `gpt-5.4-nano` | `OpenAIRuntimeProvider` | `OPENAI_API_KEY` |
-| `gpt-5.4-mini` | `OpenAIRuntimeProvider` | `OPENAI_API_KEY` |
-| `fireworks:deepseek-v4-pro` | `OpenAIRuntimeProvider` (fireworks base_url) | `FIREWORKS_API_KEY` |
-| `groq:llama-3.3-70b-versatile` | `OpenAIRuntimeProvider` (groq base_url) | `GROQ_API_KEY` |
-| `ollama:llama3.2` | `OpenAIRuntimeProvider` (localhost:11434) | none |
-| `lmstudio:loaded-model` | `OpenAIRuntimeProvider` (localhost:1234) | none |
+| `claude-haiku-4-5` | `Anthropic` | `ANTHROPIC_API_KEY` |
+| `claude-sonnet-4-6` | `Anthropic` | `ANTHROPIC_API_KEY` |
+| `gpt-5.4-nano` | `OpenAI` | `OPENAI_API_KEY` |
+| `gpt-5.4-mini` | `OpenAI` | `OPENAI_API_KEY` |
+| `fireworks:deepseek-v4-pro` | `Fireworks` | `FIREWORKS_API_KEY` |
+| `groq:llama-3.3-70b-versatile` | `Groq` | `GROQ_API_KEY` |
+| `ollama:llama3.2` | `Ollama` (localhost:11434) | none |
+| `lmstudio:loaded-model` | `LMStudio` (localhost:1234) | none |
 
 ### Direct Construction
 
 ```python
-from hive.runtime import AnthropicRuntimeProvider, OpenAIRuntimeProvider
+from hive.models.anthropic import Anthropic
+from hive.models.openai import OpenAI
+from hive.models.ollama import Ollama
 
 # Anthropic
-p = AnthropicRuntimeProvider(model="claude-haiku-4-5", api_key="sk-ant-...")
+p = Anthropic(model="claude-haiku-4-5", api_key="sk-ant-...")
 
 # OpenAI
-p = OpenAIRuntimeProvider(model="gpt-5.4-nano", api_key="sk-...")
+p = OpenAI(model="gpt-5.4-nano", api_key="sk-...")
 
 # Custom base URL (Fireworks, Together, etc.)
-p = OpenAIRuntimeProvider(
+p = OpenAI(
     model="accounts/fireworks/models/deepseek-v3",
     api_key="fw-...",
     base_url="https://api.fireworks.ai/inference/v1",
 )
 
 # Local (Ollama)
-p = OpenAIRuntimeProvider(
-    model="llama3.2",
-    api_key="ollama",
-    base_url="http://localhost:11434/v1",
-)
+p = Ollama(model="llama3.2")
 ```
 
 ---
@@ -397,13 +434,14 @@ p = OpenAIRuntimeProvider(
 
 ```python
 from pydantic import BaseModel
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 
 class Sentiment(BaseModel):
     label: str
     confidence: float
 
-agent = Agent(name="s", model=create_runtime_provider("claude-haiku-4-5"))
+agent = Agent(name="s", model=Anthropic.lite())
 result = agent.run_once_structured_sync("Analyze: 'I love this!'", output_type=Sentiment)
 # result is a Sentiment instance
 print(result.label, result.confidence)
@@ -414,13 +452,14 @@ print(result.label, result.confidence)
 ```python
 import asyncio
 from pydantic import BaseModel
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 
 class Plan(BaseModel):
     steps: list[str]
     estimated_hours: float
 
-agent = Agent(name="planner", model=create_runtime_provider("claude-haiku-4-5"))
+agent = Agent(name="planner", model=Anthropic.lite())
 
 result = asyncio.run(
     agent.run_structured(
@@ -439,7 +478,8 @@ print(result.parsed.estimated_hours)
 
 ```python
 import asyncio
-from hive import Agent, Task, MCPToolkit, create_runtime_provider
+from hive import Agent, Task, MCPToolkit
+from hive.models.anthropic import Anthropic
 
 async def main():
     async with await MCPToolkit.from_stdio(
@@ -447,7 +487,7 @@ async def main():
     ) as mcp:
         agent = Agent(
             name="fs-agent",
-            model=create_runtime_provider("claude-haiku-4-5"),
+            model=Anthropic.lite(),
             toolkits=[mcp],
         )
         result = await agent.run(Task(instruction="List all .txt files in /tmp"))
@@ -484,11 +524,13 @@ MCPToolkit.from_config({
 
 ```python
 import asyncio
-from hive import Agent, create_runtime_provider
+from hive import Agent
+from hive.models.anthropic import Anthropic
 from hive.runtime import Workflow, Step
 
-researcher = Agent(name="researcher", model=create_runtime_provider("claude-haiku-4-5"))
-writer = Agent(name="writer", model=create_runtime_provider("claude-haiku-4-5"))
+lite = Anthropic.lite()
+researcher = Agent(name="researcher", model=lite)
+writer = Agent(name="writer", model=lite)
 
 workflow = Workflow(
     name="blog-pipeline",
@@ -529,13 +571,14 @@ step = Step(name="transform", fn=transform, output_key="transformed")
 
 ```python
 from pathlib import Path
-from hive import Agent, PersistentMemory, create_runtime_provider
+from hive import Agent, PersistentMemory
+from hive.models.anthropic import Anthropic
 
 memory = PersistentMemory(agent_name="coder", hive_dir=Path(".hive"))
 
 agent = Agent(
     name="coder",
-    model=create_runtime_provider("claude-haiku-4-5"),
+    model=Anthropic.lite(),
     memory=memory,
 )
 # Agent auto-recalls relevant memories at task start
@@ -585,12 +628,13 @@ h.stop()                                # signal daemon to stop
 ```python
 import asyncio
 from pathlib import Path
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 from hive.runtime import FileToolkit, ShellToolkit
 
 agent = Agent(
     name="dev",
-    model=create_runtime_provider("claude-sonnet-4-6"),
+    model=Anthropic.standard(),
     system_prompt="You are a senior developer.",
     toolkits=[
         FileToolkit(workspace=Path("./project")),
@@ -608,7 +652,8 @@ print(result.status, result.steps_taken, result.tool_calls_made)
 
 ```python
 import asyncio
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 from hive.runtime import DelegationToolkit, FileToolkit, ShellToolkit
 from pathlib import Path
 
@@ -616,18 +661,18 @@ ws = Path("./project")
 
 researcher = Agent(
     name="researcher",
-    model=create_runtime_provider("claude-haiku-4-5"),
+    model=Anthropic.lite(),
     toolkits=[ShellToolkit(workspace=ws)],
 )
 coder = Agent(
     name="coder",
-    model=create_runtime_provider("claude-sonnet-4-6"),
+    model=Anthropic.standard(),
     toolkits=[FileToolkit(workspace=ws), ShellToolkit(workspace=ws)],
 )
 
 lead = Agent(
     name="lead",
-    model=create_runtime_provider("claude-sonnet-4-6"),
+    model=Anthropic.standard(),
     toolkits=[DelegationToolkit(agents={"researcher": researcher, "coder": coder})],
     system_prompt="You are a tech lead. Delegate research and coding tasks.",
 )
@@ -638,7 +683,8 @@ result = asyncio.run(lead.run(Task(instruction="Add a /health endpoint to the AP
 ### Mixed Toolkits + Standalone Tools
 
 ```python
-from hive import Agent, Toolkit, tool, make_tool, create_runtime_provider
+from hive import Agent, Toolkit, tool, make_tool
+from hive.models.anthropic import Anthropic
 from hive.runtime import FileToolkit
 from pathlib import Path
 
@@ -650,7 +696,7 @@ def timestamp() -> str:
 
 agent = Agent(
     name="mixed",
-    model=create_runtime_provider("claude-haiku-4-5"),
+    model=Anthropic.lite(),
     toolkits=[FileToolkit(workspace=Path("/tmp/work"))],
     tools=[make_tool(timestamp)],
 )
