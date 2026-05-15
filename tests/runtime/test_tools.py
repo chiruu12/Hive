@@ -4,7 +4,15 @@ from typing import Literal
 
 import pytest
 
-from hive.runtime.tools import Tool, Toolkit, _extract_schema, _parse_docstring_args, tool
+from hive.runtime.tools import (
+    Tool,
+    Toolkit,
+    _extract_schema,
+    _parse_docstring_args,
+    collect_tools,
+    make_tool,
+    tool,
+)
 
 
 class TestDocstringParser:
@@ -174,3 +182,89 @@ class TestToolSchema:
         assert schema["name"] == "search"
         assert schema["description"] == "Search things"
         assert schema["input_schema"]["properties"]["q"]["type"] == "string"
+
+
+class TestMakeTool:
+    def test_decorated_function(self) -> None:
+        @tool()
+        def greet(name: str) -> str:
+            """Say hello."""
+            return f"Hello, {name}!"
+
+        t = make_tool(greet)
+        assert t.name == "greet"
+        assert t.description == "Say hello."
+        assert "name" in t.parameters.get("properties", {})
+        assert not t.is_async
+
+    def test_plain_function(self) -> None:
+        def add(a: int, b: int) -> int:
+            """Add two numbers."""
+            return a + b
+
+        t = make_tool(add)
+        assert t.name == "add"
+        assert t.description == "Add two numbers."
+        assert "a" in t.parameters.get("properties", {})
+
+    def test_async_function(self) -> None:
+        @tool()
+        async def fetch(url: str) -> str:
+            """Fetch a URL."""
+            return "data"
+
+        t = make_tool(fetch)
+        assert t.is_async
+
+    def test_preserves_custom_name(self) -> None:
+        @tool(name="custom_name")
+        def boring() -> str:
+            """Do something."""
+            return "done"
+
+        t = make_tool(boring)
+        assert t.name == "custom_name"
+
+    @pytest.mark.asyncio
+    async def test_tool_is_callable(self) -> None:
+        def multiply(x: int, y: int) -> str:
+            """Multiply."""
+            return str(x * y)
+
+        t = make_tool(multiply)
+        result = await t.call(x=3, y=7)
+        assert result == "21"
+
+
+class TestCollectTools:
+    def test_multiple(self) -> None:
+        def alpha() -> str:
+            """Alpha."""
+            return "a"
+
+        def beta() -> str:
+            """Beta."""
+            return "b"
+
+        tools = collect_tools(alpha, beta)
+        assert len(tools) == 2
+        names = {t.name for t in tools}
+        assert names == {"alpha", "beta"}
+
+    def test_empty(self) -> None:
+        assert collect_tools() == []
+
+    def test_mixed_decorated_and_plain(self) -> None:
+        @tool(name="custom")
+        def decorated() -> str:
+            """Decorated."""
+            return "d"
+
+        def plain() -> str:
+            """Plain."""
+            return "p"
+
+        tools = collect_tools(decorated, plain)
+        assert len(tools) == 2
+        assert tools[0].name == "custom"
+        assert tools[1].name == "plain"

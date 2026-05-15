@@ -19,7 +19,7 @@ from hive.runtime.toolkits import (
     MemoryToolkit,
     WorldToolkit,
 )
-from hive.runtime.tools import Tool, Toolkit, tool
+from hive.runtime.tools import Tool, Toolkit, collect_tools, make_tool, tool
 from hive.runtime.types import (
     GenerateResult,
     Message,
@@ -38,6 +38,7 @@ __all__ = [
     "AnthropicRuntimeProvider",
     "CommsToolkit",
     "ConversationMemory",
+    "collect_tools",
     "DaemonAgentAdapter",
     "DaemonDelegationToolkit",
     "DelegationToolkit",
@@ -45,6 +46,7 @@ __all__ = [
     "GenerateResult",
     "GitToolkit",
     "GoalOutcome",
+    "make_tool",
     "MemoryToolkit",
     "Message",
     "OpenAIRuntimeProvider",

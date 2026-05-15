@@ -162,6 +162,25 @@ def tool(
     return decorator
 
 
+def make_tool(fn: Callable[..., Any]) -> Tool:
+    """Convert a callable into a Tool. Applies @tool() if not already decorated."""
+    if not hasattr(fn, "_tool_meta"):
+        fn = tool()(fn)
+    meta = fn._tool_meta  # type: ignore[attr-defined]
+    return Tool(
+        name=meta["name"],
+        description=meta["description"],
+        parameters=meta["parameters"],
+        fn=fn,
+        is_async=inspect.iscoroutinefunction(fn),
+    )
+
+
+def collect_tools(*fns: Callable[..., Any]) -> list[Tool]:
+    """Convert multiple functions into Tool objects."""
+    return [make_tool(fn) for fn in fns]
+
+
 class Toolkit:
     """Base class for grouping related tools. Subclass and decorate methods with @tool."""
 

@@ -37,7 +37,9 @@ from hive.runtime import (
     ToolResult,
     Workflow,
     WorldToolkit,
+    collect_tools,
     create_runtime_provider,
+    make_tool,
     tool,
 )
 from hive.world.state import WorldState
@@ -51,6 +53,7 @@ __all__ = [
     "CommsToolkit",
     "ConversationMemory",
     "DaemonAgentAdapter",
+    "collect_tools",
     "EventLog",
     "EventType",
     "ExecutionContext",
@@ -61,6 +64,7 @@ __all__ = [
     "HiveDaemon",
     "HiveEvent",
     "HiveStore",
+    "make_tool",
     "MCPToolkit",
     "MemoryToolkit",
     "Message",
