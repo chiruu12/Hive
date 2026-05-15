@@ -37,6 +37,9 @@ class AgentProfile(BaseModel):
     workspace: str = "./workspaces/{name}"
     autonomy: str = "medium"  # low, medium, high
     max_steps: int = 20
+    temperature: float = 0.0
+    max_tokens: int = 4096
+    max_cost_usd: float = 0.0
     system_prompt: str = ""
     skills: list[str] = []
 

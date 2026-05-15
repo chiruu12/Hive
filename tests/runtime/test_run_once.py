@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from hive.runtime.agent import Agent
+from hive.runtime.structured import StructuredGenerateResult
 from hive.runtime.tools import collect_tools, make_tool, tool
 from hive.runtime.types import GenerateResult, Message, ToolCall
 
@@ -161,3 +164,108 @@ class TestRunOnceSync:
         agent = Agent("test", provider)
         result = agent.run_once_sync("Test")
         assert result == "Sync works!"
+
+
+class MockStructuredProvider(MockOnceProvider):
+    """Provider that supports generate_structured via tool forcing."""
+
+    def __init__(self, structured_data: dict[str, Any]):
+        super().__init__([])
+        self._structured_data = structured_data
+
+    async def generate_structured(
+        self,
+        messages: list[Message],
+        output_type: type[Any],
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> StructuredGenerateResult[Any]:
+        parsed = output_type.model_validate(self._structured_data)
+        gen = GenerateResult(
+            message=Message.assistant(json.dumps(self._structured_data)),
+            model="mock", input_tokens=10, output_tokens=10,
+            cost_usd=0.0, duration_ms=10,
+        )
+        return StructuredGenerateResult(result=gen, parsed=parsed)
+
+
+class TaskItem(BaseModel):
+    title: str
+    priority: int = 3
+    done: bool = False
+
+
+class SentimentResult(BaseModel):
+    sentiment: str
+    confidence: float
+
+
+class TestRunOnceStructured:
+    @pytest.mark.asyncio
+    async def test_returns_pydantic_model(self) -> None:
+        provider = MockStructuredProvider(
+            {"title": "Buy groceries", "priority": 1, "done": False},
+        )
+        agent = Agent("test", provider)
+        result = await agent.run_once_structured(
+            "Create a task", output_type=TaskItem,
+        )
+        assert isinstance(result, TaskItem)
+        assert result.title == "Buy groceries"
+        assert result.priority == 1
+
+    @pytest.mark.asyncio
+    async def test_with_context(self) -> None:
+        provider = MockStructuredProvider(
+            {"sentiment": "positive", "confidence": 0.95},
+        )
+        agent = Agent("test", provider)
+        result = await agent.run_once_structured(
+            "Analyze this", output_type=SentimentResult,
+            context="The user is happy.",
+        )
+        assert isinstance(result, SentimentResult)
+        assert result.sentiment == "positive"
+        assert result.confidence == 0.95
+
+    @pytest.mark.asyncio
+    async def test_with_system_prompt(self) -> None:
+        provider = MockStructuredProvider(
+            {"title": "Test", "priority": 5, "done": True},
+        )
+        agent = Agent("test", provider, system_prompt="Be structured.")
+        result = await agent.run_once_structured(
+            "Make a task", output_type=TaskItem,
+        )
+        assert result.done is True
+
+    def test_sync_wrapper(self) -> None:
+        provider = MockStructuredProvider(
+            {"title": "Sync task", "priority": 2, "done": False},
+        )
+        agent = Agent("test", provider)
+        result = agent.run_once_structured_sync(
+            "Create task", output_type=TaskItem,
+        )
+        assert isinstance(result, TaskItem)
+        assert result.title == "Sync task"
+
+
+class TestMaxTokensConfig:
+    @pytest.mark.asyncio
+    async def test_custom_max_tokens_passed(self) -> None:
+        provider = MockOnceProvider([Message.assistant("OK")])
+        agent = Agent("test", provider, max_tokens=2048)
+        await agent.run_once("Test")
+        call_msgs = provider.calls[0]
+        assert len(call_msgs) > 0
+
+    @pytest.mark.asyncio
+    async def test_default_max_tokens(self) -> None:
+        agent = Agent("test", MockOnceProvider([]), max_tokens=0)
+        assert agent._gen_max_tokens == 4096
+
+    @pytest.mark.asyncio
+    async def test_explicit_max_tokens(self) -> None:
+        agent = Agent("test", MockOnceProvider([]), max_tokens=1024)
+        assert agent._gen_max_tokens == 1024
