@@ -11,9 +11,9 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from hive.models.factory import create_runtime_provider
 from hive.runtime.agent import Agent
 from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
-from hive.runtime.providers import create_runtime_provider
 from hive.runtime.tools import Toolkit
 from hive.runtime.types import Task, TaskStatus
 

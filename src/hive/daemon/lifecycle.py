@@ -8,13 +8,13 @@ from uuid import uuid4
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.memory.store import HiveStore
+from hive.models.factory import create_runtime_provider
 from hive.runtime import (
     Agent,
     CommsToolkit,
     MemoryToolkit,
     Task,
     WorldToolkit,
-    create_runtime_provider,
 )
 
 logger = logging.getLogger(__name__)

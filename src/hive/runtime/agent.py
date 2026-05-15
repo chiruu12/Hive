@@ -7,8 +7,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from hive.models.base import BaseProvider
 from hive.runtime.memory import ConversationMemory, PersistentMemory
-from hive.runtime.providers import RuntimeProvider
 from hive.runtime.tools import Tool, Toolkit
 from hive.runtime.types import (
     GenerateResult,
@@ -38,7 +38,7 @@ class Agent:
     def __init__(
         self,
         name: str,
-        model: RuntimeProvider,
+        model: BaseProvider,
         system_prompt: str = "",
         toolkits: list[Toolkit] | None = None,
         tools: list[Tool] | None = None,

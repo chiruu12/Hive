@@ -3,8 +3,9 @@
 import logging
 from dataclasses import dataclass
 
+from hive.models.base import BaseProvider
+from hive.models.factory import create_runtime_provider
 from hive.models.registry import get_model_registry
-from hive.runtime.providers import RuntimeProvider, create_runtime_provider
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +17,12 @@ class ModelInfo:
     available: bool
 
 
-def create_provider(model_name: str) -> RuntimeProvider:
-    """Route a model name to the correct RuntimeProvider."""
+def create_provider(model_name: str) -> BaseProvider:
+    """Route a model name to the correct BaseProvider."""
     return create_runtime_provider(model_name)
 
 
-def get_routine_provider() -> RuntimeProvider:
+def get_routine_provider() -> BaseProvider:
     """Cheapest available model for existence loops and simple decisions."""
     reg = get_model_registry()
     model = reg.routing.routine
@@ -38,7 +39,7 @@ def get_routine_provider() -> RuntimeProvider:
     return create_runtime_provider(model)
 
 
-def get_planning_provider() -> RuntimeProvider:
+def get_planning_provider() -> BaseProvider:
     """Best available model for plan generation and complex reasoning."""
     reg = get_model_registry()
     model = reg.routing.planning
@@ -48,7 +49,7 @@ def get_planning_provider() -> RuntimeProvider:
     return get_routine_provider()
 
 
-def get_events_provider() -> RuntimeProvider:
+def get_events_provider() -> BaseProvider:
     """Model for life event choices."""
     reg = get_model_registry()
     model = reg.routing.events

@@ -113,9 +113,7 @@ class OpenAI(BaseProvider):
         if tools:
             kwargs["tools"] = self._tools_to_openai(tools)
 
-        response = await self._retry_with_backoff(
-            self._client.chat.completions.create, **kwargs
-        )
+        response = await self._retry_with_backoff(self._client.chat.completions.create, **kwargs)
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = 0

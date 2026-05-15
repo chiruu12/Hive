@@ -7,14 +7,15 @@ from unittest.mock import patch
 from hive.daemon.diagnostics import check_groq_key
 from hive.models.registry import load_model_registry
 from hive.models.router import detect_models
-from hive.runtime.providers import OpenAIRuntimeProvider, create_runtime_provider
+from hive.models.factory import create_runtime_provider
+from hive.models.groq import Groq
 
 
 class TestGroqProviderRouting:
     def test_create_provider_groq(self) -> None:
         with patch("hive.config.get_env", return_value="gsk-test"):
             p = create_runtime_provider("groq:llama-3.3-70b-versatile")
-        assert isinstance(p, OpenAIRuntimeProvider)
+        assert isinstance(p, Groq)
         assert p._model == "llama-3.3-70b-versatile"
         assert p._base_url == "https://api.groq.com/openai/v1"
 
