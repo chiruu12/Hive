@@ -95,12 +95,36 @@ class TestTierPresets:
         o = Ollama.standard()
         assert o.model == "llama3.1"
 
+    # --- OpenAI pro ---
+
+    def test_openai_pro(self) -> None:
+        with _patch_env():
+            o = OpenAI.pro()
+            assert o.model == "gpt-5.4"
+
+    # --- Groq pro ---
+
+    def test_groq_pro(self) -> None:
+        with _patch_env():
+            g = Groq.pro()
+            assert g.model == "llama-3.3-70b-specdec"
+
+    # --- Ollama pro ---
+
+    def test_ollama_pro(self) -> None:
+        o = Ollama.pro()
+        assert o.model == "llama3.3:70b"
+
     # --- LMStudio ---
 
     def test_lmstudio_lite(self) -> None:
         lms = LMStudio.lite()
         assert lms.model == "loaded-model"
         assert isinstance(lms, BaseProvider)
+
+    def test_lmstudio_standard(self) -> None:
+        lms = LMStudio.standard()
+        assert lms.model == "loaded-model"
 
 
 class TestFactory:

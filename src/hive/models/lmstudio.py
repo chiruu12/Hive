@@ -21,3 +21,8 @@ class LMStudio(OpenAI):
     def lite(cls, **kwargs: Any) -> LMStudio:
         """Auto-detect loaded model."""
         return cls(model="loaded-model", **kwargs)
+
+    @classmethod
+    def standard(cls, **kwargs: Any) -> LMStudio:
+        """Auto-detect loaded model."""
+        return cls(model="loaded-model", **kwargs)
