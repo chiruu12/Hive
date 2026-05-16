@@ -15,15 +15,5 @@ class Ollama(OpenAI):
 
     @classmethod
     def lite(cls, **kwargs: Any) -> Ollama:
-        """Llama 3.2 — small, fast local model."""
+        """Whatever model is available locally."""
         return cls(model="llama3.2", **kwargs)
-
-    @classmethod
-    def standard(cls, **kwargs: Any) -> Ollama:
-        """Llama 3.1 — larger local model."""
-        return cls(model="llama3.1", **kwargs)
-
-    @classmethod
-    def pro(cls, **kwargs: Any) -> Ollama:
-        """Llama 3.3 70B — largest local model."""
-        return cls(model="llama3.3:70b", **kwargs)

@@ -31,5 +31,5 @@ class Groq(OpenAI):
 
     @classmethod
     def pro(cls, **kwargs: Any) -> Groq:
-        """Llama 3.3 70B Specdec — fastest large model."""
-        return cls(model="llama-3.3-70b-specdec", **kwargs)
+        """Llama Scout 17B — fast 20B-class model."""
+        return cls(model="meta-llama/llama-4-scout-17b-16e-instruct", **kwargs)

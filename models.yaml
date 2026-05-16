@@ -68,10 +68,10 @@ groq:
     cost_input_per_1k: 0.00005
     cost_output_per_1k: 0.00008
     tier: routine
-  - id: groq:llama-3.3-70b-specdec
-    display: Llama 3.3 70B Specdec (Groq)
-    cost_input_per_1k: 0.00059
-    cost_output_per_1k: 0.00099
+  - id: groq:meta-llama/llama-4-scout-17b-16e-instruct
+    display: Llama Scout 17B (Groq)
+    cost_input_per_1k: 0.00020
+    cost_output_per_1k: 0.00060
     tier: pro
 
 # OpenAI models (via API key)

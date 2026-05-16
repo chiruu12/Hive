@@ -91,10 +91,6 @@ class TestTierPresets:
         assert o.model == "llama3.2"
         assert isinstance(o, BaseProvider)
 
-    def test_ollama_standard(self) -> None:
-        o = Ollama.standard()
-        assert o.model == "llama3.1"
-
     # --- OpenAI pro ---
 
     def test_openai_pro(self) -> None:
@@ -107,13 +103,7 @@ class TestTierPresets:
     def test_groq_pro(self) -> None:
         with _patch_env():
             g = Groq.pro()
-            assert g.model == "llama-3.3-70b-specdec"
-
-    # --- Ollama pro ---
-
-    def test_ollama_pro(self) -> None:
-        o = Ollama.pro()
-        assert o.model == "llama3.3:70b"
+            assert g.model == "meta-llama/llama-4-scout-17b-16e-instruct"
 
     # --- LMStudio ---
 
