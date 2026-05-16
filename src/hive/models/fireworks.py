@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hive.config import get_env
 from hive.models.openai import OpenAI
 
 
@@ -15,8 +16,6 @@ class Fireworks(OpenAI):
         model: str = "accounts/fireworks/models/deepseek-v4-pro",
         api_key: str | None = None,
     ):
-        from hive.config import get_env
-
         key = api_key or get_env("FIREWORKS_API_KEY") or None
         super().__init__(
             model=model,

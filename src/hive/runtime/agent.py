@@ -7,8 +7,10 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
 from hive.runtime.memory import ConversationMemory, PersistentMemory
+from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
 from hive.runtime.tools import Tool, Toolkit
 from hive.runtime.types import (
     GenerateResult,
@@ -254,11 +256,6 @@ class Agent:
         """One-shot structured output — returns a validated Pydantic model."""
         self._total_cost = 0.0
         self._total_tokens = 0
-        from hive.runtime.structured import (
-            StructuredGenerateResult,
-            generate_structured_fallback,
-        )
-
         t0 = time.time()
         messages: list[Message] = []
         if self._system_prompt:
@@ -396,11 +393,6 @@ class Agent:
         Returns:
             An instance of output_type validated from the LLM response.
         """
-        from hive.runtime.structured import (
-            StructuredGenerateResult,
-            generate_structured_fallback,
-        )
-
         messages: list[Message] = []
         if self._system_prompt:
             messages.append(Message.system(self._system_prompt))
@@ -457,8 +449,6 @@ class Agent:
     def _log_decision(self, step: int, result: GenerateResult) -> None:
         if not self._log_writer:
             return
-        from hive.logging.models import DecisionLog
-
         self._log_writer.log_decision(
             DecisionLog(
                 agent_id=self._agent_id,
@@ -476,8 +466,6 @@ class Agent:
     def _log_decision_failure(self, step: int, error: Exception) -> None:
         if not self._log_writer:
             return
-        from hive.logging.models import DecisionLog
-
         self._log_writer.log_decision(
             DecisionLog(
                 agent_id=self._agent_id,
@@ -498,8 +486,6 @@ class Agent:
     ) -> None:
         if not self._log_writer:
             return
-        from hive.logging.models import ToolLog
-
         self._log_writer.log_tool(
             ToolLog(
                 agent_id=self._agent_id,
