@@ -8,11 +8,12 @@ Run: uv run python examples/08_workflow_pipeline.py
 
 import asyncio
 
-from hive import Agent, Step, Workflow, create_runtime_provider
+from hive import Agent, Step, Workflow
+from hive.models.anthropic import Anthropic
 
 
 async def main() -> None:
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
 
     researcher = Agent(
         name="researcher",

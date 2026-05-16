@@ -10,11 +10,12 @@ Run: uv run python examples/05_mcp_tools.py
 
 import asyncio
 
-from hive import Agent, MCPToolkit, Task, create_runtime_provider
+from hive import Agent, MCPToolkit, Task
+from hive.models.anthropic import Anthropic
 
 
 async def main() -> None:
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
 
     print("Connecting to filesystem MCP server...")
     async with await MCPToolkit.from_stdio(

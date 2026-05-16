@@ -11,7 +11,8 @@ import asyncio
 
 from pydantic import BaseModel
 
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 
 # --- Output models ---
 
@@ -38,7 +39,7 @@ class MovieReview(BaseModel):
 
 
 async def main() -> None:
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
     agent = Agent(
         name="reviewer",
         model=provider,

@@ -9,7 +9,8 @@ Run: uv run python examples/04_multi_agent.py
 import asyncio
 from pathlib import Path
 
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 from hive.runtime import DelegationToolkit, FileToolkit, ShellToolkit
 
 
@@ -17,7 +18,7 @@ async def main() -> None:
     workspace = Path("/tmp/hive-examples/multi-agent")
     workspace.mkdir(parents=True, exist_ok=True)
 
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
 
     coder = Agent(
         name="coder",
