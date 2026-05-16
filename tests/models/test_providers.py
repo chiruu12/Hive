@@ -64,7 +64,7 @@ class TestTierPresets:
     def test_groq_standard(self) -> None:
         with _patch_env():
             g = Groq.standard()
-            assert g.model == "llama-3.3-70b-versatile"
+            assert g.model == "openai/gpt-oss-20b"
 
     # --- Fireworks ---
 
@@ -103,7 +103,7 @@ class TestTierPresets:
     def test_groq_pro(self) -> None:
         with _patch_env():
             g = Groq.pro()
-            assert g.model == "meta-llama/llama-4-scout-17b-16e-instruct"
+            assert g.model == "llama-3.3-70b-versatile"
 
     # --- LMStudio ---
 

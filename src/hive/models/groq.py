@@ -26,10 +26,10 @@ class Groq(OpenAI):
 
     @classmethod
     def standard(cls, **kwargs: Any) -> Groq:
-        """Llama 3.3 70B — balanced."""
-        return cls(model="llama-3.3-70b-versatile", **kwargs)
+        """GPT-OSS 20B — balanced open model."""
+        return cls(model="openai/gpt-oss-20b", **kwargs)
 
     @classmethod
     def pro(cls, **kwargs: Any) -> Groq:
-        """Llama Scout 17B — fast 20B-class model."""
-        return cls(model="meta-llama/llama-4-scout-17b-16e-instruct", **kwargs)
+        """Llama 3.3 70B — most capable."""
+        return cls(model="llama-3.3-70b-versatile", **kwargs)
