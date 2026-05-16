@@ -91,6 +91,10 @@ class TestTierPresets:
         assert o.model == "llama3.2"
         assert isinstance(o, BaseProvider)
 
+    def test_ollama_standard(self) -> None:
+        o = Ollama.standard()
+        assert o.model == "llama3.1"
+
     # --- OpenAI pro ---
 
     def test_openai_pro(self) -> None:
