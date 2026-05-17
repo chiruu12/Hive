@@ -1,6 +1,6 @@
 """Hive - Autonomous agent OS."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from hive.agents.existence import ExistenceLoop
 from hive.agents.profile import AgentProfile
@@ -21,8 +21,10 @@ from hive.runtime import (
     DaemonAgentAdapter,
     GenerateResult,
     GoalOutcome,
+    Instructions,
     Message,
     PersistentMemory,
+    Persona,
     Role,
     Step,
     StructuredGenerateResult,
@@ -62,6 +64,7 @@ __all__ = [
     "ExistenceLoop",
     "GenerateResult",
     "GoalOutcome",
+    "Instructions",
     "HiveConfig",
     "HiveDaemon",
     "HiveEvent",
@@ -70,6 +73,7 @@ __all__ = [
     "MCPToolkit",
     "MemoryToolkit",
     "Message",
+    "Persona",
     "PersistentMemory",
     "Step",
     "StressorType",

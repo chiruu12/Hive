@@ -472,7 +472,7 @@ Structured output automatically falls back to prompt-based JSON extraction for l
 Mark any function or method as a tool. The decorator extracts JSON Schema from type hints and descriptions from the docstring. The model sees these schemas when deciding which tools to call.
 
 ```python
-from hive.runtime.tools import tool
+from hive.tools import tool
 
 @tool()
 def calculate(expression: str) -> str:
@@ -552,7 +552,7 @@ agent = Agent(name="helper", model=provider, tools=tools)
 Group related tools by subclassing `Toolkit`. Each `@tool()`-decorated method is auto-discovered.
 
 ```python
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class WeatherToolkit(Toolkit):
     """Tools for weather information."""
@@ -1003,7 +1003,7 @@ Extend the SDK with custom toolkits by dropping Python files into a plugins dire
 
 ```python
 # .hive/plugins/my_tools.py
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class DatabaseToolkit(Toolkit):
     """Tools for querying the application database."""

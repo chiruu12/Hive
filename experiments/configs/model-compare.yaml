@@ -1,0 +1,25 @@
+name: model-compare
+description: Compare 3 models with identical agent configs
+cycles: 50
+heartbeat: 3
+economy: true
+
+models:
+  - claude-haiku-4-5
+  - gpt-5.4-nano
+  - groq:llama-3.1-8b-instant
+
+agent_config:
+  role: "General-purpose autonomous agent"
+  personality:
+    traits: ["balanced", "goal-oriented", "adaptable"]
+    style: "Clear and efficient. Adapts approach based on results."
+  persona:
+    values: ["efficiency", "learning", "collaboration"]
+    fears: ["stagnation", "wasted effort"]
+    purpose: "Accomplish goals efficiently while growing skills"
+    risk_tolerance: 0.5
+    social_drive: 0.5
+    concentration: 0.8
+    autonomy_level: 0.5
+    happiness: 0.7

@@ -21,6 +21,7 @@ class Checkpoint(BaseModel):
     goals_snapshot: list[dict[str, Any]] = []
     identity_snapshot: dict[str, Any] = {}
     world_snapshot: dict[str, Any] = {}
+    persona_snapshot: dict[str, Any] = {}
 
 
 class CheckpointManager:
@@ -43,6 +44,7 @@ class CheckpointManager:
         identity: AgentIdentity | None,
         ctx: ExecutionContext,
         goals: list[dict[str, Any]] | None = None,
+        persona_snapshot: dict[str, Any] | None = None,
     ) -> str:
         cp_id = f"cp-{uuid4().hex[:8]}"
         world_snap = {}
@@ -67,6 +69,7 @@ class CheckpointManager:
             goals_snapshot=goals or [],
             identity_snapshot=identity.model_dump() if identity else {},
             world_snapshot=world_snap,
+            persona_snapshot=persona_snapshot or {},
         )
 
         path = self._agent_dir(agent_id) / f"{cp_id}.json"
@@ -120,5 +123,20 @@ class CheckpointManager:
             changes["modified"].append(
                 f"job: {world_a.get('job', 'none')} → {world_b.get('job', 'none')}"
             )
+
+        persona_a = cp_a.persona_snapshot
+        persona_b = cp_b.persona_snapshot
+        persona_keys = (
+            "risk_tolerance",
+            "happiness",
+            "concentration",
+            "social_drive",
+            "autonomy_level",
+        )
+        for key in persona_keys:
+            val_a = persona_a.get(key)
+            val_b = persona_b.get(key)
+            if val_a is not None and val_b is not None and val_a != val_b:
+                changes["modified"].append(f"persona.{key}: {val_a:.2f} → {val_b:.2f}")
 
         return changes

@@ -26,6 +26,20 @@ class Personality(BaseModel):
     style: str = ""
 
 
+class PersonaConfig(BaseModel):
+    """Persona behavioral configuration from YAML profile."""
+
+    values: list[str] = []
+    fears: list[str] = []
+    purpose: str = ""
+    long_term_goals: list[str] = []
+    risk_tolerance: float = 0.3
+    social_drive: float = 0.5
+    concentration: float = 1.0
+    autonomy_level: float = 0.5
+    happiness: float = 0.7
+
+
 class AgentProfile(BaseModel):
     """Complete agent definition loaded from YAML."""
 
@@ -33,6 +47,7 @@ class AgentProfile(BaseModel):
     role: str
     model: str = ""
     personality: Personality = Personality()
+    persona_config: PersonaConfig | None = None
     tools: list[str] = []
     workspace: str = "./workspaces/{name}"
     autonomy: str = "medium"  # low, medium, high
@@ -50,7 +65,10 @@ class AgentProfile(BaseModel):
 
         with open(path) as f:
             data = yaml.safe_load(f)
+        persona_raw = data.pop("persona", None)
         profile = cls(**data)
+        if persona_raw and isinstance(persona_raw, dict):
+            profile.persona_config = PersonaConfig(**persona_raw)
         if not profile.model:
             profile.model = get_config().model.default_model
         return profile

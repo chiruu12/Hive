@@ -24,6 +24,7 @@ from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
 from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent, DaemonAgentAdapter, Message
+from hive.runtime.persona import Persona
 from hive.tools.a2a import A2AToolkit
 from hive.tools.comms import CommsToolkit
 from hive.tools.delegation import DaemonDelegationToolkit
@@ -98,6 +99,7 @@ class HiveDaemon:
 
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
+        self._personas: dict[str, Persona] = {}
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
@@ -287,19 +289,32 @@ class HiveDaemon:
         session_id = f"sess-{agent.agent_id}"
         identity = self._identity.load_or_create(agent.agent_id, profile)
         memory = self._get_memory(agent.agent_id)
+        persona = self._get_persona(agent.agent_id, profile)
+
+        if persona is not None:
+            persona.suffering = suffering
+            persona.apply_suffering_effects()
 
         active_goal = await self._store.get_active_goal(agent.agent_id)
 
         if active_goal:
             await self._store.update_agent_status(agent.agent_id, AgentStatus.WORKING)
-            runtime_agent = Agent(
-                name=agent.name,
-                model=runtime_provider,
-                system_prompt=profile.build_system_prompt(
-                    economy_enabled=self._economy_enabled,
-                ),
-                toolkits=self._build_toolkits(agent.agent_id),
-            )
+            if persona is not None:
+                runtime_agent = Agent(
+                    name=agent.name,
+                    model=runtime_provider,
+                    persona=persona,
+                    toolkits=self._build_toolkits(agent.agent_id),
+                )
+            else:
+                runtime_agent = Agent(
+                    name=agent.name,
+                    model=runtime_provider,
+                    system_prompt=profile.build_system_prompt(
+                        economy_enabled=self._economy_enabled,
+                    ),
+                    toolkits=self._build_toolkits(agent.agent_id),
+                )
             adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
             outcome = await adapter.pursue_goal(
                 active_goal["objective"],
@@ -331,6 +346,8 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "summary": outcome.summary},
                 )
                 result = "completed"
+                if persona is not None:
+                    persona.update_from_event("goal_completed", outcome.summary)
                 self._identity.update_narrative(
                     agent.agent_id,
                     active_goal["objective"],
@@ -348,6 +365,7 @@ class HiveDaemon:
                     identity,
                     self._ctx,
                     goals_snap,
+                    persona_snapshot=persona.snapshot() if persona else None,
                 )
                 self._specialization.record(
                     agent.agent_id,
@@ -378,6 +396,8 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "reason": outcome.summary},
                 )
                 result = "abandoned"
+                if persona is not None:
+                    persona.update_from_event("goal_abandoned", outcome.summary)
                 self._specialization.record(
                     agent.agent_id,
                     "goal_pursuit",
@@ -435,6 +455,7 @@ class HiveDaemon:
                 tools_description=self._build_tools_description(agent.agent_id),
                 world_status=world_status,
                 notepad_content=notepad_content,
+                persona=persona,
             )
             goal = await existence.generate_goal(suffering, peers, nudges)
 
@@ -569,6 +590,14 @@ class HiveDaemon:
             self._memories[agent_id] = SemanticMemory(self._hive_dir, agent_id)
         return self._memories[agent_id]
 
+    def _get_persona(self, agent_id: str, profile: AgentProfile) -> Persona | None:
+        if agent_id not in self._personas:
+            if getattr(profile, "persona_config", None) is not None:
+                self._personas[agent_id] = Persona.from_profile(profile)
+            else:
+                return None
+        return self._personas.get(agent_id)
+
     async def _check_parent_rollup(self, goal_id: str) -> None:
         """If this goal has a parent, check if all subtasks are done."""
         goal_data = await self._store.get_goal_by_id(goal_id)
@@ -647,6 +676,12 @@ class HiveDaemon:
                     )
                 except Exception:
                     logger.warning("Could not restore suffering for %s", agent.agent_id)
+                persona_snap = cps[0].persona_snapshot
+                if persona_snap:
+                    profile = self._load_profile(agent.name)
+                    persona = self._get_persona(agent.agent_id, profile)
+                    if persona is not None:
+                        persona.restore_dynamic(persona_snap)
             active = await self._store.get_active_goal(agent.agent_id)
             if active:
                 await self._store.abandon_goal(active["goal_id"])
@@ -661,9 +696,16 @@ class HiveDaemon:
                     continue
                 suffering = self._get_suffering(agent.agent_id)
                 identity = self._identity.load(agent.agent_id)
+                persona = self._personas.get(agent.agent_id)
                 goals = await self._store.list_agent_goals(agent.agent_id, limit=10)
                 self._checkpoint.save(
-                    agent.agent_id, "daemon_shutdown", suffering, identity, self._ctx, goals
+                    agent.agent_id,
+                    "daemon_shutdown",
+                    suffering,
+                    identity,
+                    self._ctx,
+                    goals,
+                    persona_snapshot=persona.snapshot() if persona else None,
                 )
                 active = await self._store.get_active_goal(agent.agent_id)
                 if active:

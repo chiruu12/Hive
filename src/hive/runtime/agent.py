@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any
 
 from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
+from hive.runtime.instructions import Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
+from hive.runtime.persona import Persona
 from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
 from hive.runtime.types import (
     GenerateResult,
@@ -41,6 +44,7 @@ class Agent:
         self,
         name: str,
         model: BaseProvider,
+        instructions: Instructions | str = "",
         system_prompt: str = "",
         toolkits: list[Toolkit] | None = None,
         tools: list[Tool] | None = None,
@@ -51,10 +55,11 @@ class Agent:
         agent_id: str = "",
         max_cost_usd: float = 0.0,
         max_tokens: int = 0,
+        response_model: type[Any] | None = None,
+        persona: Persona | None = None,
     ):
         self.name = name
         self._model = model
-        self._system_prompt = system_prompt
         self._toolkits = toolkits or []
         self._extra_tools = tools or []
         self._memory = memory
@@ -67,9 +72,60 @@ class Agent:
         self._gen_max_tokens = max_tokens or 4096
         self._total_cost = 0.0
         self._total_tokens = 0
+        self._response_model = response_model
 
         for tk in self._toolkits:
             tk.bind(self._agent_id)
+
+        toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
+
+        if persona is not None:
+            if response_model:
+                persona.response_model = response_model
+            self._instructions: Instructions | None = persona
+            self._system_prompt = persona.build_system_prompt(toolkit_instr)
+        elif isinstance(instructions, Persona):
+            if response_model:
+                instructions.response_model = response_model
+            self._instructions = instructions
+            self._system_prompt = instructions.build_system_prompt(toolkit_instr)
+        elif isinstance(instructions, Instructions):
+            instr_copy = Instructions(
+                persona=instructions.persona,
+                instructions=list(instructions.goals),
+                context=instructions.context,
+            )
+            if response_model:
+                instr_copy.response_model = response_model
+            self._instructions = instr_copy
+            self._system_prompt = instr_copy.build_system_prompt(toolkit_instr)
+        else:
+            if instructions and system_prompt:
+                logger.warning(
+                    "Agent %r: both 'instructions' and 'system_prompt' provided. "
+                    "'instructions' takes precedence.",
+                    name,
+                )
+            self._instructions = None
+            base = str(instructions) if instructions else system_prompt
+            self._system_prompt = self._assemble_prompt(base, toolkit_instr, response_model)
+
+    @staticmethod
+    def _assemble_prompt(
+        base: str,
+        toolkit_instr: list[str],
+        response_model: type[Any] | None,
+    ) -> str:
+        parts = [base] if base else []
+        parts.extend(toolkit_instr)
+        if response_model:
+            schema = response_model.model_json_schema()
+            schema.pop("title", None)
+            parts.append(
+                "Respond with a JSON object matching this schema:\n"
+                f"```json\n{json.dumps(schema, indent=2)}\n```"
+            )
+        return "\n\n".join(parts)
 
     def __repr__(self) -> str:
         return (

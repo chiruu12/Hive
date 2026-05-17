@@ -11,15 +11,11 @@ import asyncio
 
 from pydantic import BaseModel
 
-from hive import Agent, Task
+from hive import Agent, Instructions, Task
 from hive.models.anthropic import Anthropic
-
-# --- Output models ---
 
 
 class CodeReview(BaseModel):
-    """Structured code review output."""
-
     file: str
     issues: list[str]
     severity: str
@@ -28,8 +24,6 @@ class CodeReview(BaseModel):
 
 
 class MovieReview(BaseModel):
-    """Compact movie review."""
-
     title: str
     year: int
     rating: float
@@ -39,14 +33,17 @@ class MovieReview(BaseModel):
 
 
 async def main() -> None:
-    provider = Anthropic.lite()
-    agent = Agent(
-        name="reviewer",
-        model=provider,
-        system_prompt="You are a senior code reviewer. Be thorough but concise.",
-    )
+    # --- Approach 1: run_structured with response_model on Agent ---
 
-    # --- Approach 1: run_structured (full task with ReAct loop) ---
+    reviewer = Agent(
+        name="reviewer",
+        model=Anthropic.lite(),
+        instructions=Instructions(
+            persona="a senior code reviewer",
+            instructions=["Be thorough but concise", "Focus on security issues"],
+        ),
+        response_model=CodeReview,
+    )
 
     code_snippet = """
     def login(username, password):
@@ -59,8 +56,8 @@ async def main() -> None:
 
     print("=== Approach 1: run_structured (Task-based) ===\n")
 
-    result = await agent.run_structured(
-        Task(instruction=f"Review this code for security issues:\n```python\n{code_snippet}\n```"),
+    result = await reviewer.run_structured(
+        Task(instruction=f"Review this code:\n```python\n{code_snippet}\n```"),
         output_type=CodeReview,
     )
 
@@ -73,7 +70,6 @@ async def main() -> None:
         print("Issues:")
         for issue in review.issues:
             print(f"  - {issue}")
-        print(f"Suggestion: {review.suggestion}")
 
     # --- Approach 2: run_once_structured (single turn, no tools) ---
 
@@ -81,8 +77,11 @@ async def main() -> None:
 
     critic = Agent(
         name="critic",
-        model=provider,
-        system_prompt="You are a film critic. Provide honest, balanced reviews.",
+        model=Anthropic.lite(),
+        instructions=Instructions(
+            persona="a film critic",
+            instructions=["Provide honest, balanced reviews"],
+        ),
     )
 
     movie = await critic.run_once_structured(

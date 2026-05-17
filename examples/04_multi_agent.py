@@ -9,7 +9,7 @@ Run: uv run python examples/04_multi_agent.py
 import asyncio
 from pathlib import Path
 
-from hive import Agent, Task
+from hive import Agent, Instructions, Task
 from hive.models.anthropic import Anthropic
 from hive.tools.delegation import DelegationToolkit
 from hive.tools.file import FileToolkit
@@ -25,31 +25,35 @@ async def main() -> None:
     coder = Agent(
         name="coder",
         model=provider,
-        system_prompt=(
-            "You are a Python developer. Write clean, tested code. "
-            "Use the file and shell tools to create and run files."
+        instructions=Instructions(
+            persona="a Python developer",
+            instructions=["Write clean, tested code", "Run code to verify"],
         ),
-        toolkits=[FileToolkit(workspace), ShellToolkit(workspace)],
+        toolkits=[FileToolkit(workspace=workspace), ShellToolkit(workspace=workspace)],
         max_steps=10,
     )
 
     reviewer = Agent(
         name="reviewer",
         model=provider,
-        system_prompt=(
-            "You are a code reviewer. Read the code files and provide "
-            "feedback on quality, bugs, and improvements."
+        instructions=Instructions(
+            persona="a code reviewer",
+            instructions=["Read code and provide feedback on quality and bugs"],
         ),
-        toolkits=[FileToolkit(workspace)],
+        toolkits=[FileToolkit(workspace=workspace)],
         max_steps=5,
     )
 
     lead = Agent(
         name="lead",
         model=provider,
-        system_prompt=(
-            "You are a tech lead. Break tasks into subtasks and delegate "
-            "to your team. You have a coder and a reviewer available."
+        instructions=Instructions(
+            persona="a tech lead",
+            instructions=[
+                "Break tasks into subtasks",
+                "Delegate coding to the coder",
+                "Delegate reviews to the reviewer",
+            ],
         ),
         toolkits=[DelegationToolkit({"coder": coder, "reviewer": reviewer})],
         max_steps=10,
