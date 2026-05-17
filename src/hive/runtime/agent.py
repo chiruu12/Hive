@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
+from hive.runtime.instructions import Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
 from hive.runtime.types import (
@@ -41,6 +42,7 @@ class Agent:
         self,
         name: str,
         model: BaseProvider,
+        instructions: Instructions | str = "",
         system_prompt: str = "",
         toolkits: list[Toolkit] | None = None,
         tools: list[Tool] | None = None,
@@ -54,7 +56,6 @@ class Agent:
     ):
         self.name = name
         self._model = model
-        self._system_prompt = system_prompt
         self._toolkits = toolkits or []
         self._extra_tools = tools or []
         self._memory = memory
@@ -70,6 +71,17 @@ class Agent:
 
         for tk in self._toolkits:
             tk.bind(self._agent_id)
+
+        if isinstance(instructions, Instructions):
+            self._instructions: Instructions | None = instructions
+            toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
+            self._system_prompt = instructions.build_system_prompt(toolkit_instr)
+        elif instructions:
+            self._instructions = None
+            self._system_prompt = str(instructions)
+        else:
+            self._instructions = None
+            self._system_prompt = system_prompt
 
     def __repr__(self) -> str:
         return (
