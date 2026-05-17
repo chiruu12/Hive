@@ -249,7 +249,9 @@ def nudge(
 
 
 @app.command()
-def watch() -> None:
+def watch(
+    compact: bool = typer.Option(False, "--compact", help="2-panel layout for small terminals"),
+) -> None:
     """Live TUI dashboard showing agent activity."""
     from collections import deque
 
@@ -265,16 +267,32 @@ def watch() -> None:
         raise typer.Exit(1)
 
     store = HiveStore(hive_dir / "hive.db")
-    feed: deque[str] = deque(maxlen=20)
+    feed: deque[str] = deque(maxlen=30)
+    drama: deque[str] = deque(maxlen=10)
+    suffering_cache: dict[str, float] = {}
+    vitals: dict[str, dict[str, int | float]] = {}
+
+    def _suffering_bar(load: float) -> str:
+        bar_len = int(load * 10)
+        return "█" * bar_len + "░" * (10 - bar_len)
+
+    def _happiness_emoji(h: float) -> str:
+        if h >= 0.6:
+            return "\U0001f60a"
+        if h >= 0.3:
+            return "\U0001f610"
+        return "\U0001f622"
 
     async def _build_dashboard() -> Layout:
         agents = await store.list_agents()
         alive = [a for a in agents if a.is_alive()]
 
-        agent_table = Table(title="Agents", box=None, show_edge=False, pad_edge=False)
-        agent_table.add_column("Name", style="cyan", width=12)
+        agent_table = Table(box=None, show_edge=False, pad_edge=False)
+        agent_table.add_column("Agent", style="cyan", width=18)
         agent_table.add_column("Status", width=10)
-        agent_table.add_column("Goal", style="dim", max_width=50)
+        agent_table.add_column("Goal", style="dim", max_width=35)
+        agent_table.add_column("Suffering", width=14)
+        agent_table.add_column("", width=5)
 
         status_styles = {
             "idle": "[dim]idle[/dim]",
@@ -284,24 +302,93 @@ def watch() -> None:
 
         for a in alive:
             goal = await store.get_active_goal(a.agent_id)
-            goal_text = goal["objective"][:50] if goal else "-"
+            goal_text = goal["objective"][:35] if goal else "-"
             sv = a.status.value if hasattr(a.status, "value") else a.status
-            agent_table.add_row(a.name, status_styles.get(sv, sv), goal_text)
+            styled = status_styles.get(sv, sv)
+            name_display = a.name
+            if a.spawned_by:
+                parent_name = a.spawned_by.split("-")[0]
+                name_display = f"[dim][sub→{parent_name}][/dim] {a.name}"
+
+            load = suffering_cache.get(a.agent_id, 0.0)
+            suf_bar = _suffering_bar(load)
+            suf_text = f"[{suf_bar}] {load:.0%}" if load > 0 else "[dim]-[/dim]"
+
+            indicators = ""
+            v = vitals.get(a.agent_id, {})
+            risk = v.get("risk_tolerance", 0.3)
+            happiness = v.get("happiness", 0.7)
+            if isinstance(risk, float) and risk > 0.6:
+                indicators += "\U0001f3b2"
+            if isinstance(happiness, float):
+                indicators += _happiness_emoji(happiness)
+
+            agent_table.add_row(name_display, styled, goal_text, suf_text, indicators)
 
         feed_text = "\n".join(feed) if feed else "[dim]Waiting for events...[/dim]"
 
         layout = Layout()
-        layout.split_column(
-            Layout(
+
+        if compact:
+            layout.split_column(
+                Layout(
+                    Panel(agent_table, title="Hive Agents", border_style="green"),
+                    name="agents",
+                    size=max(len(alive) + 4, 6),
+                ),
+                Layout(
+                    Panel(feed_text, title="Activity Feed", border_style="blue"),
+                    name="feed",
+                ),
+            )
+        else:
+            vitals_lines = []
+            for a in alive:
+                v = vitals.get(a.agent_id, {})
+                tokens = v.get("tokens", 0)
+                cost = v.get("cost", 0.0)
+                done = v.get("goals_done", 0)
+                abandoned = v.get("goals_abandoned", 0)
+                money = v.get("money", 0)
+                line = (
+                    f"[cyan]{a.name[:12]:12s}[/cyan] "
+                    f"tok:{tokens:>6,} "
+                    f"${cost:>5.3f} "
+                    f"done:{done} "
+                    f"fail:{abandoned} "
+                    f"${money}"
+                )
+                vitals_lines.append(line)
+            vitals_text = "\n".join(vitals_lines) if vitals_lines else "[dim]-[/dim]"
+
+            drama_text = "\n".join(drama) if drama else "[dim]No drama yet...[/dim]"
+
+            top = Layout(name="top", size=max(len(alive) + 4, 6))
+            top.update(
                 Panel(agent_table, title="Hive Agents", border_style="green"),
-                name="top",
-                size=len(alive) + 5,
-            ),
-            Layout(
-                Panel(feed_text, title="Activity Feed", border_style="blue"),
+            )
+
+            middle = Layout(name="middle")
+            middle.split_row(
+                Layout(
+                    Panel(feed_text, title="Activity Feed", border_style="blue"),
+                    name="feed",
+                ),
+                Layout(
+                    Panel(drama_text, title="Drama", border_style="magenta"),
+                    name="drama",
+                    size=45,
+                ),
+            )
+
+            bottom = Layout(
+                Panel(vitals_text, title="Vitals", border_style="dim"),
                 name="bottom",
-            ),
-        )
+                size=max(len(alive) + 3, 4),
+            )
+
+            layout.split_column(top, middle, bottom)
+
         return layout
 
     def _format_event(event: HiveEvent) -> str:
@@ -311,27 +398,47 @@ def watch() -> None:
 
         if et == EventType.TOOL_USED:
             tool_name = event.data.get("tool", "?")
-            return f"[cyan]{ts}[/cyan] {name} [dim]⚡[/dim] {tool_name}"
+            return f"[cyan]{ts}[/cyan] {name} ⚡ {tool_name}"
         if et == EventType.GOAL_SET:
             obj = (event.data.get("objective") or "")[:50]
-            return f"[blue]{ts}[/blue] {name} [bold]🎯[/bold] {obj}"
+            return f"[blue]{ts}[/blue] {name} \U0001f3af {obj}"
         if et == EventType.GOAL_COMPLETED:
-            return f"[green]{ts}[/green] {name} [bold]✓[/bold] goal completed"
+            return f"[green]{ts}[/green] {name} ✓ goal completed"
         if et == EventType.GOAL_ABANDONED:
-            return f"[red]{ts}[/red] {name} [bold]✗[/bold] goal abandoned"
+            return f"[red]{ts}[/red] {name} ✗ goal abandoned"
         if et == EventType.SUFFERING_CHANGED:
             load = event.data.get("load", 0)
+            prev = suffering_cache.get(event.agent_id, 0)
+            suffering_cache[event.agent_id] = load
             if load > 0:
-                bar_len = int(load * 10)
-                bar = "█" * bar_len + "░" * (10 - bar_len)
-                return f"[yellow]{ts}[/yellow] {name} [{bar}] {load:.0%}"
+                bar = _suffering_bar(load)
+                line = f"[yellow]{ts}[/yellow] {name} [{bar}] {load:.0%}"
+                delta = load - prev
+                if abs(delta) > 0.15:
+                    direction = "spiked" if delta > 0 else "dropped"
+                    drama.append(
+                        f"[yellow]{ts}[/yellow] {name}'s suffering {direction}! "
+                        f"{prev:.0%}→{load:.0%}"
+                    )
+                return line
+            return ""
+        if et == EventType.EXISTENCE_CYCLE:
+            life_event = event.data.get("life_event")
+            if life_event:
+                choice = event.data.get("choice", "")[:40]
+                line = f"[magenta]{ts}[/magenta] {name} \U0001f3ad {life_event}: {choice}"
+                drama.append(line)
+                return line
+            persona_change = event.data.get("persona_change")
+            if persona_change:
+                drama.append(f"[cyan]{ts}[/cyan] {name} {persona_change}")
             return ""
         if et == EventType.ERROR:
             msg = (event.data.get("message") or "")[:60]
             return f"[red]{ts}[/red] {name} ✗ {msg}"
         if et == EventType.ASSISTANT_MESSAGE:
             text = (event.data.get("text") or "")[:60]
-            return f"[white]{ts}[/white] {name} 💬 {text}"
+            return f"[white]{ts}[/white] {name} \U0001f4ac {text}"
         return ""
 
     async def _poll_events() -> None:
@@ -353,7 +460,10 @@ def watch() -> None:
                     continue
                 path = sessions[-1]
                 offset = offsets.get(a.agent_id, 0)
-                text = path.read_text()
+                try:
+                    text = path.read_text()
+                except OSError:
+                    continue
                 new_lines = text[offset:].strip().splitlines()
                 for line in new_lines:
                     if line.strip():
@@ -365,11 +475,18 @@ def watch() -> None:
                         except Exception:
                             pass
                 offsets[a.agent_id] = len(text)
+
+            try:
+                agents = await store.list_agents()
+            except Exception:
+                pass
             await asyncio.sleep(0.5)
 
     async def _watch_loop() -> None:
         await store.initialize()
-        with Live(await _build_dashboard(), console=console, refresh_per_second=2) as live:
+        with Live(
+            await _build_dashboard(), console=console, refresh_per_second=2
+        ) as live:
             poll_task = asyncio.create_task(_poll_events())
             try:
                 while True:
@@ -830,6 +947,34 @@ def threads(
 
     if not seen_threads:
         console.print("[dim]No threads found.[/dim]")
+
+
+demo_app = typer.Typer(
+    name="demo",
+    help="Run built-in demos that showcase Hive features.",
+    no_args_is_help=True,
+)
+app.add_typer(demo_app, name="demo")
+
+
+@demo_app.command("survival")
+def demo_survival() -> None:
+    """3 agents, 30 cycles, economy on. Watch them struggle and thrive."""
+    from hive.demos.survival import run_survival_demo
+
+    run_survival_demo()
+
+
+@demo_app.command("detective")
+def demo_detective(
+    model: str = typer.Option(
+        "claude-haiku-4-5", "--model", "-m", help="Model for detectives"
+    ),
+) -> None:
+    """Multi-model murder mystery investigation."""
+    from hive.demos.detective import run_detective_demo
+
+    run_detective_demo(model=model)
 
 
 agent_app = typer.Typer(
