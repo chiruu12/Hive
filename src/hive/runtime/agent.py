@@ -97,6 +97,15 @@ class Agent:
             parts = [str(instructions)]
             if toolkit_instr:
                 parts.extend(toolkit_instr)
+            if response_model:
+                import json as _json
+
+                schema = response_model.model_json_schema()
+                schema.pop("title", None)
+                parts.append(
+                    "Respond with a JSON object matching this schema:\n"
+                    f"```json\n{_json.dumps(schema, indent=2)}\n```"
+                )
             self._system_prompt = "\n\n".join(parts)
         else:
             self._instructions = None

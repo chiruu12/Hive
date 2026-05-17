@@ -170,6 +170,20 @@ class TestAgentWithInstructions:
             )
         assert "takes precedence" in caplog.text
 
+    def test_response_model_injected_with_plain_string(self):
+        class Out(BaseModel):
+            score: int
+
+        provider = MagicMock()
+        agent = Agent(
+            name="test",
+            model=provider,
+            instructions="You are a reviewer.",
+            response_model=Out,
+        )
+        assert "score" in agent._system_prompt
+        assert "JSON" in agent._system_prompt
+
     def test_agent_passes_response_model_to_instructions(self):
         class Output(BaseModel):
             answer: str
