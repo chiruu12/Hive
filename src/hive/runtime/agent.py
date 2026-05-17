@@ -109,7 +109,19 @@ class Agent:
             self._system_prompt = "\n\n".join(parts)
         else:
             self._instructions = None
-            self._system_prompt = system_prompt
+            parts = [system_prompt] if system_prompt else []
+            if toolkit_instr:
+                parts.extend(toolkit_instr)
+            if response_model:
+                import json as _json2
+
+                schema = response_model.model_json_schema()
+                schema.pop("title", None)
+                parts.append(
+                    "Respond with a JSON object matching this schema:\n"
+                    f"```json\n{_json2.dumps(schema, indent=2)}\n```"
+                )
+            self._system_prompt = "\n\n".join(parts)
 
     def __repr__(self) -> str:
         return (

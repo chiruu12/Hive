@@ -122,7 +122,34 @@ class TestAgentWithInstructions:
             model=provider,
             system_prompt="Legacy prompt",
         )
-        assert agent._system_prompt == "Legacy prompt"
+        assert "Legacy prompt" in agent._system_prompt
+
+    def test_response_model_injected_with_system_prompt(self):
+        class Out(BaseModel):
+            name: str
+
+        provider = MagicMock()
+        agent = Agent(
+            name="test",
+            model=provider,
+            system_prompt="You are a helper.",
+            response_model=Out,
+        )
+        assert "You are a helper" in agent._system_prompt
+        assert "name" in agent._system_prompt
+        assert "JSON" in agent._system_prompt
+
+    def test_toolkit_instructions_with_system_prompt(self):
+        provider = MagicMock()
+        tk = _MockToolkit()
+        agent = Agent(
+            name="test",
+            model=provider,
+            system_prompt="Base prompt",
+            toolkits=[tk],
+        )
+        assert "Base prompt" in agent._system_prompt
+        assert "Always log your actions" in agent._system_prompt
 
     def test_agent_collects_toolkit_instructions(self):
         provider = MagicMock()
