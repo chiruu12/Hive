@@ -4,6 +4,7 @@ from hive.runtime.agent import Agent
 from hive.runtime.bridge import DaemonAgentAdapter, GoalOutcome
 from hive.runtime.instructions import Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
+from hive.runtime.persona import Persona
 from hive.runtime.plugin_loader import PluginLoader
 from hive.runtime.structured import StructuredGenerateResult
 from hive.runtime.types import (
@@ -28,6 +29,7 @@ __all__ = [
     "GenerateResult",
     "GoalOutcome",
     "Message",
+    "Persona",
     "PersistentMemory",
     "PluginLoader",
     "Role",

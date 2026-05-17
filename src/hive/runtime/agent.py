@@ -12,6 +12,7 @@ from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
 from hive.runtime.instructions import Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
+from hive.runtime.persona import Persona
 from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
 from hive.runtime.types import (
     GenerateResult,
@@ -55,6 +56,7 @@ class Agent:
         max_cost_usd: float = 0.0,
         max_tokens: int = 0,
         response_model: type[Any] | None = None,
+        persona: Persona | None = None,
     ):
         self.name = name
         self._model = model
@@ -77,7 +79,17 @@ class Agent:
 
         toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
 
-        if isinstance(instructions, Instructions):
+        if persona is not None:
+            if response_model:
+                persona.response_model = response_model
+            self._instructions: Instructions | None = persona
+            self._system_prompt = persona.build_system_prompt(toolkit_instr)
+        elif isinstance(instructions, Persona):
+            if response_model:
+                instructions.response_model = response_model
+            self._instructions = instructions
+            self._system_prompt = instructions.build_system_prompt(toolkit_instr)
+        elif isinstance(instructions, Instructions):
             instr_copy = Instructions(
                 persona=instructions.persona,
                 instructions=list(instructions.goals),
@@ -85,7 +97,7 @@ class Agent:
             )
             if response_model:
                 instr_copy.response_model = response_model
-            self._instructions: Instructions | None = instr_copy
+            self._instructions = instr_copy
             self._system_prompt = instr_copy.build_system_prompt(toolkit_instr)
         else:
             if instructions and system_prompt:
