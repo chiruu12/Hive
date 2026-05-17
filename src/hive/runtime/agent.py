@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -106,8 +107,6 @@ class Agent:
         parts = [base] if base else []
         parts.extend(toolkit_instr)
         if response_model:
-            import json
-
             schema = response_model.model_json_schema()
             schema.pop("title", None)
             parts.append(
