@@ -23,7 +23,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 | 10 | [10_multi_provider.py](10_multi_provider.py) | Compare models, tiered routing by task complexity |
 | 11 | [11_notepad_presets.py](11_notepad_presets.py) | Notepad with presets — journal, evolution, custom |
 | 12 | [12_web_research.py](12_web_research.py) | Agent that searches the web and writes findings |
-| 13 | [13_instructions_deep_dive.py](13_instructions_deep_dive.py) | All ways to configure agents — Instructions, response_model, toolkit instructions |
+| 13 | [13_instructions_deep_dive.py](13_instructions_deep_dive.py) | All ways to configure agents — Instructions, Persona, response_model, toolkit auto-merge |
 | 14 | [14_memory_and_comms.py](14_memory_and_comms.py) | Agents that remember things and message each other |
 | 15 | [15_zero_config.py](15_zero_config.py) | Every toolkit with zero setup — just create and go |
 

@@ -1,6 +1,7 @@
 """Instructions Deep Dive — all the ways to configure agent behavior.
 
 Shows every way to set up an agent: plain string, Instructions class,
+Persona class (with personality/values/fears and behavioral state),
 with response_model, with context, and with toolkit instructions auto-merged.
 
 Run: uv run python examples/13_instructions_deep_dive.py
@@ -10,7 +11,7 @@ import asyncio
 
 from pydantic import BaseModel
 
-from hive import Agent, Instructions, Task
+from hive import Agent, Instructions, Persona, Task
 from hive.models.anthropic import Anthropic
 from hive.tools import Toolkit, tool
 from hive.tools.notepad import NotepadToolkit, Preset
@@ -129,7 +130,37 @@ async def main() -> None:
             "or improving the web app. Log your reasoning."
         )
     )
-    print(f"Output: {result.output[:200]}")
+    print(f"Output: {result.output[:200]}\n")
+
+    # --- 5. Persona — agent with personality and behavioral state ---
+    print("=== 5. Persona (personality + values + fears + behavioral state) ===\n")
+
+    bold_agent = Agent(
+        name="gambler",
+        model=provider,
+        persona=Persona(
+            name="The Gambler",
+            persona="a risk-taking strategist",
+            personality=["bold", "intuitive", "comfortable with uncertainty"],
+            values=["expected value", "asymmetric upside"],
+            fears=["missing out", "becoming too cautious"],
+            purpose="Find opportunities others are afraid to pursue",
+            long_term_goals=["Build wealth through high-EV plays"],
+            behavior_style="decisive",
+            risk_tolerance=0.85,
+            social_drive=0.6,
+        ),
+    )
+
+    print(f"Persona prompt preview:\n{bold_agent._system_prompt[:400]}\n")
+
+    result = await bold_agent.run(
+        Task(
+            instruction="You have $1000. A new cryptocurrency just launched "
+            "with 10x potential but 80% chance of failure. What do you do?"
+        )
+    )
+    print(f"Output: {result.output[:300]}")
 
 
 if __name__ == "__main__":
