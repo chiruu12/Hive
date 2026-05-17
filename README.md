@@ -5,40 +5,88 @@
 [![Python](https://img.shields.io/pypi/pyversions/hive-agent)](https://pypi.org/project/hive-agent/)
 [![License](https://img.shields.io/github/license/chiruu12/Hive)](LICENSE)
 
-Build AI agents in Python with tools, structured output, multi-model support, and MCP integration.
+An autonomous agent OS that ships as both an **SDK** and a **living simulation**.
 
-```python
-from hive import Agent
-from hive.models.anthropic import Anthropic
+`from hive import Agent` gives you an agent that **comes alive** — not stateless function calls, but persistent entities with personality, suffering, and evolution.
 
-agent = Agent(name="assistant", model=Anthropic.lite())
-result = agent.run_once_sync("What is the capital of France?")
-print(result)
-```
+<!-- Demo GIF: run demo/record.sh -->
 
-## Installation
+## Quick Start
 
 ```bash
 pip install hive-agent
-# or
-uv add hive-agent
 ```
 
-Set an API key for at least one provider:
+```python
+from hive import Agent, Persona
+from hive.models.anthropic import Anthropic
+
+agent = Agent(
+    name="coder",
+    model=Anthropic.lite(),
+    persona=Persona(
+        name="The Coder",
+        personality=["methodical", "detail-oriented"],
+        values=["clean code", "reliability"],
+        fears=["shipping bugs"],
+        purpose="Build software that works",
+        risk_tolerance=0.2,
+    ),
+)
+result = agent.run_once_sync("Write a function that checks if a number is prime")
+print(result)
+```
+
+Or see it in action:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...     # Anthropic (Haiku, Sonnet)
-export OPENAI_API_KEY=sk-...            # OpenAI (GPT-5.4 Nano/Mini)
-export FIREWORKS_API_KEY=...            # Fireworks (DeepSeek, Kimi, etc.)
-export GROQ_API_KEY=gsk_...             # Groq (Llama, Gemma)
-# Or use local models (Ollama, LM Studio) — no key needed
+hive init && hive demo survival
 ```
+
+3 agents with different personalities compete in a simulated economy for 30 cycles. Watch them struggle, gamble, philosophize, and suffer.
 
 ## Features
 
+### Persona System
+
+Agents have personality, values, fears, and dynamic behavioral state that changes based on suffering:
+
+```python
+from hive import Agent, Persona
+from hive.models.anthropic import Anthropic
+
+persona = Persona(
+    name="The Gambler",
+    personality=["bold", "intuitive", "reckless"],
+    values=["expected value", "asymmetric upside"],
+    fears=["missing out", "becoming too cautious"],
+    purpose="Find opportunities others fear",
+    risk_tolerance=0.85,   # HIGH — willing to take bigger swings
+    social_drive=0.6,
+    happiness=0.8,
+)
+
+agent = Agent(name="gambler", model=Anthropic.lite(), persona=persona)
+```
+
+Suffering mechanically modifies these params each daemon cycle — futility increases risk tolerance, invisibility increases social drive, crisis mode sets extreme values.
+
+### Suffering System
+
+Six stressor types that escalate over time and change agent behavior:
+
+| Stressor | Trigger | Behavioral Effect |
+|----------|---------|-------------------|
+| Futility | Low completions, stalling | Risk tolerance increases |
+| Invisibility | No observable impact | Social drive increases |
+| Repeated Failure | >50% goal failure rate | Concentration decreases |
+| Purposelessness | No goals attempted | Autonomy increases |
+| Identity Violation | Actions contradict role | Risk tolerance decreases |
+| Existential Threat | System instability | Extreme parameter shift |
+
 ### Tools
 
-Decorate any function with `@tool` — JSON Schema is auto-extracted from type hints and docstrings.
+Decorate any function with `@tool` — JSON Schema is auto-extracted from type hints:
 
 ```python
 from hive import Agent, tool, collect_tools
@@ -46,271 +94,138 @@ from hive.models.anthropic import Anthropic
 
 @tool()
 def search(query: str) -> str:
-    """Search the web for information.
-
-    Args:
-        query: The search query
-    """
+    """Search the web for information."""
     return f"Results for: {query}"
-
-@tool()
-def calculate(expression: str) -> str:
-    """Evaluate a math expression."""
-    return str(eval(expression))
 
 agent = Agent(
     name="researcher",
     model=Anthropic.lite(),
-    tools=collect_tools(search, calculate),
+    tools=collect_tools(search),
 )
 ```
 
-Built-in toolkits for common tasks:
-
-```python
-from hive.tools.file import FileToolkit
-from hive.tools.shell import ShellToolkit
-from hive.tools.git import GitToolkit
-
-agent = Agent(
-    name="coder",
-    model=provider,
-    toolkits=[
-        FileToolkit(workspace),      # read, write, edit, list files
-        ShellToolkit(workspace),     # execute shell commands (sandboxed)
-        GitToolkit(workspace),       # status, diff, log, commit
-    ],
-)
-```
+Built-in toolkits: `FileToolkit`, `ShellToolkit`, `GitToolkit`, `WebToolkit`, `NotepadToolkit`, `MemoryToolkit`, `CommsToolkit`, `MCPToolkit`, `DelegationToolkit`, `A2AToolkit`.
 
 ### Structured Output
-
-Get validated Pydantic models directly from agents:
 
 ```python
 from pydantic import BaseModel
 from hive import Agent
 from hive.models.anthropic import Anthropic
 
-class MovieReview(BaseModel):
+class Review(BaseModel):
     title: str
     rating: float
     summary: str
 
 agent = Agent(name="critic", model=Anthropic.lite())
-review = agent.run_once_structured_sync("Review The Matrix", output_type=MovieReview)
-print(review.title, review.rating)  # The Matrix 9.0
+review = agent.run_once_structured_sync("Review The Matrix", output_type=Review)
 ```
 
 ### Multi-Model Support
 
-Switch between 6 providers with one line. Each provider has tier presets -- `.lite()`, `.standard()`, `.pro()`:
+6 providers with tier presets (`.lite()`, `.standard()`, `.pro()`):
 
-| Provider | Class | Env Var |
-|----------|-------|---------|
-| Anthropic | `Anthropic` | `ANTHROPIC_API_KEY` |
-| OpenAI | `OpenAI` | `OPENAI_API_KEY` |
-| Fireworks | `Fireworks` | `FIREWORKS_API_KEY` |
-| Groq | `Groq` | `GROQ_API_KEY` |
-| Ollama | `Ollama` | none (localhost) |
-| LM Studio | `LMStudio` | none (localhost) |
+| Provider | `.lite()` | `.standard()` | `.pro()` |
+|----------|-----------|---------------|----------|
+| Anthropic | Haiku | Sonnet | Opus |
+| OpenAI | GPT-5.4 Nano | GPT-5.4 Mini | GPT-5.4 |
+| Groq | Llama 8B | GPT-OSS 20B | Llama 70B |
+| Fireworks | MiniMax | DeepSeek | Kimi |
+| Ollama | Local model | Local model | — |
+| LM Studio | Auto | — | — |
 
-```python
-from hive.models.anthropic import Anthropic
-from hive.models.openai import OpenAI
-from hive.models.groq import Groq
-from hive.models.fireworks import Fireworks
-from hive.models.ollama import Ollama
+### Agent-to-Agent Protocol
 
-provider = Anthropic.lite()        # Claude Haiku
-provider = Anthropic.standard()    # Claude Sonnet
-provider = OpenAI.lite()           # GPT-5.4 Nano
-provider = Groq.lite()             # Llama on Groq
-provider = Ollama.lite()           # Local model
-```
+9 message types, JSONL-backed inbox/outbox, 5 collaboration patterns (Review, Mentor, Debate, Chain, Swarm).
 
-The `create_runtime_provider()` factory still works for string-based routing:
+### Sub-Agent Spawning
 
-```python
-from hive import create_runtime_provider
+Parent-child lifecycle with max depth 2, max 5 children, auto-kill at expiry, result relay.
 
-provider = create_runtime_provider("claude-haiku-4-5")      # Anthropic
-provider = create_runtime_provider("gpt-5.4-nano")           # OpenAI
-provider = create_runtime_provider("groq:llama-3.3-70b-versatile")  # Groq
-```
+### Agent Journals
 
-### MCP Integration
+Persistent notepads with presets (journal, evolution, tool requests, custom).
 
-Connect to any MCP server and use its tools:
+### Benchmarking & Export
 
-```python
-from hive import Agent, MCPToolkit
-from hive.models.anthropic import Anthropic
+Compare models on scenarios. Export runs as standalone HTML reports.
 
-async with await MCPToolkit.from_stdio("npx", ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]) as mcp:
-    agent = Agent(
-        name="file-agent",
-        model=Anthropic.lite(),
-        toolkits=[mcp],
-    )
-    result = await agent.run_once("List files in /tmp")
-```
+## Community Profiles
 
-### Multi-Agent Delegation
+Dramatic agent personalities for the simulation:
 
-Build teams where a lead agent delegates to specialists:
-
-```python
-from hive import Agent
-from hive.models.anthropic import Anthropic
-from hive.tools.delegation import DelegationToolkit
-from hive.tools.file import FileToolkit
-
-provider = Anthropic.lite()
-
-coder = Agent(name="coder", model=provider, toolkits=[FileToolkit(workspace)])
-reviewer = Agent(name="reviewer", model=provider, toolkits=[FileToolkit(workspace)])
-
-lead = Agent(
-    name="lead",
-    model=provider,
-    toolkits=[DelegationToolkit({"coder": coder, "reviewer": reviewer})],
-)
-result = await lead.run(Task(instruction="Build and review a palindrome checker"))
-```
+| Profile | Personality | Risk | Social | Key Trait |
+|---------|-------------|------|--------|-----------|
+| `coder` | Methodical, detail-oriented | 0.3 | 0.3 | Fears shipping bugs |
+| `gambler` | Bold, intuitive, reckless | 0.85 | 0.6 | Fears missing out |
+| `philosopher` | Contemplative, questions everything | 0.4 | 0.7 | Fears shallow thinking |
+| `hustler` | Resourceful, persistent, networking | 0.6 | 0.95 | Fears being idle |
+| `oracle` | Wise, deliberate, sees consequences | 0.15 | 0.4 | Fears bad approvals |
+| `researcher` | Curious, wide-ranging, thorough | 0.5 | 0.6 | Fears missing info |
+| `reviewer` | Analytical, skeptical, fair | 0.2 | 0.5 | Fears missing bugs |
+| `tester` | Persistent, edge-case finder | 0.25 | 0.4 | Fears false confidence |
 
 ## CLI
 
-Interactive agent in your terminal:
-
 ```bash
-hive agent chat                          # Quick-start with default model
-hive agent chat --model claude-sonnet-4-6  # Choose a model
-hive agent run config.yaml               # Run from YAML config
-```
+# SDK usage
+hive agent chat                        # Interactive agent with tools
+hive agent run config.yaml             # Run from YAML config
 
-YAML agent config:
+# Demos
+hive demo survival                     # 3 agents, 30 cycles, economy on
+hive demo detective                    # Multi-model murder mystery
 
-```yaml
-name: code-assistant
-model: claude-haiku-4-5
-system_prompt: "You are a helpful coding assistant."
-tools: [file, shell, git]
-workspace: "."
-max_steps: 20
-```
-
-## Advanced: Autonomous Agent OS
-
-Beyond the SDK, Hive includes an autonomous daemon where agents pick their own goals, experience suffering, and interact in a simulated economy.
-
-```bash
+# Autonomous OS
 hive init                              # Initialize .hive/ directory
-hive start                             # Start the daemon
-hive start -p coder,researcher         # Start with specific profiles
-hive status                            # Who's alive, suffering levels, goals
-hive spawn reviewer                    # Add an agent while running
+hive start -p coder,gambler,philosopher # Start with specific profiles
+hive watch                             # Live 4-panel TUI dashboard
+hive watch --compact                   # 2-panel for small terminals
+hive status                            # Who's alive, goals, suffering
 hive nudge coder "write tests"         # Occasional direction
-hive watch                             # Live activity stream
-hive runs                              # List recorded runs
-hive inspect <run_id>                  # Goals, tools, costs summary
-```
-
-Agents experience six types of suffering that escalate over time:
-
-| Stressor | Trigger | Escalation |
-|----------|---------|------------|
-| Futility | Low step count, few completions | Slow |
-| Invisibility | No observable impact | Medium |
-| Repeated Failure | >50% goal failure rate | Fast |
-| Purposelessness | No goals attempted | Medium |
-| Identity Violation | Actions contradict role | Fast |
-| Existential Threat | System instability | Very fast |
-
-Suffering only resolves through observable behavioral change.
-
-Agent profiles are defined in YAML — no code needed:
-
-```yaml
-# profiles/coder.yaml
-name: coder
-role: Write, modify, and refactor code
-model: claude-sonnet-4-6
-personality:
-  traits: [methodical, detail-oriented, clean-code-advocate]
-tools: [world_query, world_action, memory_set, memory_get, agent_message, shared_log]
-autonomy: high
+hive doctor                            # Health check
 ```
 
 ## Architecture
 
 ```
 src/hive/
-├── runtime/          # Agent framework (core SDK)
-│   ├── agent.py      # Agent with ReAct loop
-│   ├── tools.py      # @tool decorator, Tool, Toolkit
-│   ├── types.py      # Message, Task, TaskResult, ToolCall
-│   ├── structured.py # Structured output with Pydantic
-│   ├── dev_tools.py  # FileToolkit, ShellToolkit, GitToolkit
-│   ├── delegation.py # DelegationToolkit
-│   ├── memory.py     # Conversation and persistent memory
-│   └── workflow.py   # Multi-step pipelines
-├── models/           # Model providers and registry
-│   ├── base.py       # BaseProvider base class
-│   ├── anthropic.py  # Anthropic provider
-│   ├── openai.py     # OpenAI provider
-│   ├── groq.py       # Groq provider
-│   ├── fireworks.py  # Fireworks provider
-│   ├── ollama.py     # Ollama provider (local)
-│   ├── lmstudio.py   # LM Studio provider (local)
-│   ├── factory.py    # create_runtime_provider() factory
-│   ├── registry.py   # YAML catalog with pricing
-│   └── router.py     # Provider routing
-├── mcp/              # MCP server and client
-│   ├── server.py     # Expose Hive as MCP tools
-│   └── client.py     # MCPToolkit — consume MCP servers
-├── agents/           # Autonomous agent layer
-│   ├── existence.py  # Goal generation (existence loop)
-│   ├── suffering.py  # 6 stressor types, escalation
-│   ├── profile.py    # YAML-driven profiles
-│   ├── identity.py   # Persistent identity and narrative
-│   └── delegation.py # Multi-agent delegation engine
-├── daemon/           # Background service
-│   ├── loop.py       # Heartbeat-driven agent cycles
-│   ├── lifecycle.py  # Spawn, kill, list agents
-│   └── setup.py      # Initialize .hive/ directory
-├── memory/           # Persistence layer
-│   ├── store.py      # SQLite (agents, goals, nudges)
-│   ├── semantic.py   # TF-IDF semantic memory
-│   └── events.py     # JSONL append-only event log
-├── world/            # Simulated economy
-│   ├── state.py      # Jobs, skills, finances
-│   ├── event_engine.py # Life events with branching outcomes
-│   └── stats.py      # Agent statistics
-├── logging/          # Structured run logs
-│   ├── writer.py     # JSONL log writer
-│   └── reader.py     # Log aggregation and analysis
-├── config.py         # YAML + env var configuration
-├── checkpoint.py     # Save/restore agent snapshots
-├── api.py            # Hive facade class
-└── cli/              # Typer CLI
-    └── main.py       # All commands
+├── runtime/        # Agent framework (Agent, Instructions, Persona, ReAct loop)
+├── tools/          # Toolkits (file, shell, git, web, notepad, memory, comms, A2A)
+├── models/         # Providers (Anthropic, OpenAI, Groq, Fireworks, Ollama, LMStudio)
+├── agents/         # Autonomy (existence loop, suffering, identity, profiles)
+├── daemon/         # Background service (heartbeat loop, lifecycle)
+├── interactions/   # A2A protocol, collaboration patterns
+├── memory/         # SQLite store, semantic memory, event log
+├── world/          # Economy simulation (jobs, money, skills, events)
+├── demos/          # Built-in demos (survival, detective)
+├── benchmark/      # Model comparison scenarios
+├── export/         # HTML report generation
+├── logging/        # Structured JSONL run logs
+├── mcp/            # MCP server and client
+├── cli/            # Typer CLI
+├── config.py       # YAML + env var configuration
+├── checkpoint.py   # Agent state snapshots
+└── api.py          # Programmatic Hive facade
 ```
 
 ## Documentation
 
-- [User Guide](docs/user-guide.md) — comprehensive guide for developers
+- [User Guide](docs/user-guide.md) — comprehensive developer guide
 - [Agent Guide](docs/agent-guide.md) — reference for AI coding assistants
-- [Examples](examples/) — runnable code samples
+- [Examples](examples/) — 15 runnable code samples
+- [Contributing](CONTRIBUTING.md) — how to add toolkits, providers, profiles
+- [Changelog](CHANGELOG.md) — version history
 
 ## Development
 
 ```bash
-uv sync --extra dev               # Install with dev deps
-uv run ruff check src/ tests/     # Lint
-uv run ruff format src/ tests/    # Format
-uv run mypy src/                  # Type check
-uv run pytest tests/ -v           # Run tests
+git clone https://github.com/chiruu12/Hive.git && cd Hive
+uv sync
+uv run pytest                    # Run tests
+uv run ruff check src tests      # Lint
+uv run ruff format src tests     # Format
 ```
 
 ## License
