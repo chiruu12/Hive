@@ -279,7 +279,7 @@ class TestWarnings:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+        with caplog.at_level(logging.WARNING, logger="hive.tools.base"):
 
             @tool()
             def no_docs(x: int) -> str:
@@ -291,7 +291,7 @@ class TestWarnings:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+        with caplog.at_level(logging.WARNING, logger="hive.tools.base"):
 
             @tool()
             def untyped(x) -> str:  # type: ignore[no-untyped-def]
@@ -304,7 +304,7 @@ class TestWarnings:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+        with caplog.at_level(logging.WARNING, logger="hive.tools.base"):
 
             @tool()
             def good(name: str) -> str:
@@ -322,7 +322,7 @@ class TestWarnings:
         self,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with caplog.at_level(logging.WARNING, logger="hive.runtime.tools"):
+        with caplog.at_level(logging.WARNING, logger="hive.tools.base"):
 
             @tool(description="Explicit description")
             def also_fine(x: int) -> str:

@@ -8,7 +8,7 @@ Run: uv run python examples/02_tools.py
 import asyncio
 from pathlib import Path
 
-from hive import Agent, Task
+from hive import Agent, Instructions, Task
 from hive.models.anthropic import Anthropic
 from hive.tools.file import FileToolkit
 from hive.tools.git import GitToolkit
@@ -19,18 +19,21 @@ async def main() -> None:
     workspace = Path("/tmp/hive-examples/tools-demo")
     workspace.mkdir(parents=True, exist_ok=True)
 
-    provider = Anthropic.lite()
     agent = Agent(
         name="coder",
-        model=provider,
-        system_prompt=(
-            "You are a developer working in an isolated workspace. "
-            "Write clean code, run it to verify, and commit your work."
+        model=Anthropic.lite(),
+        instructions=Instructions(
+            persona="a developer working in an isolated workspace",
+            instructions=[
+                "Write clean, well-structured code",
+                "Run code to verify before committing",
+                "Use descriptive commit messages",
+            ],
         ),
         toolkits=[
-            FileToolkit(workspace),
-            ShellToolkit(workspace),
-            GitToolkit(workspace),
+            FileToolkit(workspace=workspace),
+            ShellToolkit(workspace=workspace),
+            GitToolkit(workspace=workspace),
         ],
         max_steps=15,
     )
@@ -50,10 +53,6 @@ async def main() -> None:
     print(f"Steps: {result.steps_taken}, Tool calls: {result.tool_calls_made}")
     print(f"Duration: {result.duration_seconds:.1f}s")
     print(f"\nOutput:\n{result.output}")
-
-    fib = workspace / "fibonacci.py"
-    if fib.exists():
-        print(f"\nFile created ({fib}):\n{fib.read_text()}")
 
 
 if __name__ == "__main__":

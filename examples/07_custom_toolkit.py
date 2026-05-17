@@ -12,7 +12,7 @@ import asyncio
 import json
 from datetime import UTC, datetime
 
-from hive import Agent, Task, Toolkit, collect_tools, tool
+from hive import Agent, Instructions, Task, Toolkit, collect_tools, tool
 from hive.models.anthropic import Anthropic
 
 # --- In-memory data store (simulates a database) ---
@@ -108,9 +108,9 @@ async def main() -> None:
     agent = Agent(
         name="project-manager",
         model=provider,
-        system_prompt=(
-            "You are a project manager. Use the available tools to manage "
-            "tasks and answer questions. Be efficient and organized."
+        instructions=Instructions(
+            persona="a project manager",
+            instructions=["Use tools to manage tasks", "Be efficient and organized"],
         ),
         toolkits=[ProjectToolkit("hive-v2")],
         tools=collect_tools(get_current_time, calculate),
