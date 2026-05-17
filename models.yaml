@@ -21,6 +21,12 @@ anthropic:
     cost_output_per_1k: 0.015
     max_tokens: 8192
     tier: planning
+  - id: claude-opus-4-6
+    display: Claude Opus 4.6
+    cost_input_per_1k: 0.015
+    cost_output_per_1k: 0.075
+    max_tokens: 4096
+    tier: pro
 
 # Fireworks models (via API key)
 fireworks:
@@ -47,21 +53,21 @@ fireworks:
 
 # Groq models (fast inference, via API key)
 groq:
-  - id: groq:llama-3.3-70b-versatile
-    display: Llama 3.3 70B (Groq)
-    cost_input_per_1k: 0.00059
-    cost_output_per_1k: 0.00079
-    tier: planning
-  - id: groq:gemma2-9b-it
-    display: Gemma2 9B IT (Groq)
-    cost_input_per_1k: 0.00020
-    cost_output_per_1k: 0.00020
-    tier: routine
   - id: groq:llama-3.1-8b-instant
     display: Llama 3.1 8B (Groq)
     cost_input_per_1k: 0.00005
     cost_output_per_1k: 0.00008
     tier: routine
+  - id: groq:openai/gpt-oss-20b
+    display: GPT-OSS 20B (Groq)
+    cost_input_per_1k: 0.00020
+    cost_output_per_1k: 0.00060
+    tier: planning
+  - id: groq:llama-3.3-70b-versatile
+    display: Llama 3.3 70B (Groq)
+    cost_input_per_1k: 0.00059
+    cost_output_per_1k: 0.00079
+    tier: pro
 
 # OpenAI models (via API key)
 openai:
@@ -75,6 +81,11 @@ openai:
     cost_input_per_1k: 0.00075
     cost_output_per_1k: 0.0045
     tier: planning
+  - id: gpt-5.4
+    display: GPT-5.4
+    cost_input_per_1k: 0.003
+    cost_output_per_1k: 0.015
+    tier: pro
 
 # Local models (no API key needed)
 local:

@@ -7,9 +7,10 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
 from hive.runtime.memory import ConversationMemory, PersistentMemory
-from hive.runtime.tools import Tool, Toolkit
+from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
 from hive.runtime.types import (
     GenerateResult,
     Message,
@@ -18,6 +19,7 @@ from hive.runtime.types import (
     TaskResult,
     TaskStatus,
 )
+from hive.tools.base import Tool, Toolkit
 
 if TYPE_CHECKING:
     from hive.logging.writer import LogWriter
@@ -66,6 +68,9 @@ class Agent:
         self._total_cost = 0.0
         self._total_tokens = 0
 
+        for tk in self._toolkits:
+            tk.bind(self._agent_id)
+
     def __repr__(self) -> str:
         return (
             f"Agent(name={self.name!r}, model={self._model.__class__.__name__}, "
@@ -80,6 +85,16 @@ class Agent:
         all_tools: list[Tool] = list(self._extra_tools)
         for tk in self._toolkits:
             all_tools.extend(tk.get_tools())
+        seen: dict[str, int] = {}
+        for t in all_tools:
+            seen[t.name] = seen.get(t.name, 0) + 1
+        duplicates = [name for name, count in seen.items() if count > 1]
+        if duplicates:
+            logger.warning(
+                "Agent %r has duplicate tool names: %s. Last definition wins.",
+                self.name,
+                duplicates,
+            )
         return all_tools
 
     async def _prepare_conversation(self, task: Task, max_steps: int) -> ConversationMemory:
@@ -254,11 +269,6 @@ class Agent:
         """One-shot structured output — returns a validated Pydantic model."""
         self._total_cost = 0.0
         self._total_tokens = 0
-        from hive.runtime.structured import (
-            StructuredGenerateResult,
-            generate_structured_fallback,
-        )
-
         t0 = time.time()
         messages: list[Message] = []
         if self._system_prompt:
@@ -396,11 +406,6 @@ class Agent:
         Returns:
             An instance of output_type validated from the LLM response.
         """
-        from hive.runtime.structured import (
-            StructuredGenerateResult,
-            generate_structured_fallback,
-        )
-
         messages: list[Message] = []
         if self._system_prompt:
             messages.append(Message.system(self._system_prompt))
@@ -457,8 +462,6 @@ class Agent:
     def _log_decision(self, step: int, result: GenerateResult) -> None:
         if not self._log_writer:
             return
-        from hive.logging.models import DecisionLog
-
         self._log_writer.log_decision(
             DecisionLog(
                 agent_id=self._agent_id,
@@ -476,8 +479,6 @@ class Agent:
     def _log_decision_failure(self, step: int, error: Exception) -> None:
         if not self._log_writer:
             return
-        from hive.logging.models import DecisionLog
-
         self._log_writer.log_decision(
             DecisionLog(
                 agent_id=self._agent_id,
@@ -498,8 +499,6 @@ class Agent:
     ) -> None:
         if not self._log_writer:
             return
-        from hive.logging.models import ToolLog
-
         self._log_writer.log_tool(
             ToolLog(
                 agent_id=self._agent_id,

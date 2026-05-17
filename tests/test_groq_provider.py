@@ -13,24 +13,24 @@ from hive.models.router import detect_models
 
 class TestGroqProviderRouting:
     def test_create_provider_groq(self) -> None:
-        with patch("hive.config.get_env", return_value="gsk-test"):
+        with patch("hive.models.groq.get_env", return_value="gsk-test"):
             p = create_runtime_provider("groq:llama-3.3-70b-versatile")
         assert isinstance(p, Groq)
         assert p._model == "llama-3.3-70b-versatile"
         assert p._base_url == "https://api.groq.com/openai/v1"
 
     def test_groq_prefix_stripped(self) -> None:
-        with patch("hive.config.get_env", return_value="gsk-test"):
+        with patch("hive.models.groq.get_env", return_value="gsk-test"):
             p = create_runtime_provider("groq:gemma2-9b-it")
         assert p._model == "gemma2-9b-it"
 
     def test_groq_available_with_key(self) -> None:
-        with patch("hive.config.get_env", return_value="gsk-test"):
+        with patch("hive.models.groq.get_env", return_value="gsk-test"):
             p = create_runtime_provider("groq:llama-3.1-8b-instant")
         assert p.available
 
     def test_groq_unavailable_without_key(self) -> None:
-        with patch("hive.config.get_env", return_value=""):
+        with patch("hive.models.groq.get_env", return_value=""):
             p = create_runtime_provider("groq:llama-3.1-8b-instant")
         assert not p.available
 
@@ -56,8 +56,10 @@ class TestGroqRegistry:
 
 class TestGroqDetection:
     def test_detect_models_includes_groq(self) -> None:
-        with patch("hive.config.get_env") as mock_env:
-            mock_env.side_effect = lambda k: "gsk-test" if k == "GROQ_API_KEY" else None
+        def _fake_env(k: str) -> str:
+            return "gsk-test" if k == "GROQ_API_KEY" else ""
+
+        with patch("hive.config.get_env", side_effect=_fake_env):
             models = detect_models()
         assert "Groq" in models
         assert len(models["Groq"]) >= 1

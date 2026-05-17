@@ -7,7 +7,7 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel
 
-from hive.runtime.tools import (
+from hive.tools.base import (
     Tool,
     Toolkit,
     _extract_schema,

@@ -5,11 +5,12 @@ Run: uv run python examples/01_quickstart.py
 
 import asyncio
 
-from hive import Agent, Task, create_runtime_provider
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
 
 
 async def main() -> None:
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
 
     agent = Agent(
         name="assistant",

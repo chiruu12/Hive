@@ -7,7 +7,10 @@ import logging
 import time
 from typing import Any
 
+from hive.config import get_env
 from hive.models.base import BaseProvider
+from hive.models.registry import estimate_cost
+from hive.runtime.structured import StructuredGenerateResult, pydantic_to_json_schema
 from hive.runtime.types import GenerateResult, Message, Role, ToolCall
 
 logger = logging.getLogger(__name__)
@@ -18,8 +21,6 @@ class Anthropic(BaseProvider):
 
     def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
         import anthropic
-
-        from hive.config import get_env
 
         key = api_key or get_env("ANTHROPIC_API_KEY") or None
         super().__init__(model, key)
@@ -56,8 +57,6 @@ class Anthropic(BaseProvider):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> GenerateResult:
-        from hive.models.registry import estimate_cost
-
         system, api_messages = self._messages_to_anthropic(messages)
         t0 = time.time()
 
@@ -102,12 +101,6 @@ class Anthropic(BaseProvider):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> Any:
-        from hive.models.registry import estimate_cost
-        from hive.runtime.structured import (
-            StructuredGenerateResult,
-            pydantic_to_json_schema,
-        )
-
         schema = pydantic_to_json_schema(output_type)
         system, api_messages = self._messages_to_anthropic(messages)
         t0 = time.time()

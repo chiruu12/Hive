@@ -64,7 +64,7 @@ class TestTierPresets:
     def test_groq_standard(self) -> None:
         with _patch_env():
             g = Groq.standard()
-            assert g.model == "llama-3.3-70b-versatile"
+            assert g.model == "openai/gpt-oss-20b"
 
     # --- Fireworks ---
 
@@ -95,12 +95,30 @@ class TestTierPresets:
         o = Ollama.standard()
         assert o.model == "llama3.1"
 
+    # --- OpenAI pro ---
+
+    def test_openai_pro(self) -> None:
+        with _patch_env():
+            o = OpenAI.pro()
+            assert o.model == "gpt-5.4"
+
+    # --- Groq pro ---
+
+    def test_groq_pro(self) -> None:
+        with _patch_env():
+            g = Groq.pro()
+            assert g.model == "llama-3.3-70b-versatile"
+
     # --- LMStudio ---
 
     def test_lmstudio_lite(self) -> None:
         lms = LMStudio.lite()
         assert lms.model == "loaded-model"
         assert isinstance(lms, BaseProvider)
+
+    def test_lmstudio_standard(self) -> None:
+        lms = LMStudio.standard()
+        assert lms.model == "loaded-model"
 
 
 class TestFactory:

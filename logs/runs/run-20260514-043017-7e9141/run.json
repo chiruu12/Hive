@@ -1,0 +1,25 @@
+{
+  "run_id": "run-20260514-043017-7e9141",
+  "started_at": "2026-05-14T04:30:17.820913Z",
+  "heartbeat": 10,
+  "profiles": [
+    "coder"
+  ],
+  "agents_spawned": [
+    "coder-cdd6a101",
+    "coder-22143587",
+    "coder-486ec8ce"
+  ],
+  "tools_available": [
+    "apply_job",
+    "gamble",
+    "learn",
+    "query_world",
+    "quit_job",
+    "work",
+    "memory_get",
+    "memory_set",
+    "read_inbox",
+    "send_message"
+  ]
+}

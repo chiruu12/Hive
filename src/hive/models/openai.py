@@ -7,7 +7,14 @@ import logging
 import time
 from typing import Any
 
+from hive.config import get_env
 from hive.models.base import BaseProvider
+from hive.models.registry import estimate_cost
+from hive.runtime.structured import (
+    StructuredGenerateResult,
+    generate_structured_fallback,
+    pydantic_to_response_format,
+)
 from hive.runtime.types import GenerateResult, Message, Role, ToolCall
 
 logger = logging.getLogger(__name__)
@@ -27,8 +34,6 @@ class OpenAI(BaseProvider):
         base_url: str | None = None,
     ):
         import openai
-
-        from hive.config import get_env
 
         key = api_key or get_env("OPENAI_API_KEY") or None
         super().__init__(model, key)
@@ -57,6 +62,11 @@ class OpenAI(BaseProvider):
     def standard(cls, **kwargs: Any) -> OpenAI:
         """GPT-5.4 Mini — balanced."""
         return cls(model="gpt-5.4-mini", **kwargs)
+
+    @classmethod
+    def pro(cls, **kwargs: Any) -> OpenAI:
+        """GPT-5.4 — most capable."""
+        return cls(model="gpt-5.4", **kwargs)
 
     # --- Provider interface ---
 
@@ -99,8 +109,6 @@ class OpenAI(BaseProvider):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> GenerateResult:
-        from hive.models.registry import estimate_cost
-
         api_messages = self._messages_to_openai(messages)
         t0 = time.time()
 
@@ -140,13 +148,6 @@ class OpenAI(BaseProvider):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> Any:
-        from hive.models.registry import estimate_cost
-        from hive.runtime.structured import (
-            StructuredGenerateResult,
-            generate_structured_fallback,
-            pydantic_to_response_format,
-        )
-
         if self._is_local:
             return await generate_structured_fallback(
                 self, messages, output_type, temperature, max_tokens

@@ -1,0 +1,30 @@
+default:
+  name: default
+  description: General-purpose note-taking
+  instructions: |
+    You have a personal notepad. Use it to keep notes about anything
+    you find important or want to remember between cycles.
+
+journal:
+  name: journal
+  description: Reflections and observations
+  instructions: |
+    You have a personal journal. Write observations, reflections,
+    and discoveries each cycle. Record what happened, what you learned,
+    and what surprised you. Write as if reviewing your day.
+
+evolution:
+  name: evolution
+  description: Self-improvement notes
+  instructions: |
+    You have an evolution notepad. Write about your own growth:
+    what you're getting better at, what you struggle with,
+    what you would change about yourself, and ideas for self-improvement.
+
+tool_requests:
+  name: tool_requests
+  description: Capability wish-list
+  instructions: |
+    You have a tool wishlist. When you encounter something you can't do,
+    write down what tool you wish you had, what it would do, and why
+    you need it. Be specific about the capability gap.

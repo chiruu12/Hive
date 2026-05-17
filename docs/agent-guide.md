@@ -31,7 +31,7 @@ Agent, collect_tools, CommsToolkit,
 ConversationMemory, DaemonAgentAdapter, DaemonDelegationToolkit,
 DelegationToolkit, FileToolkit, GenerateResult, GitToolkit, GoalOutcome,
 make_tool, MemoryToolkit, Message, PersistentMemory,
-PluginLoader, Role, RuntimeProvider, ShellToolkit, Step,
+PluginLoader, Role, BaseProvider, ShellToolkit, Step,
 StructuredGenerateResult, StructuredTaskResult, Task, TaskResult, TaskStatus,
 Tool, ToolCall, ToolResult, Toolkit, tool, Workflow, WorldToolkit
 ```
@@ -61,7 +61,7 @@ from hive.models.anthropic import Anthropic  # or any provider
 
 agent = Agent(
     name: str,                          # required
-    model: RuntimeProvider,             # required
+    model: BaseProvider,                # required
     system_prompt: str = "",
     toolkits: list[Toolkit] | None = None,
     tools: list[Tool] | None = None,
@@ -296,7 +296,7 @@ class APIToolkit(Toolkit):
 
 ```python
 from pathlib import Path
-from hive.runtime import FileToolkit
+from hive.tools.file import FileToolkit
 
 ft = FileToolkit(workspace=Path("/tmp/work"))
 ```
@@ -312,7 +312,7 @@ ft = FileToolkit(workspace=Path("/tmp/work"))
 
 ```python
 from pathlib import Path
-from hive.runtime import ShellToolkit
+from hive.tools.shell import ShellToolkit
 
 st = ShellToolkit(workspace=Path("/tmp/work"), timeout=30, restrict=True)
 # restrict=True: command allowlist (python, git, npm, curl, etc.)
@@ -327,7 +327,7 @@ st = ShellToolkit(workspace=Path("/tmp/work"), timeout=30, restrict=True)
 
 ```python
 from pathlib import Path
-from hive.runtime import GitToolkit
+from hive.tools.git import GitToolkit
 
 gt = GitToolkit(workspace=Path("/tmp/work"))
 ```
@@ -344,7 +344,7 @@ gt = GitToolkit(workspace=Path("/tmp/work"))
 ### DelegationToolkit
 
 ```python
-from hive.runtime import DelegationToolkit
+from hive.tools.delegation import DelegationToolkit
 
 delegation = DelegationToolkit(agents={"researcher": agent_a, "coder": agent_b})
 leader = Agent(name="lead", model=provider, toolkits=[delegation])
@@ -630,7 +630,8 @@ import asyncio
 from pathlib import Path
 from hive import Agent, Task
 from hive.models.anthropic import Anthropic
-from hive.runtime import FileToolkit, ShellToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
 
 agent = Agent(
     name="dev",
@@ -654,7 +655,9 @@ print(result.status, result.steps_taken, result.tool_calls_made)
 import asyncio
 from hive import Agent, Task
 from hive.models.anthropic import Anthropic
-from hive.runtime import DelegationToolkit, FileToolkit, ShellToolkit
+from hive.tools.delegation import DelegationToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
 from pathlib import Path
 
 ws = Path("./project")
@@ -685,7 +688,7 @@ result = asyncio.run(lead.run(Task(instruction="Add a /health endpoint to the AP
 ```python
 from hive import Agent, Toolkit, tool, make_tool
 from hive.models.anthropic import Anthropic
-from hive.runtime import FileToolkit
+from hive.tools.file import FileToolkit
 from pathlib import Path
 
 @tool()

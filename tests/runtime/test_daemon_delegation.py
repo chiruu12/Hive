@@ -9,7 +9,7 @@ import pytest
 from hive.agents.delegation import DelegationEngine
 from hive.agents.state import AgentState, AgentStatus
 from hive.memory.store import HiveStore
-from hive.runtime.toolkits import DaemonDelegationToolkit
+from hive.tools.delegation import DaemonDelegationToolkit
 
 
 @pytest.fixture
@@ -43,7 +43,9 @@ async def seeded_store(store: HiveStore) -> HiveStore:
 @pytest.fixture
 def toolkit(seeded_store: HiveStore) -> DaemonDelegationToolkit:
     engine = DelegationEngine(seeded_store)
-    return DaemonDelegationToolkit(engine, "coder-001", seeded_store)
+    tk = DaemonDelegationToolkit(engine, seeded_store)
+    tk.bind("coder-001")
+    return tk
 
 
 class TestDelegateTask:
@@ -150,6 +152,7 @@ class TestListPeers:
             )
         )
         engine = DelegationEngine(store)
-        tk = DaemonDelegationToolkit(engine, "solo-001", store)
+        tk = DaemonDelegationToolkit(engine, store)
+        tk.bind("solo-001")
         result = await tk.list_peers()
         assert "No other agents" in result

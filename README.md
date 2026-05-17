@@ -68,7 +68,9 @@ agent = Agent(
 Built-in toolkits for common tasks:
 
 ```python
-from hive.runtime import FileToolkit, ShellToolkit, GitToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
+from hive.tools.git import GitToolkit
 
 agent = Agent(
     name="coder",
@@ -161,7 +163,8 @@ Build teams where a lead agent delegates to specialists:
 ```python
 from hive import Agent
 from hive.models.anthropic import Anthropic
-from hive.runtime import DelegationToolkit, FileToolkit
+from hive.tools.delegation import DelegationToolkit
+from hive.tools.file import FileToolkit
 
 provider = Anthropic.lite()
 

@@ -12,7 +12,8 @@ import asyncio
 import json
 from datetime import UTC, datetime
 
-from hive import Agent, Task, Toolkit, collect_tools, create_runtime_provider, tool
+from hive import Agent, Task, Toolkit, collect_tools, tool
+from hive.models.anthropic import Anthropic
 
 # --- In-memory data store (simulates a database) ---
 
@@ -102,7 +103,7 @@ def calculate(expression: str) -> str:
 
 
 async def main() -> None:
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
 
     agent = Agent(
         name="project-manager",

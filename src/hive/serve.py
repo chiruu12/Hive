@@ -13,9 +13,11 @@ from rich.panel import Panel
 
 from hive.models.factory import create_runtime_provider
 from hive.runtime.agent import Agent
-from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
-from hive.runtime.tools import Toolkit
 from hive.runtime.types import Task, TaskStatus
+from hive.tools import Toolkit
+from hive.tools.file import FileToolkit
+from hive.tools.git import GitToolkit
+from hive.tools.shell import ShellToolkit
 
 logger = logging.getLogger(__name__)
 

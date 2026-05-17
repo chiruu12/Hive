@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hive.config import get_env
 from hive.models.openai import OpenAI
 
 
@@ -11,8 +12,6 @@ class Groq(OpenAI):
     """Groq provider for fast inference on open models."""
 
     def __init__(self, model: str = "llama-3.3-70b-versatile", api_key: str | None = None):
-        from hive.config import get_env
-
         key = api_key or get_env("GROQ_API_KEY") or None
         super().__init__(
             model=model,
@@ -27,5 +26,10 @@ class Groq(OpenAI):
 
     @classmethod
     def standard(cls, **kwargs: Any) -> Groq:
-        """Llama 3.3 70B — balanced."""
+        """GPT-OSS 20B — balanced open model."""
+        return cls(model="openai/gpt-oss-20b", **kwargs)
+
+    @classmethod
+    def pro(cls, **kwargs: Any) -> Groq:
+        """Llama 3.3 70B — most capable."""
         return cls(model="llama-3.3-70b-versatile", **kwargs)

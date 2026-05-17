@@ -113,7 +113,8 @@ The SDK is organized around a few key abstractions:
 ```python
 from hive import Agent
 from hive.models.anthropic import Anthropic
-from hive.runtime import FileToolkit, ShellToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
 
 agent = Agent(
     name="coder",
@@ -154,7 +155,7 @@ import asyncio
 from pathlib import Path
 from hive import Agent, Task
 from hive.models.anthropic import Anthropic
-from hive.runtime import FileToolkit
+from hive.tools.file import FileToolkit
 
 async def main():
     agent = Agent(
@@ -605,10 +606,13 @@ class AsyncToolkit(Toolkit):
 
 ## Built-in Toolkits
 
-Import all built-in toolkits from `hive.runtime`:
+Import all built-in toolkits from `hive.tools`:
 
 ```python
-from hive.runtime import FileToolkit, ShellToolkit, GitToolkit, DelegationToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
+from hive.tools.git import GitToolkit
+from hive.tools.delegation import DelegationToolkit
 ```
 
 ### FileToolkit
@@ -617,7 +621,7 @@ Sandboxed file system access scoped to a workspace directory. All paths are reso
 
 ```python
 from pathlib import Path
-from hive.runtime import FileToolkit
+from hive.tools.file import FileToolkit
 
 files = FileToolkit(workspace=Path("./my-project"))
 ```
@@ -637,7 +641,7 @@ Sandboxed shell command execution. By default, only a safe allowlist of commands
 
 ```python
 from pathlib import Path
-from hive.runtime import ShellToolkit
+from hive.tools.shell import ShellToolkit
 
 # Restricted mode (default) -- only allowlisted commands
 shell = ShellToolkit(workspace=Path("./my-project"), timeout=30, restrict=True)
@@ -668,7 +672,7 @@ Git operations within a workspace directory.
 
 ```python
 from pathlib import Path
-from hive.runtime import GitToolkit
+from hive.tools.git import GitToolkit
 
 git = GitToolkit(workspace=Path("./my-repo"))
 ```
@@ -689,7 +693,7 @@ git = GitToolkit(workspace=Path("./my-repo"))
 Let one agent delegate tasks to other agents. The delegating agent can invoke sub-agents by name and receive their results.
 
 ```python
-from hive.runtime import DelegationToolkit
+from hive.tools.delegation import DelegationToolkit
 
 researcher = Agent(name="researcher", model=provider, system_prompt="You research topics.")
 coder = Agent(name="coder", model=provider, system_prompt="You write Python code.")
@@ -786,7 +790,9 @@ import asyncio
 from pathlib import Path
 from hive import Agent, Task
 from hive.models.anthropic import Anthropic
-from hive.runtime import FileToolkit, ShellToolkit, DelegationToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
+from hive.tools.delegation import DelegationToolkit
 
 async def main():
     provider = Anthropic.standard()
@@ -1096,7 +1102,10 @@ from hive.models.base import BaseProvider
 from hive import tool, make_tool, collect_tools, Tool, Toolkit
 
 # Built-in toolkits
-from hive.runtime import FileToolkit, ShellToolkit, GitToolkit, DelegationToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
+from hive.tools.git import GitToolkit
+from hive.tools.delegation import DelegationToolkit
 
 # MCP
 from hive import MCPToolkit

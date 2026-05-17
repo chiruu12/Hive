@@ -8,9 +8,9 @@ import pytest
 
 from hive.models.base import BaseProvider
 from hive.runtime.agent import Agent
-from hive.runtime.delegation import DelegationToolkit
-from hive.runtime.tools import Toolkit, tool
 from hive.runtime.types import GenerateResult, Message, Task, TaskStatus, ToolCall
+from hive.tools import Toolkit, tool
+from hive.tools.delegation import DelegationToolkit
 
 
 class MockProvider(BaseProvider):

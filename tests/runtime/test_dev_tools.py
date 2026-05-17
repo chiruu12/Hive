@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.git import GitToolkit
+from hive.tools.shell import ShellToolkit
 
 
 class TestFileToolkit:

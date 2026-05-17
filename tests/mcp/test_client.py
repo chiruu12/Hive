@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hive.mcp.client import MCPToolkit
-from hive.runtime.tools import Tool
+from hive.tools import Tool
+from hive.tools.mcp import MCPToolkit
 
 
 def _make_mcp_tool(

@@ -11,7 +11,8 @@ Run: uv run python examples/09_error_handling.py
 
 import asyncio
 
-from hive import Agent, Task, TaskStatus, Toolkit, create_runtime_provider, tool
+from hive import Agent, Task, TaskStatus, Toolkit, tool
+from hive.models.anthropic import Anthropic
 
 
 class FlakyToolkit(Toolkit):
@@ -42,7 +43,7 @@ async def demo_status_handling() -> None:
     """Show how to handle different task outcomes."""
     print("=== 1. Status Handling ===\n")
 
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
     agent = Agent(
         name="worker",
         model=provider,
@@ -74,7 +75,7 @@ async def demo_budget_limit() -> None:
     """Show budget enforcement stopping an agent."""
     print("=== 2. Budget Limit ===\n")
 
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
     agent = Agent(
         name="budget-worker",
         model=provider,
@@ -105,7 +106,7 @@ async def demo_max_steps() -> None:
     """Show what happens when an agent hits the step limit."""
     print("=== 3. Max Steps ===\n")
 
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
     agent = Agent(
         name="limited-worker",
         model=provider,
@@ -135,7 +136,7 @@ async def demo_tool_errors() -> None:
     """Show that tool errors don't crash the agent — it adapts."""
     print("=== 4. Tool Error Recovery ===\n")
 
-    provider = create_runtime_provider("claude-haiku-4-5")
+    provider = Anthropic.lite()
     agent = Agent(
         name="resilient-worker",
         model=provider,

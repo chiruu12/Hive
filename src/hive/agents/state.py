@@ -34,6 +34,9 @@ class AgentState(BaseModel):
     last_active: datetime = Field(default_factory=datetime.now)
     error: str | None = None
     workspace: str = ""
+    spawned_by: str | None = None
+    max_cycles: int | None = None
+    cycles_lived: int = 0
 
     def is_alive(self) -> bool:
         return self.status != AgentStatus.DEAD
