@@ -2,6 +2,7 @@
 
 import asyncio
 import signal
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -251,6 +252,10 @@ def nudge(
 @app.command()
 def watch(
     compact: bool = typer.Option(False, "--compact", help="2-panel layout for small terminals"),
+    screenshot: str = typer.Option("", "--screenshot", help="Directory to save TUI screenshots"),
+    screenshot_interval: int = typer.Option(
+        10, "--screenshot-interval", help="Seconds between screenshots"
+    ),
 ) -> None:
     """Live TUI dashboard showing agent activity."""
     from collections import deque
@@ -482,15 +487,38 @@ def watch(
                 pass
             await asyncio.sleep(0.5)
 
+    screenshot_dir = Path(screenshot) if screenshot else None
+    if screenshot_dir:
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+
     async def _watch_loop() -> None:
         await store.initialize()
+        last_screenshot = 0.0
         with Live(
             await _build_dashboard(), console=console, refresh_per_second=2
         ) as live:
             poll_task = asyncio.create_task(_poll_events())
             try:
                 while True:
-                    live.update(await _build_dashboard())
+                    dashboard = await _build_dashboard()
+                    live.update(dashboard)
+
+                    if screenshot_dir:
+                        import time
+
+                        now = time.time()
+                        if now - last_screenshot >= screenshot_interval:
+                            last_screenshot = now
+                            ts = datetime.now().strftime("%H%M%S")
+                            path = screenshot_dir / f"screenshot-{ts}.txt"
+                            capture = Console(
+                                file=open(path, "w"),  # noqa: SIM115
+                                width=120,
+                                force_terminal=True,
+                            )
+                            capture.print(dashboard)
+                            capture.file.close()
+
                     await asyncio.sleep(0.5)
             finally:
                 poll_task.cancel()
