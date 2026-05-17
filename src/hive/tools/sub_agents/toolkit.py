@@ -116,7 +116,8 @@ class SubAgentManager:
         sub = await self._store.get_sub_agent(sub_agent_id)
         if not sub:
             return None
-        return sub.get("result", "")
+        result: str = sub.get("result", "")
+        return result
 
     async def auto_kill_expired(self) -> list[str]:
         """Kill sub-agents that exceeded max_cycles."""

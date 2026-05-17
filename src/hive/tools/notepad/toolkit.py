@@ -16,11 +16,13 @@ from hive.tools.base import Toolkit, tool
 def _load_preset_yaml() -> dict[str, Any]:
     try:
         ref = importlib.resources.files("hive.tools.notepad") / "presets.yaml"
-        return yaml.safe_load(ref.read_text())
+        result: dict[str, Any] = yaml.safe_load(ref.read_text()) or {}
+        return result
     except Exception:
         presets_path = Path(__file__).parent / "presets.yaml"
         if presets_path.exists():
-            return yaml.safe_load(presets_path.read_text())
+            result = yaml.safe_load(presets_path.read_text()) or {}
+            return result
         return {}
 
 

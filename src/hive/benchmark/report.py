@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -47,13 +48,14 @@ class BenchmarkReport:
 
     def to_json(self) -> str:
         """Export results as JSON."""
-        data = {
+        models_list: list[dict[str, Any]] = []
+        data: dict[str, Any] = {
             "scenario": self._result.scenario,
             "runs_per_model": self._result.runs_per_model,
-            "models": [],
+            "models": models_list,
         }
         for mr in self._result.model_results:
-            data["models"].append(
+            models_list.append(
                 {
                     "model": mr.model,
                     "goals_completed": mr.goals_completed,

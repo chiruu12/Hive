@@ -216,7 +216,8 @@ class A2AToolkit(Toolkit):
     async def find_agent(self, capability: str) -> str:
         """Find the best agent for a given capability/task type."""
         if not self._spec:
-            return await self.list_agents()
+            result: str = await self.list_agents()
+            return result
         agents = await self._store.list_agents()
         alive = [a.agent_id for a in agents if a.is_alive() and a.agent_id != self._agent_id]
         best = self._spec.best_agent_for(capability, alive)

@@ -80,7 +80,7 @@ class BenchmarkRunner:
 
             for _ in range(runs):
                 start = time.monotonic()
-                suffering = SufferingState()
+                suffering = SufferingState(agent_id=f"bench-{model_name[:10]}")
 
                 for cycle in range(cycles):
                     agent_id = f"bench-{model_name[:10]}-{cycle}"
