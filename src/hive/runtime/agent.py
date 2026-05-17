@@ -95,9 +95,7 @@ class Agent:
                 )
             self._instructions = None
             base = str(instructions) if instructions else system_prompt
-            self._system_prompt = self._assemble_prompt(
-                base, toolkit_instr, response_model
-            )
+            self._system_prompt = self._assemble_prompt(base, toolkit_instr, response_model)
 
     @staticmethod
     def _assemble_prompt(
