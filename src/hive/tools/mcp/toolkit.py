@@ -7,7 +7,7 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
-from hive.runtime.tools import Tool, Toolkit
+from hive.tools.base import Tool, Toolkit
 
 logger = logging.getLogger(__name__)
 

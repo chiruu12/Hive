@@ -152,7 +152,8 @@ def status() -> None:
         goal_text = goal["objective"][:40] if goal else "-"
         status_val = a.status.value if hasattr(a.status, "value") else a.status
         styled = status_styles.get(status_val, status_val)
-        table.add_row(a.name, a.role, a.model, styled, goal_text)
+        name_display = f"[sub] {a.name}" if a.spawned_by else a.name
+        table.add_row(name_display, a.role, a.model, styled, goal_text)
 
     console.print(table)
 
@@ -565,6 +566,69 @@ def biography(
 
 
 @app.command()
+def benchmark(
+    models: str = typer.Argument(help="Comma-separated models to compare"),
+    task: str = typer.Option(
+        "", "--task", "-t", help="Single task to run (default: goal generation)"
+    ),
+    cycles: int = typer.Option(5, "--cycles", "-c", help="Cycles per model"),
+    runs: int = typer.Option(1, "--runs", "-n", help="Runs per model"),
+    output: str = typer.Option("", "--output", "-o", help="Save JSON results to file"),
+) -> None:
+    """Compare models on the same scenario."""
+    from hive.benchmark.report import BenchmarkReport
+    from hive.benchmark.runner import BenchmarkRunner
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    model_list = [m.strip() for m in models.split(",")]
+    runner = BenchmarkRunner(hive_dir)
+
+    if task:
+        result = asyncio.run(runner.run_task_benchmark(model_list, task=task, runs=runs))
+    else:
+        result = asyncio.run(
+            runner.run_goal_benchmark(model_list, cycles=cycles, runs=runs)
+        )
+
+    report = BenchmarkReport(result)
+    report.print_table(console)
+
+    if output:
+        path = report.save_json(Path(output))
+        console.print(f"[green]Results saved to {path}[/green]")
+
+
+@app.command()
+def export(
+    run_id: str = typer.Argument(help="Run ID to export"),
+    output: str = typer.Option("", "--output", "-o", help="Output file path"),
+) -> None:
+    """Export a run as a standalone HTML report."""
+    from hive.export.html import export_html_report
+
+    logs_dir = Path.cwd() / "logs"
+    hive_dir = Path.cwd() / ".hive"
+    if not logs_dir.exists():
+        console.print("[red]No logs directory found.[/red]")
+        raise typer.Exit(1)
+
+    out_path = Path(output) if output else Path.cwd() / f"hive-report-{run_id}.html"
+    try:
+        result = export_html_report(
+            run_id, logs_dir, out_path,
+            hive_dir=hive_dir if hive_dir.exists() else None,
+        )
+        console.print(f"[green]✓ Report exported:[/green] {result}")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def doctor() -> None:
     """Check environment health and diagnose common issues."""
     from hive.daemon.diagnostics import run_all_checks
@@ -600,6 +664,173 @@ def doctor() -> None:
         console.print(f"\n[red]{fails} critical issue(s) found.[/red]")
     else:
         console.print("\n[green]All checks passed or optional.[/green]")
+
+
+@app.command()
+def journal(
+    agent: str = typer.Argument(help="Agent name or ID"),
+) -> None:
+    """Read an agent's notepad."""
+    from hive.tools.notepad import NotepadManager
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    manager = NotepadManager(hive_dir)
+    agents_with_journals = manager.list_agents_with_journals()
+
+    target = None
+    for aid in agents_with_journals:
+        if aid == agent or aid.startswith(agent):
+            target = aid
+            break
+
+    if not target:
+        console.print(f"[red]No notepad found for: {agent}[/red]")
+        raise typer.Exit(1)
+
+    content = manager.read(target)
+    if not content.strip():
+        console.print(f"[dim]Notepad is empty for {target}[/dim]")
+        return
+
+    from rich.markdown import Markdown
+
+    console.print(Panel(Markdown(content), title=f"Notepad — {target}", border_style="blue"))
+
+
+@app.command()
+def journals() -> None:
+    """List all agents with notepads."""
+    from hive.tools.notepad import NotepadManager
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    manager = NotepadManager(hive_dir)
+    agents = manager.list_agents_with_journals()
+
+    if not agents:
+        console.print("[dim]No notepads yet. Run the hive first.[/dim]")
+        return
+
+    table = Table(title="Agent Notepads")
+    table.add_column("Agent", style="cyan")
+    table.add_column("Entries", style="dim")
+
+    for aid in agents:
+        notepad = manager.read(aid)
+        entry_count = notepad.count("---") if notepad.strip() else 0
+        table.add_row(aid[:25], str(entry_count))
+
+    console.print(table)
+
+
+@app.command()
+def messages(
+    agent: str = typer.Argument(help="Agent name or ID"),
+    outbox: bool = typer.Option(False, "--outbox", help="Show outbox instead of inbox"),
+) -> None:
+    """Show an agent's A2A messages."""
+    from hive.interactions.a2a import A2AStore
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    a2a = A2AStore(hive_dir)
+    store = HiveStore(hive_dir / "hive.db")
+    agents = asyncio.run(store.list_agents())
+    target = None
+    for a in agents:
+        if a.agent_id == agent or a.name == agent or a.agent_id.startswith(agent):
+            target = a.agent_id
+            break
+    if not target:
+        console.print(f"[red]Agent not found: {agent}[/red]")
+        raise typer.Exit(1)
+
+    if outbox:
+        msgs = asyncio.run(a2a.get_outbox(target))
+        title = f"Outbox — {target}"
+    else:
+        msgs = asyncio.run(a2a.get_inbox(target))
+        title = f"Inbox — {target}"
+
+    if not msgs:
+        console.print(f"[dim]{title}: empty[/dim]")
+        return
+
+    table = Table(title=title)
+    table.add_column("ID", style="cyan", max_width=15)
+    table.add_column("Type", style="dim")
+    table.add_column("From/To")
+    table.add_column("Subject", max_width=40)
+    table.add_column("Time", style="dim")
+
+    for m in msgs:
+        peer = m.from_agent if not outbox else m.to_agent
+        ts = m.ts.strftime("%H:%M:%S")
+        table.add_row(m.message_id, m.type, peer[:20], m.subject[:40], ts)
+
+    console.print(table)
+
+
+@app.command()
+def threads(
+    agent: str = typer.Argument(None, help="Agent name or ID (optional)"),
+) -> None:
+    """Show active message threads."""
+    from hive.interactions.a2a import A2AStore
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    a2a = A2AStore(hive_dir)
+    store = HiveStore(hive_dir / "hive.db")
+    agents = asyncio.run(store.list_agents())
+
+    target_ids = []
+    if agent:
+        for a in agents:
+            if a.agent_id == agent or a.name == agent or a.agent_id.startswith(agent):
+                target_ids.append(a.agent_id)
+                break
+    else:
+        target_ids = [a.agent_id for a in agents]
+
+    if not target_ids:
+        console.print("[dim]No agents found.[/dim]")
+        return
+
+    seen_threads: set[str] = set()
+    for aid in target_ids:
+        inbox = asyncio.run(a2a.get_inbox(aid, limit=50))
+        for m in inbox:
+            root = m.reply_to or m.message_id
+            if root not in seen_threads:
+                seen_threads.add(root)
+                thread = asyncio.run(a2a.get_thread(aid, root))
+                if len(thread) > 1:
+                    console.print(f"\n[cyan]Thread {root}[/cyan] ({len(thread)} messages):")
+                    for t in thread:
+                        ts = t.ts.strftime("%H:%M:%S")
+                        console.print(
+                            f"  [{ts}] {t.from_agent} → {t.to_agent}: "
+                            f"[{t.type}] {t.subject[:50]}"
+                        )
+
+    if not seen_threads:
+        console.print("[dim]No threads found.[/dim]")
 
 
 agent_app = typer.Typer(

@@ -9,8 +9,8 @@ import pytest
 from hive.models.base import BaseProvider
 from hive.runtime.agent import Agent
 from hive.runtime.memory import ConversationMemory
-from hive.runtime.tools import Toolkit, tool
 from hive.runtime.types import GenerateResult, Message, Role, Task, TaskStatus, ToolCall
+from hive.tools import Toolkit, tool
 
 
 class MockProvider(BaseProvider):

@@ -301,6 +301,19 @@ def collect_tools(*fns: Callable[..., Any]) -> list[Tool]:
 class Toolkit:
     """Base class for grouping related tools. Subclass and decorate methods with @tool."""
 
+    _agent_id: str = ""
+
+    def bind(self, agent_id: str) -> None:
+        """Called by the Agent to set the agent context. Override if needed."""
+        if self._agent_id and self._agent_id != agent_id:
+            logger.warning(
+                "Toolkit %s already bound to %r, rebinding to %r",
+                self.__class__.__name__,
+                self._agent_id,
+                agent_id,
+            )
+        self._agent_id = agent_id
+
     def get_tools(self) -> list[Tool]:
         """Auto-discover all @tool-decorated methods on this instance."""
         tools: list[Tool] = []

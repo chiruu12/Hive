@@ -1,0 +1,19 @@
+{
+  "run_id": "run-20260509-083237-e6f64e",
+  "started_at": "2026-05-09T08:32:37.905555Z",
+  "heartbeat": 30,
+  "profiles": [
+    "coder"
+  ],
+  "agents_spawned": [
+    "coder-486ec8ce"
+  ],
+  "tools_available": [
+    "agent_message",
+    "shared_log",
+    "memory_get",
+    "memory_set",
+    "world_action",
+    "world_query"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "run_id": "run-20260514-043510-bccb42",
+  "started_at": "2026-05-14T04:35:10.319537Z",
+  "heartbeat": 5,
+  "profiles": [
+    "researcher"
+  ],
+  "agents_spawned": [
+    "researcher-b15ab38e"
+  ],
+  "tools_available": [
+    "apply_job",
+    "gamble",
+    "learn",
+    "query_world",
+    "quit_job",
+    "work",
+    "memory_get",
+    "memory_set",
+    "read_inbox",
+    "send_message"
+  ]
+}

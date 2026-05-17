@@ -29,6 +29,7 @@ dependencies = [
     "openai>=1.30",
     "python-dotenv>=1.0",
     "mcp>=1.27",
+    "beautifulsoup4>=4.14.3",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +61,7 @@ packages = ["src/hive"]
 "profiles" = "hive/profiles"
 "skills" = "hive/skills"
 "models.yaml" = "hive/models.yaml"
+"src/hive/tools/notepad/presets.yaml" = "hive/tools/notepad/presets.yaml"
 
 [tool.ruff]
 target-version = "py311"

@@ -11,7 +11,9 @@ from pathlib import Path
 
 from hive import Agent, Task
 from hive.models.anthropic import Anthropic
-from hive.runtime import DelegationToolkit, FileToolkit, ShellToolkit
+from hive.tools.delegation import DelegationToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.shell import ShellToolkit
 
 
 async def main() -> None:

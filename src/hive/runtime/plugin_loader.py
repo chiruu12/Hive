@@ -7,7 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
-from hive.runtime.tools import Toolkit
+from hive.tools.base import Toolkit
 
 logger = logging.getLogger(__name__)
 

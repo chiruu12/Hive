@@ -33,6 +33,7 @@ class ExistenceLoop:
         economy_enabled: bool = True,
         tools_description: str = "",
         world_status: str = "",
+        notepad_content: str = "",
     ):
         self._agent_id = agent_id
         self._profile = profile
@@ -45,6 +46,7 @@ class ExistenceLoop:
         self._economy_enabled = economy_enabled
         self._tools_description = tools_description
         self._world_status = world_status
+        self._notepad_content = notepad_content
 
     async def _emit(self, event_type: EventType, data: dict[str, Any]) -> None:
         event = HiveEvent(
@@ -201,6 +203,9 @@ class ExistenceLoop:
 
         if identity_preamble:
             sections.append(f"\n--- Your identity ---\n{identity_preamble}")
+
+        if self._notepad_content:
+            sections.append(f"\n--- Your notepad ---\n{self._notepad_content}")
 
         if self._economy_enabled and self._world_status:
             sections.append(f"\n--- Your economic status ---\n{self._world_status}")

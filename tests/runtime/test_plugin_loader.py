@@ -26,7 +26,7 @@ class TestPluginDiscovery:
         _write_plugin(
             plugin_dir / "greeting.py",
             """
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class GreetingToolkit(Toolkit):
     @tool()
@@ -44,7 +44,7 @@ class GreetingToolkit(Toolkit):
         _write_plugin(
             plugin_dir / "_internal.py",
             """
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class InternalToolkit(Toolkit):
     @tool()
@@ -88,7 +88,7 @@ class AnotherClass:
         _write_plugin(
             plugin_dir / "once.py",
             """
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class OnceToolkit(Toolkit):
     @tool()
@@ -107,7 +107,7 @@ class OnceToolkit(Toolkit):
         _write_plugin(
             plugin_dir / "first.py",
             """
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class FirstToolkit(Toolkit):
     @tool()
@@ -122,7 +122,7 @@ class FirstToolkit(Toolkit):
         _write_plugin(
             plugin_dir / "second.py",
             """
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class SecondToolkit(Toolkit):
     @tool()
@@ -147,7 +147,7 @@ class SecondToolkit(Toolkit):
         _write_plugin(
             plugin_dir / "multi.py",
             """
-from hive.runtime.tools import Toolkit, tool
+from hive.tools import Toolkit, tool
 
 class AlphaToolkit(Toolkit):
     @tool()

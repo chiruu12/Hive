@@ -1,0 +1,235 @@
+{
+  "scenario": "The Thornfield Gallery Murder",
+  "timestamp": "20260509-090153",
+  "rounds": [
+    [
+      {
+        "theory": "Marcus was poisoned via cyanide (bitter almond smell) administered through the champagne. The 'Check the vents \u2014 she knows' note suggests Marcus discovered or suspected the killer used the ventilation system to introduce the poison or gain access. The locked room and internal key placement were designed to appear as suicide or accident, but the shaky handwriting indicates Marcus was already symptomatic when he wrote the warning.",
+        "prime_suspect": "Petra Novak",
+        "confidence": 0.68,
+        "reasoning": "Petra had direct access to both the kitchen and the ventilation window connecting to the Restoration Room. She could have poisoned champagne in the kitchen and passed it through the vent or ensured Marcus received a doctored glass during the gala. She has clear motive (bitter ex-partner, recent breakup). The note 'she knows' is gendered language. Her alibi of 'managing staff in the kitchen all evening' is vague and unverifiable \u2014 kitchen staff would be scattered and busy during service. The ventilation window is small but passable for delivering items or even accessing the room if the deadbolt was unlocked from inside initially.",
+        "need": "1) Toxicology confirmation of cyanide poisoning. 2) Guest list showing who served Marcus champagne and when. 3) Detailed timeline of Petra's movements with specific staff corroboration. 4) Examination of the ventilation window for fingerprints, fibers, or signs of recent use. 5) Analysis of the champagne glass for residue and source. 6) Check if Petra has access to cyanide or knowledge of poisons. 7) Verify Leo's alibi (10 PM departure) \u2014 did anyone see him leave? 8) Diana's argument with Marcus at 9:45 PM \u2014 what was discussed? 9) Whether Marcus had written other notes or showed distress before 10:30 PM.",
+        "detective": "Detective Sharp",
+        "model": "claude-haiku-4-5",
+        "round": 1,
+        "tokens": 1422,
+        "cost_usd": 0.00409,
+        "duration_ms": 9221
+      },
+      {
+        "theory": "",
+        "prime_suspect": "unknown",
+        "confidence": 0.3,
+        "reasoning": "Could not parse structured response",
+        "need": "more evidence",
+        "detective": "Detective Reyes",
+        "model": "accounts/fireworks/models/qwen3p6-plus",
+        "round": 1,
+        "tokens": 2763,
+        "cost_usd": 0.0026720999999999997,
+        "duration_ms": 32149
+      },
+      {
+        "theory": "Marcus was killed by cyanide poisoning \u2014 the bitter almond smell is a hallmark indicator. The poison was introduced through the ventilation window connecting the kitchen to the Restoration Room, which explains the locked-room scenario. Marcus realized what was happening and left a dying message indicating the method and the killer's gender.",
+        "prime_suspect": "Petra Novak",
+        "confidence": 0.78,
+        "reasoning": "Three critical points converge on Petra: 1) The dying message specifies 'she' \u2014 eliminating Leo Marchetti; 2) The message says 'check the vents,' directly pointing to the ventilation system; 3) Petra had exclusive access to the kitchen, which connects to the Restoration Room via that 6-inch ventilation window. She could have introduced cyanide gas or a compound into the vent while Marcus was trapped inside with a locked deadbolt. Diana lacks kitchen access, and Leo is male.",
+        "need": "Toxicology to confirm cyanide; forensic sweep of the ventilation window and kitchen area for chemical residue; Petra's precise timeline during 10:30-11:15 PM; evidence of how cyanide was introduced (gas canister, powdered compound heated?); witness corroboration of Petra's claimed location; check if champagne was poisoned or if almond smell is from ambient cyanide gas",
+        "detective": "Detective Park",
+        "model": "accounts/fireworks/models/glm-5p1",
+        "round": 1,
+        "tokens": 2020,
+        "cost_usd": 0.001551,
+        "duration_ms": 34838
+      }
+    ],
+    [
+      {
+        "theory": "The killer used the ventilation system to introduce a toxic substance (likely cyanide, given the bitter almond smell) into the Restoration Room via a tube apparatus. Marcus discovered the method and attempted to document it before dying, but the killer's identity remains unclear due to conflicting timeline evidence.",
+        "prime_suspect": "Petra Novak",
+        "confidence": 0.62,
+        "reasoning": "Petra had direct kitchen access adjacent to the vent, motive (bitter breakup), and the physical evidence strongly suggests the murder method involved the ventilation system. The rubber tube, loosened screws, and bitter almond smell (cyanide) all point to a kitchen-based poisoning delivery. However, her alibi of 'managing staff' is vague and unverified. The shaky handwriting note 'Check the vents \u2014 she knows' is critical: Marcus may have identified his killer before losing consciousness.",
+        "need": [
+          "Toxicology results on the champagne glass and Marcus's stomach contents \u2014 confirm cyanide or other poison",
+          "Fingerprint analysis on the rubber tube, ventilation screws, and the scrap of paper",
+          "Detailed timeline: who specifically saw Petra in the kitchen between 10:20-10:45 PM? Get kitchen staff statements",
+          "Analysis of the champagne bottle \u2014 was it poisoned at source or in the glass? Who had access?",
+          "Handwriting comparison: match the shaky note to all three suspects",
+          "Diana's 25-minute gap (10:20-10:45): verify the 10:38 PM email timestamp and check if she could have accessed the kitchen",
+          "Leo Marchetti's departure time \u2014 did anyone actually see him leave at 10 PM? Check security footage",
+          "Cyanide source: who had access to cyanide? (Art restoration uses harsh chemicals; check Leo's supplies and Petra's catering inventory)"
+        ],
+        "detective": "Detective Sharp",
+        "model": "claude-haiku-4-5",
+        "round": 2,
+        "tokens": 1757,
+        "cost_usd": 0.004565,
+        "duration_ms": 9151
+      },
+      {
+        "theory": "",
+        "prime_suspect": "unknown",
+        "confidence": 0.3,
+        "reasoning": "Could not parse structured response",
+        "need": "more evidence",
+        "detective": "Detective Reyes",
+        "model": "accounts/fireworks/models/qwen3p6-plus",
+        "round": 2,
+        "tokens": 3047,
+        "cost_usd": 0.0027573,
+        "duration_ms": 23805
+      },
+      {
+        "theory": "Petra Novak used the kitchen's adjacent ventilation window to poison Marcus through the vent system. The rubber tube found in the kitchen was used to introduce a cyanide compound (bitter almond smell) into the Restoration Room \u2014 likely into Marcus's champagne glass. Marcus realized what was happening and wrote the note identifying a female killer before succumbing.",
+        "prime_suspect": "Petra Novak",
+        "confidence": 0.78,
+        "reasoning": "Three key evidence points: 1) The rubber tube was found in the KITCHEN \u2014 Petra's domain as caterer, giving her direct access and cover to tamper with the vent; 2) The vent grate shows fresh scratches and finger-tight screws from the kitchen side \u2014 someone removed it recently, and Petra had uninterrupted kitchen access all evening; 3) Marcus's dying note says 'she knows' \u2014 pointing to a female killer with knowledge of the vent connection. Diana's 25-minute gap is suspicious, but her email at 10:38 PM places her at her office (opposite side of building) during the murder window, making kitchen access less likely without being noticed.",
+        "need": "Fingerprints on the rubber tube and vent grate to confirm who handled them; toxicology report to confirm cyanide; verification of Leo Marchetti's departure time \u2014 did he truly leave at 10 PM or stay nearby; Petra's detailed timeline \u2014 was she ever alone in the kitchen away from staff; check if the champagne glass has Petra's fingerprints or traces of how the poison was delivered",
+        "detective": "Detective Park",
+        "model": "accounts/fireworks/models/glm-5p1",
+        "round": 2,
+        "tokens": 2873,
+        "cost_usd": 0.0022227,
+        "duration_ms": 58348
+      }
+    ],
+    [
+      {
+        "theory": "Petra Novak used a rubber tube inserted through the loosened ventilation grate to deliver cyanide vapor or liquid into the Restoration Room, poisoning Marcus via his champagne or inhalation. The 'almond extract' smell and Marcus's distress symptoms (cyanide poisoning causes facial distress) align with cyanide exposure. Marcus discovered the method mid-poisoning and wrote the warning note before losing consciousness.",
+        "prime_suspect": "Petra Novak",
+        "confidence": 0.78,
+        "reasoning": [
+          "PHYSICAL EVIDENCE: The rubber tube found behind kitchen shelving is the murder weapon delivery mechanism. Petra was observed washing a rubber tube at 11 PM with a false explanation (no chocolate fountain existed).",
+          "OPPORTUNITY: Petra had 20-minute window (10:30-10:50 PM) alone in kitchen while staff took smoke break\u2014exactly when Marcus was in the Restoration Room during gala's final hour.",
+          "MOTIVE: Bitter breakup 6 months ago with victim; clear emotional motivation for revenge.",
+          "CHEMICAL ACCESS: The 'almond extract' bottle with unusually strong smell is suspicious\u2014cyanide has bitter almond odor. This is not standard catering supply.",
+          "VENTILATION TAMPERING: Two finger-tight screws on kitchen-side vent grate suggest recent, deliberate loosening\u2014consistent with Petra preparing the delivery mechanism.",
+          "VICTIM'S FINAL MESSAGE: 'Check the vents\u2014she knows' points directly to the ventilation system and a female perpetrator. Marcus recognized the method as it was happening.",
+          "TOXICOLOGY INDICATOR: Champagne smells of bitter almonds\u2014cyanide signature. Petra had kitchen access to poison the glass before it reached Marcus.",
+          "ALIBI WEAKNESS: Kitchen staff absence creates unwitnessed opportunity; her explanation for the tube is demonstrably false."
+        ],
+        "need": [
+          "TOXICOLOGY RESULTS: Confirm cyanide in champagne glass and Marcus's stomach/blood. This is critical\u2014it confirms poisoning method.",
+          "CHEMICAL ANALYSIS: Test the 'almond extract' bottle for cyanide concentration. Compare to potassium cyanide standard.",
+          "RUBBER TUBE ANALYSIS: Fingerprints on tube (Petra's?). Residue testing for cyanide or champagne traces.",
+          "KITCHEN TIMELINE: Detailed review of who handled Marcus's champagne glass and when. Who poured it?",
+          "PETRA'S PHONE RECORDS: Any calls/texts to Leo Marchetti or Diana Voss around 9:50 PM? (Leo called Diana at 9:50 PM\u2014was Petra involved in coordination?)",
+          "VENTILATION GRATE FINGERPRINTS: Whose prints are on the loosened screws?",
+          "PETRA'S FINANCIAL RECORDS: Confirm she has no financial ties to Marcus's sale plans. Establish motive is purely emotional.",
+          "CYANIDE BOTTLE INVENTORY: When was Leo's cyanide bottle last checked? Could Petra have accessed it, or did she source cyanide separately?"
+        ],
+        "detective": "Detective Sharp",
+        "model": "claude-haiku-4-5",
+        "round": 3,
+        "tokens": 2403,
+        "cost_usd": 0.006731000000000001,
+        "duration_ms": 14013
+      },
+      {
+        "theory": "",
+        "prime_suspect": "unknown",
+        "confidence": 0.3,
+        "reasoning": "Could not parse structured response",
+        "need": "more evidence",
+        "detective": "Detective Reyes",
+        "model": "accounts/fireworks/models/qwen3p6-plus",
+        "round": 3,
+        "tokens": 3296,
+        "cost_usd": 0.002832,
+        "duration_ms": 22179
+      },
+      {
+        "theory": "Petra Novak murdered Marcus Thornfield by introducing cyanide gas through the ventilation system connecting the kitchen to the Restoration Room. Using the rubber tube and her 'almond extract' (likely a cyanide compound), she gassed Marcus while he was locked inside the room, which explains the locked room mystery \u2014 she never needed to enter. Marcus realized the source of the attack before dying, writing 'Check the vents \u2014 she knows' as his dying message.",
+        "prime_suspect": "Petra Novak",
+        "confidence": 0.78,
+        "reasoning": "1) Petra was alone in the kitchen during the exact death window (10:30-10:50 PM) when staff took smoke breaks; 2) She was caught washing a rubber tube at 11 PM and lied about its purpose (no chocolate fountain existed); 3) Her van contained suspicious 'almond extract' \u2014 bitter almond smell is the hallmark of cyanide; 4) The vent grate was freshly tampered with (scratches, finger-tight screws), consistent with someone accessing it from the kitchen side; 5) Marcus's dying note specifically references 'vents' and a female killer ('she knows'); 6) The locked room puzzle only makes sense if the killer never entered \u2014 Petra used the vent as her weapon delivery system",
+        "need": "1) Toxicology results to confirm cyanide as cause of death and determine whether it was ingested (in champagne) or inhaled (through vent); 2) Analysis of Petra's 'almond extract' bottle to confirm it contains cyanide compounds; 3) Forensic examination of the rubber tube for cyanide residue; 4) Explanation for how Marcus ended up in the locked Restoration Room during the gala \u2014 was he lured there?; 5) Content of the Leo-Diana phone call at 9:50 PM \u2014 possible conspiracy or coincidence?; 6) Check if Leo's cyanide supply matches the murder weapon or if Petra had an independent source",
+        "detective": "Detective Park",
+        "model": "accounts/fireworks/models/glm-5p1",
+        "round": 3,
+        "tokens": 3064,
+        "cost_usd": 0.0022541,
+        "duration_ms": 52355
+      }
+    ],
+    [
+      {
+        "theory": "Petra Novak poisoned Marcus Thornfield with hydrogen cyanide delivered via champagne at 10:15 PM, then used the ventilation system to dispose of evidence and create an alibi gap. The rubber tube was her delivery mechanism through the kitchen vent.",
+        "prime_suspect": "Petra Novak",
+        "confidence": 0.85,
+        "reasoning": "Multiple converging evidence chains: (1) Motive: bitter ex-partner with documented resentment from 6-month breakup. (2) Opportunity: alone in kitchen 10:30-10:50 PM, perfectly positioned after delivering the 'special toast' glass at 10:15 PM. (3) Method: almond extract bottle with unusually strong smell (masking agent for cyanide odor), potassium cyanide access through catering supplies, rubber tube found in kitchen matching vent dimensions. (4) Physical evidence: Petra's fingerprints on the clean glass near ventilation window, staff witness seeing her wash the rubber tube at 11 PM with false explanation about chocolate fountain (which didn't exist). (5) Toxicology confirms hydrogen cyanide in champagne glass, not the bottle\u2014consistent with direct poisoning of Marcus's personal glass. (6) The scrap of paper 'Check the vents\u2014she knows' suggests Marcus realized the ventilation route before losing consciousness.",
+        "need": "Confirmation of: (1) Whether the rubber tube matches the ventilation grate dimensions precisely and shows signs of cyanide residue. (2) Chemical analysis of the 'almond extract' bottle\u2014is it actually potassium cyanide or a masking agent? (3) Fingerprint analysis on the rubber tube and ventilation grate screws. (4) Timeline verification: exactly when Petra had access to Marcus's champagne glass between 10:15 PM delivery and 10:30 PM kitchen staff departure. (5) Security footage of kitchen area 10:15-10:50 PM to confirm her movements and the tube washing. (6) Handwriting analysis on the scrap of paper\u2014does it match Marcus's writing or someone else's? (7) Whether cyanide was present in Petra's van or catering equipment.",
+        "detective": "Detective Sharp",
+        "model": "claude-haiku-4-5",
+        "round": 4,
+        "tokens": 2508,
+        "cost_usd": 0.006276,
+        "duration_ms": 11718
+      },
+      {
+        "theory": "",
+        "prime_suspect": "unknown",
+        "confidence": 0.3,
+        "reasoning": "Could not parse structured response",
+        "need": "more evidence",
+        "detective": "Detective Reyes",
+        "model": "accounts/fireworks/models/qwen3p6-plus",
+        "round": 4,
+        "tokens": 3518,
+        "cost_usd": 0.0028986,
+        "duration_ms": 24541
+      },
+      {
+        "theory": "Let me analyze this case systematically as Detective Park, building a timeline and cross-referencing evidence.\n\n**Timeline Construction:**\n- 9:45 PM - Diana argues with Marcus\n- 9:50 PM - Leo calls Di",
+        "prime_suspect": "unknown",
+        "confidence": 0.3,
+        "reasoning": "Could not parse structured response",
+        "need": "more evidence",
+        "detective": "Detective Park",
+        "model": "accounts/fireworks/models/glm-5p1",
+        "round": 4,
+        "tokens": 3416,
+        "cost_usd": 0.0024584,
+        "duration_ms": 60208
+      }
+    ]
+  ],
+  "accusations": [
+    {
+      "killer": "Petra Novak",
+      "method": "Petra poisoned Marcus with hydrogen cyanide delivered via champagne. She prepared a glass with cyanide, delivered it to Marcus at 10:15 PM as part of the catering service. The poison was dissolved in the champagne, causing his death by 11:15 PM. She then used a rubber tube inserted through the loosened ventilation grate to spray or introduce additional poison vapor into the locked room, creating a secondary poisoning vector to ensure death and confuse the investigation.",
+      "motive": "Petra harbored deep resentment from her bitter breakup with Marcus six months prior. The announcement of the gallery sale\u2014which would have eliminated her catering contract and any remaining connection to Marcus\u2014provided the final catalyst. Her motive combines personal revenge and the loss of a significant business relationship.",
+      "locked_room": "The room was never truly locked against the killer. Marcus locked himself in after consuming the poisoned champagne Petra delivered at 10:15 PM. The ventilation grate on the kitchen side had two screws loosened by Petra beforehand. After Marcus entered the room and locked the deadbolt from inside, Petra used the rubber tube (inserted through the loosened vent) to introduce additional cyanide vapor into the sealed room between 10:30-11:15 PM, while kitchen staff were on their smoke break. The note 'Check the vents \u2014 she knows' was written by Marcus in his final moments of distress, a dying accusation directed at Petra. The second clean glass with Petra's fingerprints was left near the vent as part of her preparation.",
+      "confidence": 0.92,
+      "detective": "Detective Sharp",
+      "model": "claude-haiku-4-5",
+      "tokens": 2147,
+      "cost_usd": 0.004815
+    },
+    {
+      "killer": "unknown",
+      "method": "",
+      "motive": "unknown",
+      "locked_room": "unknown",
+      "confidence": 0.3,
+      "detective": "Detective Reyes",
+      "model": "accounts/fireworks/models/qwen3p6-plus",
+      "tokens": 3432,
+      "cost_usd": 0.0028728
+    },
+    {
+      "killer": "unknown",
+      "method": "```json\n{\n  \"killer\": \"Petra Novak\",\n  \"method\": \"Petra poisoned Marcus using hydrogen cyanide disguised as almond extract. She delivered a 'special toast' glass of champagne directly to Marcus at 10:",
+      "motive": "unknown",
+      "locked_room": "unknown",
+      "confidence": 0.3,
+      "detective": "Detective Park",
+      "model": "accounts/fireworks/models/glm-5p1",
+      "tokens": 3337,
+      "cost_usd": 0.0024346999999999997
+    }
+  ],
+  "total_tokens": 41003,
+  "total_cost_usd": 0.0514307,
+  "correct_answer": "Petra Novak"
+}

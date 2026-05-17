@@ -16,22 +16,26 @@ from hive.agents.swarm import SwarmLearning
 from hive.checkpoint import CheckpointManager
 from hive.config import get_config, load_config
 from hive.context import ExecutionContext
+from hive.interactions.a2a import A2AStore
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
 from hive.models.factory import create_runtime_provider
-from hive.runtime import (
-    Agent,
-    CommsToolkit,
-    DaemonAgentAdapter,
-    MemoryToolkit,
-    Message,
-    WorldToolkit,
-)
-from hive.runtime.dev_tools import FileToolkit, GitToolkit, ShellToolkit
-from hive.runtime.toolkits import DaemonDelegationToolkit
+from hive.runtime import Agent, DaemonAgentAdapter, Message
+from hive.tools.a2a import A2AToolkit
+from hive.tools.comms import CommsToolkit
+from hive.tools.delegation import DaemonDelegationToolkit
+from hive.tools.file import FileToolkit
+from hive.tools.git import GitToolkit
+from hive.tools.memory import MemoryToolkit
+from hive.tools.notepad import NotepadManager, NotepadToolkit
+from hive.tools.schedule import ScheduleToolkit
+from hive.tools.shell import ShellToolkit
+from hive.tools.sub_agents import SubAgentManager, SubAgentToolkit
+from hive.tools.web import WebToolkit
+from hive.tools.world import WorldToolkit
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +75,13 @@ class HiveDaemon:
         self._log = LogWriter(logs_dir or (hive_dir.parent / "logs"))
         self._identity = IdentityManager(hive_dir)
         self._checkpoint = CheckpointManager(hive_dir)
-        self._delegation = DelegationEngine(self._store)
+        self._delegation = DelegationEngine(self._store)  # a2a_store added after init
         self._specialization = SpecializationTracker()
         self._swarm = SwarmLearning(self._store, self._specialization)
+        self._notepad = NotepadManager(hive_dir)
+        self._sub_agents = SubAgentManager(self._store, hive_dir)
+        self._a2a_store = A2AStore(hive_dir)
+        self._delegation._a2a_store = self._a2a_store
 
         self._stats = None
         self._event_engine = None
@@ -110,22 +118,32 @@ class HiveDaemon:
         workspace.mkdir(parents=True, exist_ok=True)
 
         toolkits: list[Any] = [
-            FileToolkit(workspace),
-            ShellToolkit(workspace),
-            GitToolkit(workspace),
-            MemoryToolkit(self._ctx.memory_dir, agent_id),
-            CommsToolkit(self._ctx.comms_dir, agent_id),
+            FileToolkit(workspace=workspace),
+            ShellToolkit(workspace=workspace),
+            GitToolkit(workspace=workspace),
+            MemoryToolkit(path=self._ctx.memory_dir),
+            CommsToolkit(path=self._ctx.comms_dir),
             DaemonDelegationToolkit(
                 self._delegation,
-                agent_id,
                 self._store,
             ),
+            NotepadToolkit(manager=self._notepad),
+            SubAgentToolkit(self._sub_agents, self._store),
+            A2AToolkit(self._a2a_store, self._store),
+            WebToolkit(),
+            ScheduleToolkit(self._store),
         ]
         if self._economy_enabled and self._ctx.world is not None:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
+
+        for tk in toolkits:
+            tk.bind(agent_id)
+
         for tk_cls in self._plugin_toolkits:
             try:
-                toolkits.append(tk_cls())
+                plugin_tk = tk_cls()
+                plugin_tk.bind(agent_id)
+                toolkits.append(plugin_tk)
             except Exception as e:
                 logger.warning(
                     "Plugin toolkit %s failed: %s",
@@ -211,6 +229,14 @@ class HiveDaemon:
                     await self._store.update_agent_status(
                         agent.agent_id, AgentStatus.ERROR, error=str(e)
                     )
+
+            killed = await self._sub_agents.auto_kill_expired()
+            for kid in killed:
+                logger.info("Auto-killed expired sub-agent: %s", kid)
+
+            for agent in alive:
+                if agent.spawned_by:
+                    await self._store.increment_cycles(agent.agent_id)
 
             if self._economy_enabled:
                 self._process_payday(alive)
@@ -330,6 +356,10 @@ class HiveDaemon:
                     0,
                     "autonomy_loop",
                 )
+                if agent.spawned_by:
+                    await self._store.complete_sub_agent(
+                        agent.agent_id, outcome.summary
+                    )
             elif outcome.steps_failed > outcome.steps_done:
                 await self._store.abandon_goal(active_goal["goal_id"])
                 self._log.log_goal(
@@ -362,12 +392,49 @@ class HiveDaemon:
             await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
 
         else:
+            due = await self._store.get_due_schedules(
+                agent.agent_id, self._cycle_count
+            )
+            if due:
+                sched = due[0]
+                from uuid import uuid4
+
+                goal_id = f"goal-{uuid4().hex[:8]}"
+                await self._store.save_goal(
+                    goal_id, agent.agent_id, sched["objective"]
+                )
+                await self._store.fire_schedule(
+                    sched["schedule_id"], self._cycle_count
+                )
+                logger.info(
+                    "Fired scheduled goal for %s: %s",
+                    agent.agent_id,
+                    sched["objective"][:60],
+                )
+                return "idle"
+
             nudges = await self._store.get_pending_nudges(agent.agent_id)
             peers = await self._get_peer_summaries(agent.agent_id)
 
             world_status = ""
             if self._economy_enabled and self._ctx.world is not None:
                 world_status = self._ctx.world.get_status(agent.agent_id)
+
+            notepad_content = self._notepad.get_tail(agent.agent_id)
+
+            pending_a2a = await self._a2a_store.get_pending_requests(
+                agent.agent_id, limit=3
+            )
+            if pending_a2a:
+                a2a_lines = []
+                for m in pending_a2a:
+                    a2a_lines.append(
+                        f"- [{m.type}] from {m.from_agent}: {m.subject}"
+                    )
+                a2a_context = "\n".join(a2a_lines)
+                nudges.append(
+                    f"You have pending A2A messages:\n{a2a_context}"
+                )
 
             existence = ExistenceLoop(
                 agent_id=agent.agent_id,
@@ -381,6 +448,7 @@ class HiveDaemon:
                 economy_enabled=self._economy_enabled,
                 tools_description=self._build_tools_description(agent.agent_id),
                 world_status=world_status,
+                notepad_content=notepad_content,
             )
             goal = await existence.generate_goal(suffering, peers, nudges)
 

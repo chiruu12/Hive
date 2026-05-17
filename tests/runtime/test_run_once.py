@@ -11,8 +11,8 @@ from pydantic import BaseModel
 from hive.models.base import BaseProvider
 from hive.runtime.agent import Agent
 from hive.runtime.structured import StructuredGenerateResult
-from hive.runtime.tools import collect_tools, make_tool, tool
 from hive.runtime.types import GenerateResult, Message, ToolCall
+from hive.tools import collect_tools, make_tool, tool
 
 
 class MockOnceProvider(BaseProvider):

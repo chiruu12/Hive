@@ -26,6 +26,7 @@ class EventType(StrEnum):
     NUDGE_RECEIVED = "nudge_received"
     EXISTENCE_CYCLE = "existence_cycle"
     DAEMON_CYCLE = "daemon_cycle"
+    JOURNAL_ENTRY = "journal_entry"
 
 
 class HiveEvent(BaseModel):

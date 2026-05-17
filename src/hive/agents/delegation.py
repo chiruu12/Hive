@@ -24,8 +24,13 @@ class DelegationRecord(BaseModel):
 class DelegationEngine:
     """Manages task delegation between agents."""
 
-    def __init__(self, store: HiveStore):
+    def __init__(
+        self,
+        store: HiveStore,
+        a2a_store: Any | None = None,
+    ):
         self._store = store
+        self._a2a_store = a2a_store
         self._active: dict[str, DelegationRecord] = {}
 
     async def delegate(
@@ -48,6 +53,24 @@ class DelegationEngine:
             goal_id=goal_id,
         )
         self._active[did] = record
+
+        if self._a2a_store:
+            from hive.interactions.a2a import A2AMessage, A2AMessageType
+
+            msg = A2AMessage(
+                type=A2AMessageType.DELEGATE,
+                from_agent=from_agent,
+                to_agent=to_agent,
+                subject=f"Delegation: {task[:60]}",
+                body=task,
+                expects_reply=True,
+                metadata={
+                    "delegation_id": did,
+                    "goal_id": goal_id,
+                },
+            )
+            await self._a2a_store.send(msg)
+
         return record
 
     async def check_completion(self, delegation_id: str) -> DelegationRecord | None:

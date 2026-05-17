@@ -58,6 +58,30 @@ CREATE TABLE IF NOT EXISTS nudges (
     created_at TEXT NOT NULL,
     FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
 );
+
+CREATE TABLE IF NOT EXISTS schedules (
+    schedule_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    every_n_cycles INTEGER NOT NULL,
+    last_fired_cycle INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
+);
+
+CREATE TABLE IF NOT EXISTS sub_agents (
+    sub_agent_id TEXT PRIMARY KEY,
+    parent_agent_id TEXT NOT NULL,
+    task TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running',
+    result TEXT DEFAULT '',
+    depth INTEGER DEFAULT 1,
+    max_cycles INTEGER DEFAULT 10,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (parent_agent_id) REFERENCES agents(agent_id)
+);
 """
 
 
@@ -76,6 +100,16 @@ class HiveStore:
                 await db.execute(
                     "ALTER TABLE goals ADD COLUMN parent_goal_id TEXT",
                 )
+            cursor = await db.execute("PRAGMA table_info(agents)")
+            agent_cols = {row[1] for row in await cursor.fetchall()}
+            if "spawned_by" not in agent_cols:
+                await db.execute("ALTER TABLE agents ADD COLUMN spawned_by TEXT")
+            if "max_cycles" not in agent_cols:
+                await db.execute("ALTER TABLE agents ADD COLUMN max_cycles INTEGER")
+            if "cycles_lived" not in agent_cols:
+                await db.execute(
+                    "ALTER TABLE agents ADD COLUMN cycles_lived INTEGER DEFAULT 0"
+                )
             await db.commit()
 
     async def save_agent(self, state: AgentState) -> None:
@@ -83,8 +117,9 @@ class HiveStore:
             await db.execute(
                 """INSERT OR REPLACE INTO agents
                    (agent_id, name, role, model, status, current_task,
-                    steps_completed, steps_total, workspace, spawned_at, last_active, error)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    steps_completed, steps_total, workspace, spawned_at,
+                    last_active, error, spawned_by, max_cycles, cycles_lived)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     state.agent_id,
                     state.name,
@@ -98,6 +133,9 @@ class HiveStore:
                     state.spawned_at.isoformat(),
                     state.last_active.isoformat(),
                     state.error,
+                    state.spawned_by,
+                    state.max_cycles,
+                    state.cycles_lived,
                 ),
             )
             await db.commit()
@@ -277,6 +315,136 @@ class HiveStore:
             await db.commit()
             return messages
 
+    async def save_schedule(
+        self,
+        schedule_id: str,
+        agent_id: str,
+        objective: str,
+        every_n_cycles: int,
+    ) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """INSERT INTO schedules
+                   (schedule_id, agent_id, objective, every_n_cycles, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    schedule_id,
+                    agent_id,
+                    objective,
+                    every_n_cycles,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            await db.commit()
+
+    async def list_schedules(self, agent_id: str) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM schedules WHERE agent_id = ? AND enabled = 1",
+                (agent_id,),
+            ) as cursor:
+                return [dict(row) async for row in cursor]
+
+    async def get_due_schedules(
+        self, agent_id: str, current_cycle: int
+    ) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT * FROM schedules
+                   WHERE agent_id = ? AND enabled = 1
+                   AND (? - last_fired_cycle) >= every_n_cycles""",
+                (agent_id, current_cycle),
+            ) as cursor:
+                return [dict(row) async for row in cursor]
+
+    async def fire_schedule(self, schedule_id: str, cycle: int) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE schedules SET last_fired_cycle = ? WHERE schedule_id = ?",
+                (cycle, schedule_id),
+            )
+            await db.commit()
+
+    async def disable_schedule(self, schedule_id: str) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE schedules SET enabled = 0 WHERE schedule_id = ?",
+                (schedule_id,),
+            )
+            await db.commit()
+
+    async def save_sub_agent(
+        self,
+        sub_agent_id: str,
+        parent_agent_id: str,
+        task: str,
+        depth: int = 1,
+        max_cycles: int = 10,
+    ) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """INSERT INTO sub_agents
+                   (sub_agent_id, parent_agent_id, task, status, depth,
+                    max_cycles, created_at)
+                   VALUES (?, ?, ?, 'running', ?, ?, ?)""",
+                (
+                    sub_agent_id,
+                    parent_agent_id,
+                    task,
+                    depth,
+                    max_cycles,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            await db.commit()
+
+    async def list_sub_agents(
+        self, parent_agent_id: str
+    ) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM sub_agents WHERE parent_agent_id = ?",
+                (parent_agent_id,),
+            ) as cursor:
+                return [dict(row) async for row in cursor]
+
+    async def get_sub_agent(self, sub_agent_id: str) -> dict[str, Any] | None:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM sub_agents WHERE sub_agent_id = ?",
+                (sub_agent_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def complete_sub_agent(self, sub_agent_id: str, result: str) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """UPDATE sub_agents
+                   SET status = 'completed', result = ?, completed_at = ?
+                   WHERE sub_agent_id = ?""",
+                (result, datetime.now(UTC).isoformat(), sub_agent_id),
+            )
+            await db.commit()
+
+    async def increment_cycles(self, agent_id: str) -> int:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE agents SET cycles_lived = cycles_lived + 1 WHERE agent_id = ?",
+                (agent_id,),
+            )
+            await db.commit()
+            async with db.execute(
+                "SELECT cycles_lived FROM agents WHERE agent_id = ?",
+                (agent_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+
     def _row_to_state(self, row: aiosqlite.Row) -> AgentState:
         return AgentState(
             agent_id=row["agent_id"],
@@ -291,4 +459,7 @@ class HiveStore:
             spawned_at=datetime.fromisoformat(row["spawned_at"]),
             last_active=datetime.fromisoformat(row["last_active"]),
             error=row["error"],
+            spawned_by=row["spawned_by"] if "spawned_by" in row.keys() else None,
+            max_cycles=row["max_cycles"] if "max_cycles" in row.keys() else None,
+            cycles_lived=row["cycles_lived"] if "cycles_lived" in row.keys() else 0,
         )

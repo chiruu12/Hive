@@ -11,19 +11,16 @@ from hive.config import HiveConfig, load_config
 from hive.context import ExecutionContext
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
-from hive.mcp.client import MCPToolkit
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.models.base import BaseProvider
 from hive.models.factory import create_runtime_provider
 from hive.runtime import (
     Agent,
-    CommsToolkit,
     ConversationMemory,
     DaemonAgentAdapter,
     GenerateResult,
     GoalOutcome,
-    MemoryToolkit,
     Message,
     PersistentMemory,
     Role,
@@ -38,11 +35,14 @@ from hive.runtime import (
     Toolkit,
     ToolResult,
     Workflow,
-    WorldToolkit,
     collect_tools,
     make_tool,
     tool,
 )
+from hive.tools.comms import CommsToolkit
+from hive.tools.mcp import MCPToolkit
+from hive.tools.memory import MemoryToolkit
+from hive.tools.world import WorldToolkit
 from hive.world.state import WorldState
 
 __all__ = [
