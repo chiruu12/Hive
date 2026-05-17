@@ -1,9 +1,11 @@
 """Existence loop — autonomous goal generation when agent is idle."""
 
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from hive.agents.profile import AgentProfile
@@ -13,6 +15,9 @@ from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.runtime.types import Message
+
+if TYPE_CHECKING:
+    from hive.runtime.persona import Persona
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,7 @@ class ExistenceLoop:
         tools_description: str = "",
         world_status: str = "",
         notepad_content: str = "",
+        persona: Persona | None = None,
     ):
         self._agent_id = agent_id
         self._profile = profile
@@ -47,6 +53,7 @@ class ExistenceLoop:
         self._tools_description = tools_description
         self._world_status = world_status
         self._notepad_content = notepad_content
+        self._persona = persona
 
     async def _emit(self, event_type: EventType, data: dict[str, Any]) -> None:
         event = HiveEvent(
@@ -213,6 +220,25 @@ class ExistenceLoop:
         suffering_frag = suffering.prompt_fragment()
         if suffering_frag:
             sections.append(f"\n--- Your current state ---\n{suffering_frag}")
+
+        if self._persona is not None:
+            p = self._persona
+            behavioral_lines = [
+                f"- Risk tolerance: {p.risk_tolerance:.0%}",
+                f"- Social drive: {p.social_drive:.0%}",
+                f"- Concentration: {p.concentration:.0%}",
+                f"- Autonomy: {p.autonomy_level:.0%}",
+                f"- Happiness: {p.happiness:.0%}",
+            ]
+            if p.purpose:
+                behavioral_lines.append(f"- Your purpose: {p.purpose}")
+            if p.long_term_goals:
+                goals = "; ".join(p.long_term_goals)
+                behavioral_lines.append(f"- Long-term goals: {goals}")
+            sections.append(
+                "\n--- Your behavioral state ---\n"
+                + "\n".join(behavioral_lines)
+            )
 
         if nudges:
             sections.append(
