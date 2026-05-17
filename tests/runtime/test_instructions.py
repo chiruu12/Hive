@@ -135,7 +135,7 @@ class TestAgentWithInstructions:
         )
         assert "Always log your actions" in agent._system_prompt
 
-    def test_toolkit_instructions_not_added_with_plain_string(self):
+    def test_toolkit_instructions_appended_with_plain_string(self):
         provider = MagicMock()
         tk = _MockToolkit()
         agent = Agent(
@@ -144,7 +144,31 @@ class TestAgentWithInstructions:
             instructions="Simple prompt",
             toolkits=[tk],
         )
-        assert agent._system_prompt == "Simple prompt"
+        assert "Simple prompt" in agent._system_prompt
+        assert "Always log your actions" in agent._system_prompt
+
+    def test_shared_instructions_not_mutated(self):
+        provider = MagicMock()
+
+        class Out(BaseModel):
+            x: int
+
+        shared = Instructions(persona="Helper")
+        Agent(name="a", model=provider, instructions=shared, response_model=Out)
+        assert shared.response_model is None
+
+    def test_warns_when_both_instructions_and_system_prompt(self, caplog):  # type: ignore[no-untyped-def]
+        import logging
+
+        provider = MagicMock()
+        with caplog.at_level(logging.WARNING, logger="hive.runtime.agent"):
+            Agent(
+                name="test",
+                model=provider,
+                instructions="Use this",
+                system_prompt="Not this",
+            )
+        assert "takes precedence" in caplog.text
 
     def test_agent_passes_response_model_to_instructions(self):
         class Output(BaseModel):

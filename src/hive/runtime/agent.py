@@ -74,15 +74,30 @@ class Agent:
         for tk in self._toolkits:
             tk.bind(self._agent_id)
 
+        toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
+
         if isinstance(instructions, Instructions):
-            self._instructions: Instructions | None = instructions
+            instr_copy = Instructions(
+                persona=instructions.persona,
+                instructions=list(instructions.goals),
+                context=instructions.context,
+            )
             if response_model:
-                instructions.response_model = response_model
-            toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
-            self._system_prompt = instructions.build_system_prompt(toolkit_instr)
+                instr_copy.response_model = response_model
+            self._instructions: Instructions | None = instr_copy
+            self._system_prompt = instr_copy.build_system_prompt(toolkit_instr)
         elif instructions:
+            if system_prompt:
+                logger.warning(
+                    "Agent %r: both 'instructions' and 'system_prompt' provided. "
+                    "'instructions' takes precedence.",
+                    name,
+                )
             self._instructions = None
-            self._system_prompt = str(instructions)
+            parts = [str(instructions)]
+            if toolkit_instr:
+                parts.extend(toolkit_instr)
+            self._system_prompt = "\n\n".join(parts)
         else:
             self._instructions = None
             self._system_prompt = system_prompt
