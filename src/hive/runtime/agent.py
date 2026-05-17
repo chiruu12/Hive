@@ -86,42 +86,37 @@ class Agent:
                 instr_copy.response_model = response_model
             self._instructions: Instructions | None = instr_copy
             self._system_prompt = instr_copy.build_system_prompt(toolkit_instr)
-        elif instructions:
-            if system_prompt:
+        else:
+            if instructions and system_prompt:
                 logger.warning(
                     "Agent %r: both 'instructions' and 'system_prompt' provided. "
                     "'instructions' takes precedence.",
                     name,
                 )
             self._instructions = None
-            parts = [str(instructions)]
-            if toolkit_instr:
-                parts.extend(toolkit_instr)
-            if response_model:
-                import json as _json
+            base = str(instructions) if instructions else system_prompt
+            self._system_prompt = self._assemble_prompt(
+                base, toolkit_instr, response_model
+            )
 
-                schema = response_model.model_json_schema()
-                schema.pop("title", None)
-                parts.append(
-                    "Respond with a JSON object matching this schema:\n"
-                    f"```json\n{_json.dumps(schema, indent=2)}\n```"
-                )
-            self._system_prompt = "\n\n".join(parts)
-        else:
-            self._instructions = None
-            parts = [system_prompt] if system_prompt else []
-            if toolkit_instr:
-                parts.extend(toolkit_instr)
-            if response_model:
-                import json as _json2
+    @staticmethod
+    def _assemble_prompt(
+        base: str,
+        toolkit_instr: list[str],
+        response_model: type[Any] | None,
+    ) -> str:
+        parts = [base] if base else []
+        parts.extend(toolkit_instr)
+        if response_model:
+            import json
 
-                schema = response_model.model_json_schema()
-                schema.pop("title", None)
-                parts.append(
-                    "Respond with a JSON object matching this schema:\n"
-                    f"```json\n{_json2.dumps(schema, indent=2)}\n```"
-                )
-            self._system_prompt = "\n\n".join(parts)
+            schema = response_model.model_json_schema()
+            schema.pop("title", None)
+            parts.append(
+                "Respond with a JSON object matching this schema:\n"
+                f"```json\n{json.dumps(schema, indent=2)}\n```"
+            )
+        return "\n\n".join(parts)
 
     def __repr__(self) -> str:
         return (
