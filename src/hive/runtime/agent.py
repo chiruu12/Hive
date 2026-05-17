@@ -53,6 +53,7 @@ class Agent:
         agent_id: str = "",
         max_cost_usd: float = 0.0,
         max_tokens: int = 0,
+        response_model: type[Any] | None = None,
     ):
         self.name = name
         self._model = model
@@ -68,12 +69,15 @@ class Agent:
         self._gen_max_tokens = max_tokens or 4096
         self._total_cost = 0.0
         self._total_tokens = 0
+        self._response_model = response_model
 
         for tk in self._toolkits:
             tk.bind(self._agent_id)
 
         if isinstance(instructions, Instructions):
             self._instructions: Instructions | None = instructions
+            if response_model:
+                instructions.response_model = response_model
             toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
             self._system_prompt = instructions.build_system_prompt(toolkit_instr)
         elif instructions:

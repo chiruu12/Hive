@@ -46,15 +46,13 @@ class TestInstructions:
         assert "- Add docstrings" in prompt
         assert "API server" in prompt
 
-    def test_response_model(self):
+    def test_response_model_via_setter(self):
         class Review(BaseModel):
             score: int
             summary: str
 
-        instr = Instructions(
-            persona="Code reviewer",
-            response_model=Review,
-        )
+        instr = Instructions(persona="Code reviewer")
+        instr.response_model = Review
         prompt = instr.build_system_prompt()
         assert "JSON" in prompt
         assert "score" in prompt
@@ -147,3 +145,17 @@ class TestAgentWithInstructions:
             toolkits=[tk],
         )
         assert agent._system_prompt == "Simple prompt"
+
+    def test_agent_passes_response_model_to_instructions(self):
+        class Output(BaseModel):
+            answer: str
+
+        provider = MagicMock()
+        agent = Agent(
+            name="test",
+            model=provider,
+            instructions=Instructions(persona="Helper"),
+            response_model=Output,
+        )
+        assert "answer" in agent._system_prompt
+        assert "JSON" in agent._system_prompt

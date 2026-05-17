@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -9,27 +10,14 @@ class Instructions:
     """Structured instructions for an agent's system prompt.
 
     Usage:
-        # Full configuration
         instructions = Instructions(
-            persona="Senior Python developer who values clean architecture",
+            persona="Senior Python developer",
             instructions=["Write production-quality code", "Add type hints"],
-            context="Working on a FastAPI backend with PostgreSQL",
+            context="Working on a FastAPI backend",
         )
 
-        # Minimal
-        instructions = Instructions(persona="Helpful coding assistant")
-
-        # With structured output
-        from pydantic import BaseModel
-        class Review(BaseModel):
-            score: int
-            summary: str
-
-        instructions = Instructions(
-            persona="Code reviewer",
-            instructions=["Review for bugs and style issues"],
-            response_model=Review,
-        )
+    response_model is set by the Agent, not by the user directly.
+    Toolkit instructions are collected by the Agent automatically.
     """
 
     def __init__(
@@ -37,11 +25,10 @@ class Instructions:
         persona: str = "",
         instructions: str | list[str] | None = None,
         context: str = "",
-        response_model: type[Any] | None = None,
     ):
         self.persona = persona
         self.context = context
-        self.response_model = response_model
+        self._response_model: type[Any] | None = None
 
         if instructions is None:
             self._instructions: list[str] = []
@@ -54,7 +41,18 @@ class Instructions:
     def goals(self) -> list[str]:
         return self._instructions
 
-    def build_system_prompt(self, toolkit_instructions: list[str] | None = None) -> str:
+    @property
+    def response_model(self) -> type[Any] | None:
+        return self._response_model
+
+    @response_model.setter
+    def response_model(self, model: type[Any] | None) -> None:
+        self._response_model = model
+
+    def build_system_prompt(
+        self,
+        toolkit_instructions: list[str] | None = None,
+    ) -> str:
         """Assemble the full system prompt from all parts."""
         parts: list[str] = []
 
@@ -73,11 +71,9 @@ class Instructions:
                 if ti.strip():
                     parts.append(ti)
 
-        if self.response_model:
-            schema = self.response_model.model_json_schema()
+        if self._response_model:
+            schema = self._response_model.model_json_schema()
             schema.pop("title", None)
-            import json
-
             parts.append(
                 "Respond with a JSON object matching this schema:\n"
                 f"```json\n{json.dumps(schema, indent=2)}\n```"
@@ -91,6 +87,6 @@ class Instructions:
             fields.append(f"persona={self.persona!r}")
         if self._instructions:
             fields.append(f"instructions={self._instructions!r}")
-        if self.response_model:
-            fields.append(f"response_model={self.response_model.__name__}")
+        if self._response_model:
+            fields.append(f"response_model={self._response_model.__name__}")
         return f"Instructions({', '.join(fields)})"
