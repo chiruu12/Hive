@@ -220,3 +220,7 @@ __marimo__/
 # Reference materials (never commit)
 tmp/
 .hive/
+
+# Experiment outputs (large, generated)
+experiments/results/
+experiments/reports/
