@@ -98,9 +98,7 @@ class A2AStore:
         messages.sort(key=lambda m: m.ts, reverse=True)
         return messages[:limit]
 
-    async def get_outbox(
-        self, agent_id: str, limit: int = 20
-    ) -> list[A2AMessage]:
+    async def get_outbox(self, agent_id: str, limit: int = 20) -> list[A2AMessage]:
         path = self._outbox_path(agent_id)
         if not path.exists():
             return []
@@ -115,9 +113,7 @@ class A2AStore:
         messages.sort(key=lambda m: m.ts, reverse=True)
         return messages[:limit]
 
-    async def get_message(
-        self, agent_id: str, message_id: str
-    ) -> A2AMessage | None:
+    async def get_message(self, agent_id: str, message_id: str) -> A2AMessage | None:
         for path in [self._inbox_path(agent_id), self._outbox_path(agent_id)]:
             if not path.exists():
                 continue
@@ -131,9 +127,7 @@ class A2AStore:
                         continue
         return None
 
-    async def get_thread(
-        self, agent_id: str, root_message_id: str
-    ) -> list[A2AMessage]:
+    async def get_thread(self, agent_id: str, root_message_id: str) -> list[A2AMessage]:
         all_msgs = await self.get_inbox(agent_id, limit=100)
         all_msgs.extend(await self.get_outbox(agent_id, limit=100))
 
@@ -177,8 +171,6 @@ class A2AStore:
             updated.append(line)
         path.write_text("\n".join(updated) + "\n" if updated else "")
 
-    async def get_pending_requests(
-        self, agent_id: str, limit: int = 5
-    ) -> list[A2AMessage]:
+    async def get_pending_requests(self, agent_id: str, limit: int = 5) -> list[A2AMessage]:
         inbox = await self.get_inbox(agent_id, unread_only=True, limit=limit)
         return [m for m in inbox if m.expects_reply]

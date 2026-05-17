@@ -107,9 +107,7 @@ class HiveStore:
             if "max_cycles" not in agent_cols:
                 await db.execute("ALTER TABLE agents ADD COLUMN max_cycles INTEGER")
             if "cycles_lived" not in agent_cols:
-                await db.execute(
-                    "ALTER TABLE agents ADD COLUMN cycles_lived INTEGER DEFAULT 0"
-                )
+                await db.execute("ALTER TABLE agents ADD COLUMN cycles_lived INTEGER DEFAULT 0")
             await db.commit()
 
     async def save_agent(self, state: AgentState) -> None:
@@ -346,9 +344,7 @@ class HiveStore:
             ) as cursor:
                 return [dict(row) async for row in cursor]
 
-    async def get_due_schedules(
-        self, agent_id: str, current_cycle: int
-    ) -> list[dict[str, Any]]:
+    async def get_due_schedules(self, agent_id: str, current_cycle: int) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
@@ -400,9 +396,7 @@ class HiveStore:
             )
             await db.commit()
 
-    async def list_sub_agents(
-        self, parent_agent_id: str
-    ) -> list[dict[str, Any]]:
+    async def list_sub_agents(self, parent_agent_id: str) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

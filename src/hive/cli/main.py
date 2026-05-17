@@ -590,9 +590,7 @@ def benchmark(
     if task:
         result = asyncio.run(runner.run_task_benchmark(model_list, task=task, runs=runs))
     else:
-        result = asyncio.run(
-            runner.run_goal_benchmark(model_list, cycles=cycles, runs=runs)
-        )
+        result = asyncio.run(runner.run_goal_benchmark(model_list, cycles=cycles, runs=runs))
 
     report = BenchmarkReport(result)
     report.print_table(console)
@@ -619,7 +617,9 @@ def export(
     out_path = Path(output) if output else Path.cwd() / f"hive-report-{run_id}.html"
     try:
         result = export_html_report(
-            run_id, logs_dir, out_path,
+            run_id,
+            logs_dir,
+            out_path,
             hive_dir=hive_dir if hive_dir.exists() else None,
         )
         console.print(f"[green]✓ Report exported:[/green] {result}")
@@ -825,8 +825,7 @@ def threads(
                     for t in thread:
                         ts = t.ts.strftime("%H:%M:%S")
                         console.print(
-                            f"  [{ts}] {t.from_agent} → {t.to_agent}: "
-                            f"[{t.type}] {t.subject[:50]}"
+                            f"  [{ts}] {t.from_agent} → {t.to_agent}: [{t.type}] {t.subject[:50]}"
                         )
 
     if not seen_threads:

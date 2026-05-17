@@ -139,11 +139,13 @@ class BenchmarkRunner:
                     mr.total_tokens += gen_result.input_tokens + gen_result.output_tokens
                     mr.total_cost += gen_result.cost_usd or 0
                     mr.goals_completed += 1
-                    mr.responses.append({
-                        "run": i,
-                        "response": gen_result.message.content[:500],
-                        "tokens": gen_result.input_tokens + gen_result.output_tokens,
-                    })
+                    mr.responses.append(
+                        {
+                            "run": i,
+                            "response": gen_result.message.content[:500],
+                            "tokens": gen_result.input_tokens + gen_result.output_tokens,
+                        }
+                    )
                 except Exception as e:
                     mr.errors += 1
                     logger.error("Task benchmark error (%s run %d): %s", model_name, i, e)

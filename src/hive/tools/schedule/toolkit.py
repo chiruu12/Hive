@@ -35,9 +35,7 @@ class ScheduleToolkit(Toolkit):
         if every_n_cycles < 1:
             return "Cycle interval must be at least 1."
         sid = f"sched-{uuid4().hex[:8]}"
-        await self._store.save_schedule(
-            sid, self._agent_id, objective, every_n_cycles
-        )
+        await self._store.save_schedule(sid, self._agent_id, objective, every_n_cycles)
         return f"Scheduled '{objective}' every {every_n_cycles} cycles (id={sid})."
 
     @tool()
@@ -49,7 +47,7 @@ class ScheduleToolkit(Toolkit):
         lines = []
         for s in schedules:
             lines.append(
-                f"- {s['schedule_id']}: \"{s['objective']}\" "
+                f'- {s["schedule_id"]}: "{s["objective"]}" '
                 f"every {s['every_n_cycles']} cycles "
                 f"(last fired: cycle {s['last_fired_cycle']})"
             )

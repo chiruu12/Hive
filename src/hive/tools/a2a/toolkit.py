@@ -34,9 +34,7 @@ class A2AToolkit(Toolkit):
         self._spec = specialization
 
     @tool()
-    async def send_request(
-        self, to_agent: str, subject: str, body: str, priority: int = 4
-    ) -> str:
+    async def send_request(self, to_agent: str, subject: str, body: str, priority: int = 4) -> str:
         """Send a request to another agent expecting a response."""
         msg = A2AMessage(
             type=A2AMessageType.REQUEST,
@@ -48,11 +46,13 @@ class A2AToolkit(Toolkit):
             expects_reply=True,
         )
         await self._a2a.send(msg)
-        return json.dumps({
-            "message_id": msg.message_id,
-            "status": "sent",
-            "to": to_agent,
-        })
+        return json.dumps(
+            {
+                "message_id": msg.message_id,
+                "status": "sent",
+                "to": to_agent,
+            }
+        )
 
     @tool()
     async def send_query(self, to_agent: str, question: str) -> str:
@@ -66,16 +66,16 @@ class A2AToolkit(Toolkit):
             expects_reply=True,
         )
         await self._a2a.send(msg)
-        return json.dumps({
-            "message_id": msg.message_id,
-            "status": "sent",
-            "to": to_agent,
-        })
+        return json.dumps(
+            {
+                "message_id": msg.message_id,
+                "status": "sent",
+                "to": to_agent,
+            }
+        )
 
     @tool()
-    async def send_review_request(
-        self, to_agent: str, subject: str, body: str
-    ) -> str:
+    async def send_review_request(self, to_agent: str, subject: str, body: str) -> str:
         """Request a peer review from another agent."""
         msg = A2AMessage(
             type=A2AMessageType.REVIEW,
@@ -86,18 +86,18 @@ class A2AToolkit(Toolkit):
             expects_reply=True,
         )
         await self._a2a.send(msg)
-        return json.dumps({
-            "message_id": msg.message_id,
-            "status": "sent",
-            "to": to_agent,
-        })
+        return json.dumps(
+            {
+                "message_id": msg.message_id,
+                "status": "sent",
+                "to": to_agent,
+            }
+        )
 
     @tool()
     async def check_inbox(self, unread_only: bool = True) -> str:
         """Check your inbox for messages."""
-        messages = await self._a2a.get_inbox(
-            self._agent_id, unread_only=unread_only, limit=10
-        )
+        messages = await self._a2a.get_inbox(self._agent_id, unread_only=unread_only, limit=10)
         if not messages:
             return "No messages." if unread_only else "Inbox is empty."
         lines = []
@@ -105,7 +105,7 @@ class A2AToolkit(Toolkit):
             unread = " [UNREAD]" if not m.read else ""
             lines.append(
                 f"- {m.message_id}: [{m.type}] from={m.from_agent} "
-                f"subject=\"{m.subject[:50]}\"{unread}"
+                f'subject="{m.subject[:50]}"{unread}'
             )
         return "\n".join(lines)
 
@@ -116,18 +116,20 @@ class A2AToolkit(Toolkit):
         if not msg:
             return f"Message {message_id} not found."
         await self._a2a.mark_read(self._agent_id, message_id)
-        return json.dumps({
-            "message_id": msg.message_id,
-            "type": msg.type,
-            "from": msg.from_agent,
-            "to": msg.to_agent,
-            "subject": msg.subject,
-            "body": msg.body,
-            "reply_to": msg.reply_to,
-            "priority": msg.priority,
-            "expects_reply": msg.expects_reply,
-            "ts": msg.ts.isoformat(),
-        })
+        return json.dumps(
+            {
+                "message_id": msg.message_id,
+                "type": msg.type,
+                "from": msg.from_agent,
+                "to": msg.to_agent,
+                "subject": msg.subject,
+                "body": msg.body,
+                "reply_to": msg.reply_to,
+                "priority": msg.priority,
+                "expects_reply": msg.expects_reply,
+                "ts": msg.ts.isoformat(),
+            }
+        )
 
     @tool()
     async def reply(self, message_id: str, body: str) -> str:
@@ -135,9 +137,7 @@ class A2AToolkit(Toolkit):
         original = await self._a2a.get_message(self._agent_id, message_id)
         if not original:
             return f"Message {message_id} not found."
-        reply_type = REPLY_TYPE_MAP.get(
-            original.type, A2AMessageType.RESPONSE
-        )
+        reply_type = REPLY_TYPE_MAP.get(original.type, A2AMessageType.RESPONSE)
         msg = A2AMessage(
             type=reply_type,
             from_agent=self._agent_id,
@@ -147,16 +147,16 @@ class A2AToolkit(Toolkit):
             reply_to=message_id,
         )
         await self._a2a.send(msg)
-        return json.dumps({
-            "message_id": msg.message_id,
-            "type": reply_type,
-            "status": "sent",
-        })
+        return json.dumps(
+            {
+                "message_id": msg.message_id,
+                "type": reply_type,
+                "status": "sent",
+            }
+        )
 
     @tool()
-    async def accept_request(
-        self, message_id: str, body: str = ""
-    ) -> str:
+    async def accept_request(self, message_id: str, body: str = "") -> str:
         """Accept a request or delegation with an ACK."""
         original = await self._a2a.get_message(self._agent_id, message_id)
         if not original:
@@ -170,15 +170,15 @@ class A2AToolkit(Toolkit):
             reply_to=message_id,
         )
         await self._a2a.send(msg)
-        return json.dumps({
-            "message_id": msg.message_id,
-            "status": "accepted",
-        })
+        return json.dumps(
+            {
+                "message_id": msg.message_id,
+                "status": "accepted",
+            }
+        )
 
     @tool()
-    async def reject_request(
-        self, message_id: str, reason: str = ""
-    ) -> str:
+    async def reject_request(self, message_id: str, reason: str = "") -> str:
         """Reject a request or delegation with a reason."""
         original = await self._a2a.get_message(self._agent_id, message_id)
         if not original:
@@ -192,10 +192,12 @@ class A2AToolkit(Toolkit):
             reply_to=message_id,
         )
         await self._a2a.send(msg)
-        return json.dumps({
-            "message_id": msg.message_id,
-            "status": "rejected",
-        })
+        return json.dumps(
+            {
+                "message_id": msg.message_id,
+                "status": "rejected",
+            }
+        )
 
     @tool()
     async def list_agents(self) -> str:
@@ -216,10 +218,7 @@ class A2AToolkit(Toolkit):
         if not self._spec:
             return await self.list_agents()
         agents = await self._store.list_agents()
-        alive = [
-            a.agent_id for a in agents
-            if a.is_alive() and a.agent_id != self._agent_id
-        ]
+        alive = [a.agent_id for a in agents if a.is_alive() and a.agent_id != self._agent_id]
         best = self._spec.best_agent_for(capability, alive)
         if best:
             agent = await self._store.get_agent(best)

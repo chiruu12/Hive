@@ -31,11 +31,7 @@ class BenchmarkReport:
         table.add_column("Time", style="dim")
 
         for mr in self._result.model_results:
-            rate = (
-                f"{mr.goals_completed}/{mr.total_steps}"
-                if mr.total_steps
-                else "0/0"
-            )
+            rate = f"{mr.goals_completed}/{mr.total_steps}" if mr.total_steps else "0/0"
             table.add_row(
                 mr.model,
                 rate,
@@ -57,17 +53,19 @@ class BenchmarkReport:
             "models": [],
         }
         for mr in self._result.model_results:
-            data["models"].append({
-                "model": mr.model,
-                "goals_completed": mr.goals_completed,
-                "goals_abandoned": mr.goals_abandoned,
-                "total_steps": mr.total_steps,
-                "total_tokens": mr.total_tokens,
-                "total_cost": mr.total_cost,
-                "duration_ms": mr.duration_ms,
-                "errors": mr.errors,
-                "responses": mr.responses,
-            })
+            data["models"].append(
+                {
+                    "model": mr.model,
+                    "goals_completed": mr.goals_completed,
+                    "goals_abandoned": mr.goals_abandoned,
+                    "total_steps": mr.total_steps,
+                    "total_tokens": mr.total_tokens,
+                    "total_cost": mr.total_cost,
+                    "duration_ms": mr.duration_ms,
+                    "errors": mr.errors,
+                    "responses": mr.responses,
+                }
+            )
         return json.dumps(data, indent=2)
 
     def save_json(self, path: Path) -> Path:

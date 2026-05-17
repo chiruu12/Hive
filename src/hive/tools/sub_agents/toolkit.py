@@ -44,17 +44,11 @@ class SubAgentManager:
         """Return error string if limits exceeded, None if OK."""
         parent_depth = await self.get_depth(parent_agent_id)
         if parent_depth >= MAX_DEPTH:
-            return (
-                f"Max nesting depth ({MAX_DEPTH}) reached. "
-                "Cannot spawn deeper sub-agents."
-            )
+            return f"Max nesting depth ({MAX_DEPTH}) reached. Cannot spawn deeper sub-agents."
         children = await self._store.list_sub_agents(parent_agent_id)
         active = [c for c in children if c["status"] == "running"]
         if len(active) >= MAX_CHILDREN:
-            return (
-                f"Max active children ({MAX_CHILDREN}) reached. "
-                "Terminate a sub-agent first."
-            )
+            return f"Max active children ({MAX_CHILDREN}) reached. Terminate a sub-agent first."
         return None
 
     async def spawn(
@@ -100,25 +94,22 @@ class SubAgentManager:
         )
         logger.info(
             "Spawned sub-agent %s for parent %s (depth=%d, max_cycles=%d)",
-            agent_id, parent_agent_id, depth, max_cycles,
+            agent_id,
+            parent_agent_id,
+            depth,
+            max_cycles,
         )
         return state
 
-    async def terminate(
-        self, sub_agent_id: str, parent_agent_id: str
-    ) -> str:
+    async def terminate(self, sub_agent_id: str, parent_agent_id: str) -> str:
         """Force-kill a sub-agent."""
         sub = await self._store.get_sub_agent(sub_agent_id)
         if not sub:
             return f"Sub-agent {sub_agent_id} not found."
         if sub["parent_agent_id"] != parent_agent_id:
             return "You can only terminate your own sub-agents."
-        await self._store.update_agent_status(
-            sub_agent_id, AgentStatus.DEAD
-        )
-        await self._store.complete_sub_agent(
-            sub_agent_id, "Terminated by parent."
-        )
+        await self._store.update_agent_status(sub_agent_id, AgentStatus.DEAD)
+        await self._store.complete_sub_agent(sub_agent_id, "Terminated by parent.")
         return f"Sub-agent {sub_agent_id} terminated."
 
     async def get_result(self, sub_agent_id: str) -> str | None:
@@ -138,9 +129,7 @@ class SubAgentManager:
                 and agent.max_cycles
                 and agent.cycles_lived >= agent.max_cycles
             ):
-                await self._store.update_agent_status(
-                    agent.agent_id, AgentStatus.DEAD
-                )
+                await self._store.update_agent_status(agent.agent_id, AgentStatus.DEAD)
                 await self._store.complete_sub_agent(
                     agent.agent_id,
                     f"Auto-killed after {agent.cycles_lived} cycles.",
@@ -148,7 +137,9 @@ class SubAgentManager:
                 killed.append(agent.agent_id)
                 logger.info(
                     "Auto-killed sub-agent %s (lived %d/%d cycles)",
-                    agent.agent_id, agent.cycles_lived, agent.max_cycles,
+                    agent.agent_id,
+                    agent.cycles_lived,
+                    agent.max_cycles,
                 )
         return killed
 
@@ -188,11 +179,13 @@ class SubAgentToolkit(Toolkit):
             # Create a goal for the sub-agent
             goal_id = f"goal-{uuid4().hex[:8]}"
             await self._store.save_goal(goal_id, state.agent_id, task)
-            return json.dumps({
-                "sub_agent_id": state.agent_id,
-                "status": "spawned",
-                "max_cycles": max_cycles,
-            })
+            return json.dumps(
+                {
+                    "sub_agent_id": state.agent_id,
+                    "status": "spawned",
+                    "max_cycles": max_cycles,
+                }
+            )
         except ValueError as e:
             return json.dumps({"error": str(e)})
 
@@ -209,8 +202,7 @@ class SubAgentToolkit(Toolkit):
             goal = await self._store.get_active_goal(c["sub_agent_id"])
             goal_text = goal["objective"][:60] if goal else "-"
             lines.append(
-                f"- {c['sub_agent_id']}: status={status}, "
-                f"task={c['task'][:60]}, goal={goal_text}"
+                f"- {c['sub_agent_id']}: status={status}, task={c['task'][:60]}, goal={goal_text}"
             )
         return "\n".join(lines)
 
@@ -224,15 +216,17 @@ class SubAgentToolkit(Toolkit):
         if not agent:
             return f"Agent record missing for {sub_agent_id}."
         goal = await self._store.get_active_goal(sub_agent_id)
-        return json.dumps({
-            "id": sub_agent_id,
-            "status": agent.status.value,
-            "task": sub["task"],
-            "cycles_lived": agent.cycles_lived,
-            "max_cycles": sub["max_cycles"],
-            "current_goal": goal["objective"] if goal else None,
-            "result": sub.get("result", ""),
-        })
+        return json.dumps(
+            {
+                "id": sub_agent_id,
+                "status": agent.status.value,
+                "task": sub["task"],
+                "cycles_lived": agent.cycles_lived,
+                "max_cycles": sub["max_cycles"],
+                "current_goal": goal["objective"] if goal else None,
+                "result": sub.get("result", ""),
+            }
+        )
 
     @tool()
     async def read_sub_agent_journal(self, sub_agent_id: str) -> str:

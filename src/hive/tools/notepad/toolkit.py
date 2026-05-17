@@ -55,9 +55,7 @@ class Preset:
     @classmethod
     def tool_requests(cls) -> Preset:
         data = _PRESET_DATA.get("tool_requests", {})
-        return cls(
-            name="tool_requests", instructions=data.get("instructions", "").strip()
-        )
+        return cls(name="tool_requests", instructions=data.get("instructions", "").strip())
 
     @classmethod
     def custom(cls, instructions: str) -> Preset:

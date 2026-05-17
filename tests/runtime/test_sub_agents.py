@@ -172,12 +172,8 @@ class TestSubAgentManager:
     async def test_list_sub_agents(
         self, manager: SubAgentManager, store: HiveStore, parent_agent: AgentState
     ):
-        await manager.spawn(
-            parent_agent_id="parent-001", name="a", role="r", task="t1"
-        )
-        await manager.spawn(
-            parent_agent_id="parent-001", name="b", role="r", task="t2"
-        )
+        await manager.spawn(parent_agent_id="parent-001", name="a", role="r", task="t1")
+        await manager.spawn(parent_agent_id="parent-001", name="b", role="r", task="t2")
         children = await store.list_sub_agents("parent-001")
         assert len(children) == 2
 

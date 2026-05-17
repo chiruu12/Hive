@@ -21,12 +21,18 @@ async def hive_store(tmp_path: Path) -> HiveStore:
     s = HiveStore(tmp_path / "hive.db")
     await s.initialize()
     agent_a = AgentState(
-        agent_id="agent-a", name="coder", role="Write code",
-        model="test", status=AgentStatus.IDLE,
+        agent_id="agent-a",
+        name="coder",
+        role="Write code",
+        model="test",
+        status=AgentStatus.IDLE,
     )
     agent_b = AgentState(
-        agent_id="agent-b", name="reviewer", role="Review code",
-        model="test", status=AgentStatus.IDLE,
+        agent_id="agent-b",
+        name="reviewer",
+        role="Review code",
+        model="test",
+        status=AgentStatus.IDLE,
     )
     await s.save_agent(agent_a)
     await s.save_agent(agent_b)
@@ -142,9 +148,7 @@ class TestA2AStore:
 
 class TestA2AToolkit:
     @pytest.mark.asyncio
-    async def test_tool_discovery(
-        self, a2a_store: A2AStore, hive_store: HiveStore
-    ):
+    async def test_tool_discovery(self, a2a_store: A2AStore, hive_store: HiveStore):
         tk = A2AToolkit(a2a_store, hive_store, agent_id="agent-a")
         tools = tk.get_tools()
         names = {t.name for t in tools}
@@ -155,9 +159,7 @@ class TestA2AToolkit:
         assert "find_agent" in names
 
     @pytest.mark.asyncio
-    async def test_send_and_check_inbox(
-        self, a2a_store: A2AStore, hive_store: HiveStore
-    ):
+    async def test_send_and_check_inbox(self, a2a_store: A2AStore, hive_store: HiveStore):
         tk_a = A2AToolkit(a2a_store, hive_store, agent_id="agent-a")
         tk_b = A2AToolkit(a2a_store, hive_store, agent_id="agent-b")
 
@@ -173,9 +175,7 @@ class TestA2AToolkit:
         assert "Need review" in inbox
 
     @pytest.mark.asyncio
-    async def test_reply_auto_selects_type(
-        self, a2a_store: A2AStore, hive_store: HiveStore
-    ):
+    async def test_reply_auto_selects_type(self, a2a_store: A2AStore, hive_store: HiveStore):
         msg = A2AMessage(
             type=A2AMessageType.QUERY,
             from_agent="agent-a",
@@ -190,9 +190,7 @@ class TestA2AToolkit:
         assert '"answer"' in result
 
     @pytest.mark.asyncio
-    async def test_reject_request(
-        self, a2a_store: A2AStore, hive_store: HiveStore
-    ):
+    async def test_reject_request(self, a2a_store: A2AStore, hive_store: HiveStore):
         msg = A2AMessage(
             type=A2AMessageType.REQUEST,
             from_agent="agent-a",
@@ -211,9 +209,7 @@ class TestA2AToolkit:
         assert len(reject_msgs) == 1
 
     @pytest.mark.asyncio
-    async def test_accept_request(
-        self, a2a_store: A2AStore, hive_store: HiveStore
-    ):
+    async def test_accept_request(self, a2a_store: A2AStore, hive_store: HiveStore):
         msg = A2AMessage(
             type=A2AMessageType.DELEGATE,
             from_agent="agent-a",
@@ -228,9 +224,7 @@ class TestA2AToolkit:
         assert "accepted" in result
 
     @pytest.mark.asyncio
-    async def test_list_agents(
-        self, a2a_store: A2AStore, hive_store: HiveStore
-    ):
+    async def test_list_agents(self, a2a_store: A2AStore, hive_store: HiveStore):
         tk_a = A2AToolkit(a2a_store, hive_store, agent_id="agent-a")
         result = await tk_a.list_agents()
         assert "agent-b" in result

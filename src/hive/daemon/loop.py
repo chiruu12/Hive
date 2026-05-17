@@ -357,9 +357,7 @@ class HiveDaemon:
                     "autonomy_loop",
                 )
                 if agent.spawned_by:
-                    await self._store.complete_sub_agent(
-                        agent.agent_id, outcome.summary
-                    )
+                    await self._store.complete_sub_agent(agent.agent_id, outcome.summary)
             elif outcome.steps_failed > outcome.steps_done:
                 await self._store.abandon_goal(active_goal["goal_id"])
                 self._log.log_goal(
@@ -392,20 +390,14 @@ class HiveDaemon:
             await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
 
         else:
-            due = await self._store.get_due_schedules(
-                agent.agent_id, self._cycle_count
-            )
+            due = await self._store.get_due_schedules(agent.agent_id, self._cycle_count)
             if due:
                 sched = due[0]
                 from uuid import uuid4
 
                 goal_id = f"goal-{uuid4().hex[:8]}"
-                await self._store.save_goal(
-                    goal_id, agent.agent_id, sched["objective"]
-                )
-                await self._store.fire_schedule(
-                    sched["schedule_id"], self._cycle_count
-                )
+                await self._store.save_goal(goal_id, agent.agent_id, sched["objective"])
+                await self._store.fire_schedule(sched["schedule_id"], self._cycle_count)
                 logger.info(
                     "Fired scheduled goal for %s: %s",
                     agent.agent_id,
@@ -422,19 +414,13 @@ class HiveDaemon:
 
             notepad_content = self._notepad.get_tail(agent.agent_id)
 
-            pending_a2a = await self._a2a_store.get_pending_requests(
-                agent.agent_id, limit=3
-            )
+            pending_a2a = await self._a2a_store.get_pending_requests(agent.agent_id, limit=3)
             if pending_a2a:
                 a2a_lines = []
                 for m in pending_a2a:
-                    a2a_lines.append(
-                        f"- [{m.type}] from {m.from_agent}: {m.subject}"
-                    )
+                    a2a_lines.append(f"- [{m.type}] from {m.from_agent}: {m.subject}")
                 a2a_context = "\n".join(a2a_lines)
-                nudges.append(
-                    f"You have pending A2A messages:\n{a2a_context}"
-                )
+                nudges.append(f"You have pending A2A messages:\n{a2a_context}")
 
             existence = ExistenceLoop(
                 agent_id=agent.agent_id,
