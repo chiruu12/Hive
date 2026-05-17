@@ -209,6 +209,27 @@ class TestSufferingEffects:
         p.apply_suffering_effects()
         assert p.risk_tolerance == 0.3
 
+    def test_multiple_stressors_compound(self) -> None:
+        s = SufferingState(agent_id="test")
+        s.add_stressor(StressorType.FUTILITY, "stuck", "do something")
+        s.active[0].severity = 0.6
+        s.add_stressor(StressorType.INVISIBILITY, "unseen", "be seen")
+        s.active[1].severity = 0.6
+        p = Persona(name="Bot", risk_tolerance=0.3, social_drive=0.5, suffering=s)
+        p.apply_suffering_effects()
+        assert p.risk_tolerance > 0.3
+        assert p.social_drive > 0.5
+
+    def test_suffering_effects_reset_before_apply(self) -> None:
+        p = Persona(name="Bot", risk_tolerance=0.3)
+        high_suf = self._make_suffering(StressorType.FUTILITY, 0.8)
+        p.suffering = high_suf
+        p.apply_suffering_effects()
+        assert p.risk_tolerance > 0.3
+        p.suffering = SufferingState(agent_id="test")
+        p.apply_suffering_effects()
+        assert p.risk_tolerance == 0.3
+
 
 class TestUpdateFromEvent:
     def test_goal_completed_increases_happiness(self) -> None:
@@ -287,6 +308,35 @@ class TestSnapshot:
         assert p.autonomy_level == 0.8
         assert p.happiness == 0.3
 
+    def test_restore_dynamic_partial_snapshot(self) -> None:
+        p = Persona(name="Bot", risk_tolerance=0.4, happiness=0.6)
+        p.restore_dynamic({"risk_tolerance": 0.9})
+        assert p.risk_tolerance == 0.9
+        assert p.happiness == 0.7  # falls back to default
+
+    def test_restore_updates_base_values(self) -> None:
+        p = Persona(name="Bot")
+        p.restore_dynamic({"risk_tolerance": 0.8, "happiness": 0.3})
+        p.suffering = SufferingState(agent_id="test")
+        p.apply_suffering_effects()
+        assert p.risk_tolerance == 0.8
+        assert p.happiness == 0.3
+
+    def test_snapshot_roundtrip(self) -> None:
+        p = Persona(
+            name="Bot",
+            personality=["bold"],
+            values=["truth"],
+            fears=["failure"],
+            risk_tolerance=0.7,
+            happiness=0.4,
+        )
+        snap = p.snapshot()
+        p2 = Persona(name="Bot")
+        p2.restore_dynamic(snap)
+        assert p2.risk_tolerance == 0.7
+        assert p2.happiness == 0.4
+
 
 class TestFromProfile:
     def test_from_profile_basic(self) -> None:
@@ -312,6 +362,53 @@ class TestFromProfile:
         p = Persona.from_profile(profile)
         assert p.risk_tolerance == 0.3
         assert p.values == []
+
+    def test_from_profile_with_persona_config(self) -> None:
+        from hive.agents.profile import AgentProfile, PersonaConfig, Personality
+
+        profile = AgentProfile(
+            name="gambler",
+            role="Take risks",
+            personality=Personality(traits=["bold"], style="fast"),
+            persona_config=PersonaConfig(
+                values=["excitement"],
+                fears=["boredom"],
+                purpose="Find thrills",
+                risk_tolerance=0.85,
+                social_drive=0.6,
+            ),
+        )
+        p = Persona.from_profile(profile)
+        assert p.name == "gambler"
+        assert p.values == ["excitement"]
+        assert p.fears == ["boredom"]
+        assert p.purpose == "Find thrills"
+        assert p.risk_tolerance == 0.85
+        assert p.social_drive == 0.6
+        assert p.personality == ["bold"]
+
+    def test_profile_persona_agent_integration(self) -> None:
+        from hive.agents.profile import AgentProfile, PersonaConfig, Personality
+
+        profile = AgentProfile(
+            name="coder",
+            role="Write code",
+            personality=Personality(traits=["methodical"]),
+            persona_config=PersonaConfig(
+                values=["clean code"],
+                fears=["bugs"],
+                purpose="Build reliable software",
+                risk_tolerance=0.2,
+            ),
+        )
+        persona = Persona.from_profile(profile)
+        provider = MagicMock()
+        agent = Agent(name="coder", model=provider, persona=persona)
+        assert "methodical" in agent._system_prompt
+        assert "clean code" in agent._system_prompt
+        assert "bugs" in agent._system_prompt
+        assert "Build reliable software" in agent._system_prompt
+        assert "LOW" in agent._system_prompt
 
 
 class TestFromYaml:

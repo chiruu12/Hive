@@ -10,6 +10,7 @@ from hive.agents.state import AgentState, AgentStatus
 from hive.memory.store import HiveStore
 from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent, Task
+from hive.runtime.persona import Persona
 from hive.tools.comms import CommsToolkit
 from hive.tools.memory import MemoryToolkit
 from hive.tools.world import WorldToolkit
@@ -78,14 +79,23 @@ def spawn_agent(
             world = WorldState(hive_dir)
             toolkits_list.insert(0, WorldToolkit(world, agent_id))
 
-        agent = Agent(
-            name=profile.name,
-            model=provider,
-            system_prompt=profile.build_system_prompt(
-                economy_enabled=cfg.economy.enabled,
-            ),
-            toolkits=toolkits_list,
-        )
+        if profile.persona_config is not None:
+            persona = Persona.from_profile(profile)
+            agent = Agent(
+                name=profile.name,
+                model=provider,
+                persona=persona,
+                toolkits=toolkits_list,
+            )
+        else:
+            agent = Agent(
+                name=profile.name,
+                model=provider,
+                system_prompt=profile.build_system_prompt(
+                    economy_enabled=cfg.economy.enabled,
+                ),
+                toolkits=toolkits_list,
+            )
 
         result = asyncio.run(agent.run(Task(instruction=task)))
         logger.info("Agent %s finished task: %s", agent_id, result.status)
