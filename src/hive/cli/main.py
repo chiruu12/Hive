@@ -494,9 +494,7 @@ def watch(
     async def _watch_loop() -> None:
         await store.initialize()
         last_screenshot = 0.0
-        with Live(
-            await _build_dashboard(), console=console, refresh_per_second=2
-        ) as live:
+        with Live(await _build_dashboard(), console=console, refresh_per_second=2) as live:
             poll_task = asyncio.create_task(_poll_events())
             try:
                 while True:
@@ -995,9 +993,7 @@ def demo_survival() -> None:
 
 @demo_app.command("detective")
 def demo_detective(
-    model: str = typer.Option(
-        "claude-haiku-4-5", "--model", "-m", help="Model for detectives"
-    ),
+    model: str = typer.Option("claude-haiku-4-5", "--model", "-m", help="Model for detectives"),
 ) -> None:
     """Multi-model murder mystery investigation."""
     from hive.demos.detective import run_detective_demo

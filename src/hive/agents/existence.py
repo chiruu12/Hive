@@ -235,10 +235,7 @@ class ExistenceLoop:
             if p.long_term_goals:
                 goals = "; ".join(p.long_term_goals)
                 behavioral_lines.append(f"- Long-term goals: {goals}")
-            sections.append(
-                "\n--- Your behavioral state ---\n"
-                + "\n".join(behavioral_lines)
-            )
+            sections.append("\n--- Your behavioral state ---\n" + "\n".join(behavioral_lines))
 
         if nudges:
             sections.append(

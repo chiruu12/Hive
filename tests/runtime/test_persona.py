@@ -104,9 +104,7 @@ class TestPersona:
 
     def test_build_prompt_includes_toolkit_instructions(self) -> None:
         p = Persona(name="Bot")
-        prompt = p.build_system_prompt(
-            toolkit_instructions=["Use notepad to track observations."]
-        )
+        prompt = p.build_system_prompt(toolkit_instructions=["Use notepad to track observations."])
         assert "notepad" in prompt.lower()
 
     def test_build_prompt_includes_response_model(self) -> None:

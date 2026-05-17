@@ -8,9 +8,7 @@ from hive.runtime.persona import Persona
 
 
 class TestSufferingModifiesBehavior:
-    def _make_persona_with_stressor(
-        self, stype: StressorType, severity: float
-    ) -> Persona:
+    def _make_persona_with_stressor(self, stype: StressorType, severity: float) -> Persona:
         suffering = SufferingState(agent_id="test")
         suffering.add_stressor(stype, f"test-{stype}", "resolve it")
         suffering.active[0].severity = severity

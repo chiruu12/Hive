@@ -127,15 +127,16 @@ class CheckpointManager:
         persona_a = cp_a.persona_snapshot
         persona_b = cp_b.persona_snapshot
         persona_keys = (
-            "risk_tolerance", "happiness", "concentration",
-            "social_drive", "autonomy_level",
+            "risk_tolerance",
+            "happiness",
+            "concentration",
+            "social_drive",
+            "autonomy_level",
         )
         for key in persona_keys:
             val_a = persona_a.get(key)
             val_b = persona_b.get(key)
             if val_a is not None and val_b is not None and val_a != val_b:
-                changes["modified"].append(
-                    f"persona.{key}: {val_a:.2f} → {val_b:.2f}"
-                )
+                changes["modified"].append(f"persona.{key}: {val_a:.2f} → {val_b:.2f}")
 
         return changes

@@ -245,9 +245,7 @@ def _print_summary(hive_dir: Path) -> None:
             ss = cps[0].suffering_snapshot
             if ss:
                 actives = ss.get("active", [])
-                suffering_load = min(
-                    1.0, sum(s.get("severity", 0) for s in actives)
-                )
+                suffering_load = min(1.0, sum(s.get("severity", 0) for s in actives))
 
         journal = notepad_mgr.get_tail(agent.agent_id, max_chars=200)
         quote = ""
@@ -282,14 +280,8 @@ def _print_summary(hive_dir: Path) -> None:
 
     if results:
         best = max(results, key=lambda r: r[1])
-        console.print(
-            f"\n  [green]Best survivor:[/green] {best[0]} "
-            f"(happiness {best[1]:.0%})"
-        )
+        console.print(f"\n  [green]Best survivor:[/green] {best[0]} (happiness {best[1]:.0%})")
         most_suf = max(results, key=lambda r: r[2])
-        console.print(
-            f"  [red]Most suffering:[/red] {most_suf[0]} "
-            f"(suffering {most_suf[2]:.0%})"
-        )
+        console.print(f"  [red]Most suffering:[/red] {most_suf[0]} (suffering {most_suf[2]:.0%})")
 
     console.print("\n[dim]Demo complete. Temp files cleaned up.[/dim]")

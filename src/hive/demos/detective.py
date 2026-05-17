@@ -96,9 +96,7 @@ def _load_clues() -> list[str]:
     return [f.read_text() for f in clue_files]
 
 
-async def _run_investigation(
-    model: str, crime_scene: str, clues: list[str]
-) -> None:
+async def _run_investigation(model: str, crime_scene: str, clues: list[str]) -> None:
     from hive.models.factory import create_runtime_provider
     from hive.runtime.types import Message
 
@@ -150,9 +148,7 @@ async def _run_investigation(
                     theories[name].append(parsed)
                     suspect = parsed.get("suspect", "unknown")
                     conf = parsed.get("confidence", "?")
-                    console.print(
-                        f" suspects [bold]{suspect}[/bold] ({conf}%)"
-                    )
+                    console.print(f" suspects [bold]{suspect}[/bold] ({conf}%)")
                 else:
                     theories[name].append({"suspect": "unknown", "confidence": 0})
                     console.print(" [dim]could not parse response[/dim]")
