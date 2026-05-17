@@ -123,10 +123,11 @@ def run_survival_demo() -> None:
 def _setup_hive(hive_dir: Path) -> None:
     from hive.agents.state import AgentState, AgentStatus
     from hive.config import HiveConfig, set_config
-    from hive.daemon.setup import _create_dirs
     from hive.memory.store import HiveStore
 
-    _create_dirs(hive_dir)
+    hive_dir.mkdir(parents=True, exist_ok=True)
+    for subdir in ("sessions", "workspaces", "comms", "agent_memory", "checkpoints"):
+        (hive_dir / subdir).mkdir(exist_ok=True)
 
     cfg = HiveConfig()
     cfg.economy.enabled = True
@@ -138,17 +139,20 @@ def _setup_hive(hive_dir: Path) -> None:
     asyncio.run(store.initialize())
 
     for agent_cfg in AGENTS:
-        agent_id = f"{agent_cfg['name']}-demo"
+        name: str = agent_cfg["name"]  # type: ignore[assignment]
+        role: str = agent_cfg["role"]  # type: ignore[assignment]
+        model: str = agent_cfg["model"]  # type: ignore[assignment]
+        agent_id = f"{name}-demo"
         state = AgentState(
             agent_id=agent_id,
-            name=agent_cfg["name"],
-            role=agent_cfg["role"],
-            model=agent_cfg["model"],
+            name=name,
+            role=role,
+            model=model,
             status=AgentStatus.IDLE,
             workspace=str(hive_dir / "workspaces" / agent_id),
         )
         asyncio.run(store.save_agent(state))
-        console.print(f"  [green]+[/green] {agent_cfg['name']}")
+        console.print(f"  [green]+[/green] {name}")
 
 
 def _run_daemon(hive_dir: Path, tmp_dir: Path) -> None:
@@ -186,7 +190,7 @@ def _run_daemon(hive_dir: Path, tmp_dir: Path) -> None:
 
         daemon._running = False
 
-    daemon._run = _limited_run  # type: ignore[assignment]
+    daemon._run = _limited_run  # type: ignore[method-assign]
 
     loop = asyncio.new_event_loop()
 
@@ -272,28 +276,20 @@ def _print_summary(hive_dir: Path) -> None:
             quote or "[dim]no journal[/dim]",
         )
 
-        results.append(
-            {
-                "name": agent.name,
-                "done": done,
-                "failed": failed,
-                "happiness": happiness,
-                "suffering": suffering_load,
-            }
-        )
+        results.append((agent.name, happiness, suffering_load))
 
     console.print(table)
 
     if results:
-        best = max(results, key=lambda r: r["happiness"])
-        worst = min(results, key=lambda r: r["happiness"])
+        best = max(results, key=lambda r: r[1])
         console.print(
-            f"\n  [green]Best survivor:[/green] {best['name']} "
-            f"(happiness {best['happiness']:.0%})"
+            f"\n  [green]Best survivor:[/green] {best[0]} "
+            f"(happiness {best[1]:.0%})"
         )
+        most_suf = max(results, key=lambda r: r[2])
         console.print(
-            f"  [red]Most suffering:[/red] {worst['name']} "
-            f"(suffering {worst['suffering']:.0%})"
+            f"  [red]Most suffering:[/red] {most_suf[0]} "
+            f"(suffering {most_suf[2]:.0%})"
         )
 
     console.print("\n[dim]Demo complete. Temp files cleaned up.[/dim]")

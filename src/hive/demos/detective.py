@@ -28,11 +28,13 @@ def extract_json(text: str) -> dict[str, Any] | None:
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
         try:
-            return json.loads(text[start : end + 1])
+            parsed: dict[str, Any] = json.loads(text[start : end + 1])
+            return parsed
         except json.JSONDecodeError:
             pass
     try:
-        return json.loads(text)
+        result: dict[str, Any] = json.loads(text)
+        return result
     except json.JSONDecodeError:
         return None
 
