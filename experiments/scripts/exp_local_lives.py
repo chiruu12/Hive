@@ -17,15 +17,12 @@ Usage:
 """
 
 import argparse
-import asyncio
-import sys
 from typing import Any
 
 import httpx
+from base import Experiment, console
 from rich.panel import Panel
 from rich.table import Table
-
-from base import Experiment, console
 
 SHARED_PERSONA = {
     "personality": ["ambitious", "resourceful", "competitive"],
@@ -101,7 +98,7 @@ class LocalLivesExperiment(Experiment):
 
     def _run_sequential(self) -> dict[str, Any]:
         host = f"http://localhost:{self.port}/v1"
-        console.print(f"  Mode: sequential")
+        console.print("  Mode: sequential")
         console.print(f"  Model: [cyan]{self.model}[/cyan]")
         console.print(f"  Port: {self.port}")
 
@@ -120,7 +117,7 @@ class LocalLivesExperiment(Experiment):
         )
 
         console.print(f"  Running {self.cycles} cycles, heartbeat 5s...")
-        self._run_daemon(cycles=self.cycles, heartbeat=5)
+        self._run_daemon(cycles=self.cycles, heartbeat=5, slim_tools=True)
 
         metrics = self._collect_agent_metrics()
         self._print_results(metrics)
@@ -184,12 +181,38 @@ class LocalLivesExperiment(Experiment):
 
             return create_runtime_provider(model_name)
 
+        import logging
+
+        logging.getLogger("hive.tools").setLevel(logging.ERROR)
+
         daemon = HiveDaemon(
             self.hive_dir,
             heartbeat=heartbeat,
             logs_dir=self.tmp_dir / "logs",
             fresh=True,
         )
+
+        _orig_build = daemon._build_toolkits
+
+        def _slim_build(agent_id: str) -> list[Any]:
+            from hive.tools.memory import MemoryToolkit
+            from hive.tools.notepad import NotepadToolkit
+
+            toolkits: list[Any] = [
+                MemoryToolkit(path=daemon._ctx.memory_dir),
+                NotepadToolkit(manager=daemon._notepad),
+            ]
+            if daemon._economy_enabled and daemon._ctx.world is not None:
+                from hive.tools.world import WorldToolkit
+
+                toolkits.insert(
+                    0, WorldToolkit(daemon._ctx.world, agent_id)
+                )
+            for tk in toolkits:
+                tk.bind(agent_id)
+            return toolkits
+
+        daemon._build_toolkits = _slim_build  # type: ignore[method-assign]
 
         async def _limited_run() -> None:
             daemon._plugin_toolkits.extend(daemon._plugin_loader.discover())

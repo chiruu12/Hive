@@ -58,9 +58,9 @@ class Experiment:
         set_config(cfg)
         cfg.save(self._hive_dir)
 
-        from hive.memory.store import HiveStore
-
         import asyncio
+
+        from hive.memory.store import HiveStore
         store = HiveStore(self._hive_dir / "hive.db")
         asyncio.run(store.initialize())
 
@@ -140,12 +140,26 @@ class Experiment:
             )
             asyncio.run(store.save_agent(state))
 
-    def _run_daemon(self, cycles: int, heartbeat: int = 3) -> None:
-        """Helper: run daemon for N cycles."""
+    def _run_daemon(
+        self,
+        cycles: int,
+        heartbeat: int = 3,
+        slim_tools: bool = False,
+    ) -> None:
+        """Helper: run daemon for N cycles.
+
+        Args:
+            slim_tools: If True, replace the daemon's full 50-tool set with
+                a minimal 6-tool set suitable for small local models with
+                limited context windows.
+        """
         import asyncio
+        import logging
         import signal
 
         from hive.daemon.loop import HiveDaemon
+
+        logging.getLogger("hive.tools").setLevel(logging.ERROR)
 
         daemon = HiveDaemon(
             self.hive_dir,
@@ -153,6 +167,29 @@ class Experiment:
             logs_dir=self.tmp_dir / "logs",
             fresh=True,
         )
+
+        if slim_tools:
+            _orig_build = daemon._build_toolkits
+
+            def _slim_build(agent_id: str) -> list[Any]:
+                from hive.tools.memory import MemoryToolkit
+                from hive.tools.notepad import NotepadToolkit
+
+                toolkits: list[Any] = [
+                    MemoryToolkit(path=daemon._ctx.memory_dir),
+                    NotepadToolkit(manager=daemon._notepad),
+                ]
+                if daemon._economy_enabled and daemon._ctx.world is not None:
+                    from hive.tools.world import WorldToolkit
+
+                    toolkits.insert(
+                        0, WorldToolkit(daemon._ctx.world, agent_id)
+                    )
+                for tk in toolkits:
+                    tk.bind(agent_id)
+                return toolkits
+
+            daemon._build_toolkits = _slim_build  # type: ignore[method-assign]
 
         async def _limited_run() -> None:
             daemon._plugin_toolkits.extend(daemon._plugin_loader.discover())
