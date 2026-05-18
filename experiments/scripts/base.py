@@ -165,6 +165,13 @@ class Experiment:
         """
         logging.getLogger("hive.tools").setLevel(logging.ERROR)
 
+        profiles_dir = self.tmp_dir / "profiles"
+        if profiles_dir.exists():
+            cfg = get_config()
+            cfg.profiles_dir = str(profiles_dir)
+            set_config(cfg)
+            cfg.save(self.hive_dir)
+
         daemon = HiveDaemon(
             self.hive_dir,
             heartbeat=heartbeat,

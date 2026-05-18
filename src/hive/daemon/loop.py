@@ -530,18 +530,17 @@ class HiveDaemon:
                         ],
                         max_tokens=50,
                     )
-                    import re
+                    raw = response.content.strip() if response.content else ""
+                    from hive.world.event_engine import EventEngine
 
-                    raw = response.content.strip().lower() if response.content else ""
-                    raw = re.sub(r"[^a-z0-9_]", " ", raw).strip().split()[0] if raw else ""
-                    valid_ids = {c.id for c in event.choices}
-                    if raw in valid_ids:
-                        choice_id = raw
+                    idx = EventEngine.parse_choice_index(raw, len(event.choices))
+                    if idx is not None:
+                        choice_id = event.choices[idx - 1].id
                     else:
                         logger.warning(
-                            "Agent %s gave invalid choice '%s' for event %s, defaulting",
+                            "Agent %s gave unparseable choice '%s' for event %s, defaulting",
                             agent.agent_id,
-                            raw,
+                            raw[:40],
                             event.name,
                         )
                         choice_id = event.choices[0].id

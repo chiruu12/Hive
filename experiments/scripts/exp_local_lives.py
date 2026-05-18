@@ -184,6 +184,15 @@ class LocalLivesExperiment(Experiment):
 
         logging.getLogger("hive.tools").setLevel(logging.ERROR)
 
+        profiles_dir = self.tmp_dir / "profiles"
+        if profiles_dir.exists():
+            from hive.config import get_config, set_config
+
+            cfg = get_config()
+            cfg.profiles_dir = str(profiles_dir)
+            set_config(cfg)
+            cfg.save(self.hive_dir)
+
         daemon = HiveDaemon(
             self.hive_dir,
             heartbeat=heartbeat,
@@ -236,7 +245,44 @@ class LocalLivesExperiment(Experiment):
     def _spawn_agent(
         self, agent_name: str, model_name: str, host: str
     ) -> None:
-        """Spawn an agent with a specific LMStudio model into the store."""
+        """Spawn an agent with a profile YAML that includes persona config."""
+        import yaml
+
+        profiles_dir = self.tmp_dir / "profiles"
+        profiles_dir.mkdir(exist_ok=True)
+
+        profile_data = {
+            "name": agent_name,
+            "role": "Build a good life through smart decisions",
+            "model": f"lmstudio:{model_name}",
+            "personality": {
+                "traits": SHARED_PERSONA["personality"],
+                "style": SHARED_PERSONA["behavior_style"],
+            },
+            "persona": {
+                "values": SHARED_PERSONA["values"],
+                "fears": SHARED_PERSONA["fears"],
+                "purpose": SHARED_PERSONA["purpose"],
+                "long_term_goals": SHARED_PERSONA["long_term_goals"],
+                "risk_tolerance": SHARED_PERSONA["risk_tolerance"],
+                "social_drive": SHARED_PERSONA["social_drive"],
+                "concentration": SHARED_PERSONA["concentration"],
+                "autonomy_level": SHARED_PERSONA["autonomy_level"],
+                "happiness": SHARED_PERSONA["happiness"],
+            },
+            "tools": [],
+            "autonomy": "high",
+            "max_steps": 10,
+            "system_prompt": (
+                "You are an autonomous agent living in a simulated economy. "
+                "Make smart decisions, earn money, learn skills, and pursue goals. "
+                "Write observations in your notepad. "
+                "Always respond in the exact JSON format requested."
+            ),
+        }
+        profile_path = profiles_dir / f"{agent_name}.yaml"
+        profile_path.write_text(yaml.dump(profile_data, default_flow_style=False))
+
         agent_id = f"{agent_name}-exp"
         state = AgentState(
             agent_id=agent_id,

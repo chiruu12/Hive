@@ -74,24 +74,29 @@ class EventEngine:
         choice_id: str,
         cycle: int,
     ) -> EventOutcome:
-        """Apply a choice's effects and queue follow-ups."""
+        """Apply a choice's effects with luck and chaos, then queue follow-ups."""
         choice = next((c for c in event.choices if c.id == choice_id), None)
         if not choice:
             choice = event.choices[0]
 
+        luck = random.gauss(1.0, 0.25)
+        luck = max(0.3, min(2.0, luck))
+
         stat_changes: dict[str, float] = {}
         for eff in choice.stat_effects:
+            actual = eff.change * luck
             if eff.stat == "money":
-                self._world.adjust_balance(agent_id, eff.change)
-                stat_changes["money"] = eff.change
+                actual = round(actual)
+                self._world.adjust_balance(agent_id, actual)
+                stat_changes["money"] = actual
             else:
                 self._stats.apply_effect(
                     agent_id,
                     eff.stat,
-                    eff.change,
+                    actual,
                     eff.change_type,
                 )
-                stat_changes[eff.stat] = eff.change
+                stat_changes[eff.stat] = round(actual, 3)
 
         follow_ups: list[str] = []
         for fu in choice.follow_up_events:
@@ -155,9 +160,13 @@ class EventEngine:
         return eligible
 
     def format_event_prompt(self, event: LifeEvent) -> str:
-        """Format an event as a prompt for the LLM to choose."""
+        """Format an event as a prompt for the LLM to choose.
+
+        Uses numeric indices (1, 2, 3) so small models can respond with
+        just a number instead of remembering string IDs.
+        """
         lines = [f"LIFE EVENT: {event.name}", event.description, "", "Your choices:"]
-        for c in event.choices:
+        for i, c in enumerate(event.choices, 1):
             effects = []
             for e in c.stat_effects:
                 sign = "+" if e.change > 0 else ""
@@ -166,10 +175,23 @@ class EventEngine:
                 else:
                     effects.append(f"{e.stat} {sign}{e.change}")
             eff_str = f" ({', '.join(effects)})" if effects else ""
-            lines.append(f'  {c.id}: "{c.description}"{eff_str}')
+            lines.append(f'  {i}. "{c.description}"{eff_str}')
         lines.append("")
         lines.append(
-            "Respond with ONLY the choice id (e.g. just the word like "
-            f'"{event.choices[0].id}"). Nothing else.'
+            f"Respond with ONLY the number of your choice (1-{len(event.choices)}). Nothing else."
         )
         return "\n".join(lines)
+
+    @staticmethod
+    def parse_choice_index(raw_response: str, num_choices: int) -> int | None:
+        """Extract a 1-based choice index from model response."""
+        import re
+
+        text = raw_response.strip()
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        match = re.search(r"\b([1-9])\b", text)
+        if match:
+            idx = int(match.group(1))
+            if 1 <= idx <= num_choices:
+                return idx
+        return None
