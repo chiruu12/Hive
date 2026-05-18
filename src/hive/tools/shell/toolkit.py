@@ -80,10 +80,23 @@ class ShellToolkit(Toolkit):
         self._timeout = timeout
         self._restrict = restrict
 
+    SHELL_OPERATORS = {";", "&&", "||", "|", "$(", "`"}
+
     def _check_command(self, command: str) -> str | None:
         if not self._restrict:
             return None
-        first_token = command.strip().split()[0] if command.strip() else ""
+        cmd = command.strip()
+        if not cmd:
+            return "Error: empty command"
+
+        for op in self.SHELL_OPERATORS:
+            if op in cmd:
+                return f"Error: shell operator '{op}' not allowed in restricted mode"
+
+        if "\n" in cmd:
+            return "Error: multi-line commands not allowed in restricted mode"
+
+        first_token = cmd.split()[0] if cmd else ""
         base = first_token.split("/")[-1]
         if base not in self.ALLOWED_COMMANDS:
             return (

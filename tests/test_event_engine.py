@@ -81,13 +81,13 @@ def test_event_engine_apply_choice(tmp_dir):
 
     outcome = engine.apply_choice("agent-1", event, "opt_a", cycle=5)
     assert outcome.choice_id == "opt_a"
-    assert outcome.stat_changes["money"] == -100
-    assert outcome.stat_changes["happiness"] == 0.1
+    assert -200 <= outcome.stat_changes["money"] <= -30
+    assert 0.03 <= outcome.stat_changes["happiness"] <= 0.2
 
     fin = world.get_finances("agent-1")
-    assert fin.balance == 0.0  # 100 starting - 100
+    assert fin.balance < 100  # lost money (with luck variance)
 
-    assert stats.get("agent-1").happiness == 0.6  # 0.5 + 0.1
+    assert stats.get("agent-1").happiness > 0.5  # increased from base 0.5
 
 
 def test_event_engine_invalid_choice_defaults(tmp_dir):
