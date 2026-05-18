@@ -520,3 +520,16 @@ class TestAgentWithPersona:
     def test_goals_property_inherited(self) -> None:
         p = Persona(instructions=["Goal A", "Goal B"])
         assert p.goals == ["Goal A", "Goal B"]
+
+    def test_agent_does_not_rebind_prebound_toolkits(self) -> None:
+        provider = MagicMock()
+        tk = _MockToolkit()
+        tk.bind("coder-abc12345")
+        Agent(name="coder", model=provider, toolkits=[tk])
+        assert tk._agent_id == "coder-abc12345"
+
+    def test_agent_binds_unbound_toolkits(self) -> None:
+        provider = MagicMock()
+        tk = _MockToolkit()
+        Agent(name="myagent", model=provider, toolkits=[tk])
+        assert tk._agent_id == "myagent"
