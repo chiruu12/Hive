@@ -93,19 +93,8 @@ class ShellToolkit(Toolkit):
             if op in cmd:
                 return f"Error: shell operator '{op}' not allowed in restricted mode"
 
-        if any(c in cmd for c in ("\n", "\\n")):
+        if "\n" in cmd:
             return "Error: multi-line commands not allowed in restricted mode"
-
-        for part in cmd.split():
-            if part.startswith(">") or part.startswith("<"):
-                continue
-            if part.startswith("-"):
-                continue
-            if "/" in part or "." in part or part.startswith("$") or part.startswith("~"):
-                continue
-            if part.startswith('"') or part.startswith("'"):
-                continue
-            break
 
         first_token = cmd.split()[0] if cmd else ""
         base = first_token.split("/")[-1]
