@@ -17,12 +17,24 @@ Usage:
 """
 
 import argparse
+import asyncio
+import logging
+import signal
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 from base import Experiment, console
 from rich.panel import Panel
 from rich.table import Table
+
+from hive.agents.state import AgentState, AgentStatus
+from hive.daemon.loop import HiveDaemon
+from hive.memory.store import HiveStore
+from hive.models.factory import create_runtime_provider
+from hive.models.lmstudio import LMStudio
+from hive.tools.memory import MemoryToolkit
+from hive.tools.notepad import NotepadToolkit
 
 SHARED_PERSONA = {
     "personality": ["ambitious", "resourceful", "competitive"],
@@ -111,10 +123,7 @@ class LocalLivesExperiment(Experiment):
 
         self.name = f"local-lives-{self._make_agent_name(self.model)}"
         agent_name = self._make_agent_name(self.model)
-
-        self._spawn_agent_with_provider(
-            agent_name, self.model, host
-        )
+        self._spawn_agent(agent_name, self.model, host)
 
         console.print(f"  Running {self.cycles} cycles, heartbeat 5s...")
         self._run_daemon(cycles=self.cycles, heartbeat=5, slim_tools=True)
@@ -127,8 +136,8 @@ class LocalLivesExperiment(Experiment):
         console.print("  Mode: simultaneous (3 models)")
 
         models_config = []
-        for model_name, label, default_port in SIMULTANEOUS_MODELS:
-            port = self.ports[SIMULTANEOUS_MODELS.index((model_name, label, default_port))]
+        for i, (model_name, label, default_port) in enumerate(SIMULTANEOUS_MODELS):
+            port = self.ports[i] if i < len(self.ports) else default_port
             host = f"http://localhost:{port}/v1"
             models_config.append((model_name, label, port, host))
 
@@ -146,7 +155,7 @@ class LocalLivesExperiment(Experiment):
         port_map: dict[str, str] = {}
         for model_name, label, port, host in models_config:
             agent_name = label.lower()
-            self._spawn_agent_with_provider(agent_name, model_name, host)
+            self._spawn_agent(agent_name, model_name, host)
             port_map[f"lmstudio:{model_name}"] = host
 
         console.print(f"\n  Running {self.cycles} cycles, heartbeat 5s...")
@@ -165,23 +174,13 @@ class LocalLivesExperiment(Experiment):
         port_map: dict[str, str],
     ) -> None:
         """Run daemon with patched provider factory for multi-port LM Studio."""
-        import asyncio as _asyncio
-        import signal as _signal
-        from unittest.mock import patch
-
-        from hive.daemon.loop import HiveDaemon
-        from hive.models.lmstudio import LMStudio
 
         def _patched_factory(model_name: str) -> Any:
             host = port_map.get(model_name)
             if host:
                 clean = model_name.removeprefix("lmstudio:")
                 return LMStudio(model=clean, host=host)
-            from hive.models.factory import create_runtime_provider
-
             return create_runtime_provider(model_name)
-
-        import logging
 
         logging.getLogger("hive.tools").setLevel(logging.ERROR)
 
@@ -192,27 +191,7 @@ class LocalLivesExperiment(Experiment):
             fresh=True,
         )
 
-        _orig_build = daemon._build_toolkits
-
-        def _slim_build(agent_id: str) -> list[Any]:
-            from hive.tools.memory import MemoryToolkit
-            from hive.tools.notepad import NotepadToolkit
-
-            toolkits: list[Any] = [
-                MemoryToolkit(path=daemon._ctx.memory_dir),
-                NotepadToolkit(manager=daemon._notepad),
-            ]
-            if daemon._economy_enabled and daemon._ctx.world is not None:
-                from hive.tools.world import WorldToolkit
-
-                toolkits.insert(
-                    0, WorldToolkit(daemon._ctx.world, agent_id)
-                )
-            for tk in toolkits:
-                tk.bind(agent_id)
-            return toolkits
-
-        daemon._build_toolkits = _slim_build  # type: ignore[method-assign]
+        self._apply_slim_tools(daemon)
 
         async def _limited_run() -> None:
             daemon._plugin_toolkits.extend(daemon._plugin_loader.discover())
@@ -224,9 +203,7 @@ class LocalLivesExperiment(Experiment):
                     try:
                         await daemon._run_agent_cycle(agent)
                     except Exception as e:
-                        console.print(
-                            f"  [red]Error:[/red] {agent.name}: {e}"
-                        )
+                        console.print(f"  [red]Error:[/red] {agent.name}: {e}")
                 if daemon._economy_enabled:
                     daemon._process_payday(alive)
                     await daemon._process_life_events(alive)
@@ -234,15 +211,14 @@ class LocalLivesExperiment(Experiment):
                     f"  [dim]cycle {daemon._cycle_count}/{cycles}[/dim]",
                     end="\r",
                 )
-                await _asyncio.sleep(heartbeat)
+                await asyncio.sleep(heartbeat)
             daemon._running = False
 
         daemon._run = _limited_run  # type: ignore[method-assign]
 
-        loop = _asyncio.new_event_loop()
-
-        prev_int = _signal.signal(_signal.SIGINT, lambda *_: daemon.stop())
-        prev_term = _signal.signal(_signal.SIGTERM, lambda *_: daemon.stop())
+        loop = asyncio.new_event_loop()
+        prev_int = signal.signal(signal.SIGINT, lambda *_: daemon.stop())
+        prev_term = signal.signal(signal.SIGTERM, lambda *_: daemon.stop())
 
         try:
             with patch(
@@ -254,18 +230,13 @@ class LocalLivesExperiment(Experiment):
             pass
         finally:
             loop.close()
-            _signal.signal(_signal.SIGINT, prev_int)
-            _signal.signal(_signal.SIGTERM, prev_term)
+            signal.signal(signal.SIGINT, prev_int)
+            signal.signal(signal.SIGTERM, prev_term)
 
-    def _spawn_agent_with_provider(
+    def _spawn_agent(
         self, agent_name: str, model_name: str, host: str
     ) -> None:
-        """Spawn an agent with a specific LMStudio provider into the store."""
-        import asyncio as _asyncio
-
-        from hive.agents.state import AgentState, AgentStatus
-        from hive.memory.store import HiveStore
-
+        """Spawn an agent with a specific LMStudio model into the store."""
         agent_id = f"{agent_name}-exp"
         state = AgentState(
             agent_id=agent_id,
@@ -275,9 +246,8 @@ class LocalLivesExperiment(Experiment):
             status=AgentStatus.IDLE,
             workspace=str(self.hive_dir / "workspaces" / agent_id),
         )
-
         store = HiveStore(self.hive_dir / "hive.db")
-        _asyncio.run(store.save_agent(state))
+        asyncio.run(store.save_agent(state))
         console.print(f"  [green]+[/green] {agent_name} ({model_name})")
 
     def _print_results(self, metrics: dict[str, dict[str, Any]]) -> None:
@@ -330,30 +300,11 @@ def main() -> None:
         "--mode",
         choices=["sequential", "simultaneous"],
         default="sequential",
-        help="Run one model at a time or all 3 simultaneously",
     )
-    parser.add_argument(
-        "--model",
-        default="loaded-model",
-        help="Model name for sequential mode (default: loaded-model)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=1234,
-        help="LM Studio port for sequential mode (default: 1234)",
-    )
-    parser.add_argument(
-        "--ports",
-        default="1234,1235,1236",
-        help="Comma-separated ports for simultaneous mode",
-    )
-    parser.add_argument(
-        "--cycles",
-        type=int,
-        default=100,
-        help="Number of daemon cycles (default: 100)",
-    )
+    parser.add_argument("--model", default="loaded-model")
+    parser.add_argument("--port", type=int, default=1234)
+    parser.add_argument("--ports", default="1234,1235,1236")
+    parser.add_argument("--cycles", type=int, default=100)
 
     args = parser.parse_args()
     ports = [int(p) for p in args.ports.split(",")]

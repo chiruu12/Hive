@@ -1,13 +1,24 @@
 """Base experiment runner — shared infrastructure for all experiments."""
 
+import asyncio
 import json
+import logging
 import shutil
+import signal
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+
+from hive.agents.state import AgentState, AgentStatus
+from hive.checkpoint import CheckpointManager
+from hive.config import HiveConfig, get_config, set_config
+from hive.daemon.loop import HiveDaemon
+from hive.memory.store import HiveStore
+from hive.tools.memory import MemoryToolkit
+from hive.tools.notepad import NotepadManager, NotepadToolkit
 
 EXPERIMENTS_DIR = Path(__file__).resolve().parent.parent
 RESULTS_DIR = EXPERIMENTS_DIR / "results"
@@ -43,14 +54,16 @@ class Experiment:
 
     def setup(self) -> None:
         """Create temp .hive/ directory and initialize."""
-        from hive.config import HiveConfig, set_config
-
         self._tmp_dir = Path(tempfile.mkdtemp(prefix=f"hive-exp-{self.name}-"))
         self._hive_dir = self._tmp_dir / ".hive"
         self._hive_dir.mkdir()
         for subdir in (
-            "sessions", "workspaces", "comms",
-            "agent_memory", "checkpoints", "journals",
+            "sessions",
+            "workspaces",
+            "comms",
+            "agent_memory",
+            "checkpoints",
+            "journals",
         ):
             (self._hive_dir / subdir).mkdir()
 
@@ -58,9 +71,6 @@ class Experiment:
         set_config(cfg)
         cfg.save(self._hive_dir)
 
-        import asyncio
-
-        from hive.memory.store import HiveStore
         store = HiveStore(self._hive_dir / "hive.db")
         asyncio.run(store.initialize())
 
@@ -94,7 +104,7 @@ class Experiment:
             console.print("[dim]Temp directory cleaned up.[/dim]")
 
     def execute(self) -> dict[str, Any]:
-        """Full lifecycle: setup → run → report → cleanup."""
+        """Full lifecycle: setup -> run -> report -> cleanup."""
         try:
             self.setup()
             self._results = self.run()
@@ -113,12 +123,6 @@ class Experiment:
         economy: bool = True,
     ) -> None:
         """Helper: spawn agents into the temp hive store."""
-        import asyncio
-
-        from hive.agents.state import AgentState, AgentStatus
-        from hive.config import get_config, set_config
-        from hive.memory.store import HiveStore
-
         cfg = get_config()
         cfg.economy.enabled = economy
         set_config(cfg)
@@ -150,15 +154,9 @@ class Experiment:
 
         Args:
             slim_tools: If True, replace the daemon's full 50-tool set with
-                a minimal 6-tool set suitable for small local models with
-                limited context windows.
+                a minimal set suitable for small local models with limited
+                context windows.
         """
-        import asyncio
-        import logging
-        import signal
-
-        from hive.daemon.loop import HiveDaemon
-
         logging.getLogger("hive.tools").setLevel(logging.ERROR)
 
         daemon = HiveDaemon(
@@ -169,27 +167,32 @@ class Experiment:
         )
 
         if slim_tools:
-            _orig_build = daemon._build_toolkits
+            self._apply_slim_tools(daemon)
 
-            def _slim_build(agent_id: str) -> list[Any]:
-                from hive.tools.memory import MemoryToolkit
-                from hive.tools.notepad import NotepadToolkit
+        self._run_daemon_loop(daemon, cycles, heartbeat)
 
-                toolkits: list[Any] = [
-                    MemoryToolkit(path=daemon._ctx.memory_dir),
-                    NotepadToolkit(manager=daemon._notepad),
-                ]
-                if daemon._economy_enabled and daemon._ctx.world is not None:
-                    from hive.tools.world import WorldToolkit
+    def _apply_slim_tools(self, daemon: HiveDaemon) -> None:
+        """Replace daemon's full toolkit set with a minimal one."""
 
-                    toolkits.insert(
-                        0, WorldToolkit(daemon._ctx.world, agent_id)
-                    )
-                for tk in toolkits:
-                    tk.bind(agent_id)
-                return toolkits
+        def _slim_build(agent_id: str) -> list[Any]:
+            toolkits: list[Any] = [
+                MemoryToolkit(path=daemon._ctx.memory_dir),
+                NotepadToolkit(manager=daemon._notepad),
+            ]
+            if daemon._economy_enabled and daemon._ctx.world is not None:
+                from hive.tools.world import WorldToolkit
 
-            daemon._build_toolkits = _slim_build  # type: ignore[method-assign]
+                toolkits.insert(0, WorldToolkit(daemon._ctx.world, agent_id))
+            for tk in toolkits:
+                tk.bind(agent_id)
+            return toolkits
+
+        daemon._build_toolkits = _slim_build  # type: ignore[method-assign]
+
+    def _run_daemon_loop(
+        self, daemon: HiveDaemon, cycles: int, heartbeat: int
+    ) -> None:
+        """Run a daemon for a fixed number of cycles."""
 
         async def _limited_run() -> None:
             daemon._plugin_toolkits.extend(daemon._plugin_loader.discover())
@@ -201,9 +204,7 @@ class Experiment:
                     try:
                         await daemon._run_agent_cycle(agent)
                     except Exception as e:
-                        console.print(
-                            f"  [red]Error:[/red] {agent.name}: {e}"
-                        )
+                        console.print(f"  [red]Error:[/red] {agent.name}: {e}")
                 if daemon._economy_enabled:
                     daemon._process_payday(alive)
                     await daemon._process_life_events(alive)
@@ -235,12 +236,6 @@ class Experiment:
 
     def _collect_agent_metrics(self) -> dict[str, dict[str, Any]]:
         """Helper: collect per-agent metrics from store."""
-        import asyncio
-
-        from hive.checkpoint import CheckpointManager
-        from hive.memory.store import HiveStore
-        from hive.tools.notepad import NotepadManager
-
         store = HiveStore(self.hive_dir / "hive.db")
         agents = asyncio.run(store.list_agents())
         cp_mgr = CheckpointManager(self.hive_dir)
@@ -248,9 +243,7 @@ class Experiment:
 
         metrics: dict[str, dict[str, Any]] = {}
         for agent in agents:
-            goals = asyncio.run(
-                store.list_agent_goals(agent.agent_id, limit=500)
-            )
+            goals = asyncio.run(store.list_agent_goals(agent.agent_id, limit=500))
             done = sum(1 for g in goals if g["status"] == "completed")
             failed = sum(1 for g in goals if g["status"] == "abandoned")
 
