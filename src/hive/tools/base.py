@@ -308,6 +308,11 @@ class Toolkit:
         """Prompt text to inject into the agent's context. Override in subclass."""
         return ""
 
+    @property
+    def is_bound(self) -> bool:
+        """Whether this toolkit has been bound to an agent."""
+        return bool(self._agent_id)
+
     def bind(self, agent_id: str) -> None:
         """Called by the Agent to set the agent context. Override if needed."""
         if self._agent_id and self._agent_id != agent_id:

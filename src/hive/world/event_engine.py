@@ -189,7 +189,7 @@ class EventEngine:
 
         text = raw_response.strip()
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-        match = re.search(r"\b([1-9])\b", text)
+        match = re.search(r"\b(\d+)\b", text)
         if match:
             idx = int(match.group(1))
             if 1 <= idx <= num_choices:
