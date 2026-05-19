@@ -190,6 +190,9 @@ class TestShellToolkit:
     def test_check_command_stderr_redirect_allowed(self, st: ShellToolkit) -> None:
         assert st._check_command("echo foo >&2") is None
 
+    def test_check_command_blocks_file_redirect_via_ampersand(self, st: ShellToolkit) -> None:
+        assert st._check_command("echo evil >&output.txt") is not None
+
     def test_check_command_unrestricted_allows_all(self, tmp_path: Path) -> None:
         st = ShellToolkit(tmp_path, restrict=False)
         assert st._check_command("sudo rm -rf / && echo done") is None

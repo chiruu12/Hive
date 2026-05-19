@@ -97,6 +97,9 @@ class ShellToolkit(Toolkit):
         if re.search(r"(?<![>&])>(?![>&])", cmd):
             return "Error: output redirect '>' not allowed in restricted mode"
 
+        if re.search(r">&(?!\d)", cmd):
+            return "Error: output redirect '>&' not allowed in restricted mode"
+
         if re.search(r"(?<![>&])&(?![>&])", cmd):
             return "Error: background operator '&' not allowed in restricted mode"
 
