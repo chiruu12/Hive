@@ -164,12 +164,17 @@ class TestShellToolkit:
     @pytest.mark.asyncio
     async def test_blocks_empty_command(self, st: ShellToolkit) -> None:
         result = await st.shell_exec("")
-        assert "empty" in result.lower() or "Error" in result
+        assert "empty command" in result.lower()
 
     @pytest.mark.asyncio
-    async def test_allows_stderr_redirect(self, st: ShellToolkit) -> None:
-        result = await st.shell_exec("echo err >&2")
-        assert "err" in result
+    async def test_blocks_combined_redirect(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo foo &>/tmp/evil")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_background_operator(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("python -c 'import time; time.sleep(99)' &")
+        assert "not allowed" in result
 
     def test_check_command_single_redirect(self, st: ShellToolkit) -> None:
         assert st._check_command("echo foo > /path") is not None

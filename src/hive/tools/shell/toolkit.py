@@ -81,7 +81,7 @@ class ShellToolkit(Toolkit):
         self._timeout = timeout
         self._restrict = restrict
 
-    SHELL_OPERATORS = ("&&", "||", "$(", ";", "|", "`", ">>", "<")
+    SHELL_OPERATORS = ("&&", "||", "$(", ";", "|", "`", ">>", "&>", "<")
 
     def _check_command(self, command: str) -> str | None:
         if not self._restrict:
@@ -96,6 +96,9 @@ class ShellToolkit(Toolkit):
 
         if re.search(r"(?<![>&])>(?![>&])", cmd):
             return "Error: output redirect '>' not allowed in restricted mode"
+
+        if re.search(r"(?<![>])\&\s*$", cmd):
+            return "Error: background operator '&' not allowed in restricted mode"
 
         if "\n" in cmd:
             return "Error: multi-line commands not allowed in restricted mode"
