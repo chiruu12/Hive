@@ -176,6 +176,11 @@ class TestShellToolkit:
         result = await st.shell_exec("python -c 'import time; time.sleep(99)' &")
         assert "not allowed" in result
 
+    @pytest.mark.asyncio
+    async def test_blocks_ampersand_separator(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo hello & rm -rf /")
+        assert "not allowed" in result
+
     def test_check_command_single_redirect(self, st: ShellToolkit) -> None:
         assert st._check_command("echo foo > /path") is not None
 

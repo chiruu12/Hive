@@ -97,10 +97,10 @@ class ShellToolkit(Toolkit):
         if re.search(r"(?<![>&])>(?![>&])", cmd):
             return "Error: output redirect '>' not allowed in restricted mode"
 
-        if re.search(r"(?<![>])\&\s*$", cmd):
+        if re.search(r"(?<![>&])&(?![>&])", cmd):
             return "Error: background operator '&' not allowed in restricted mode"
 
-        if "\n" in cmd:
+        if "\n" in cmd or "\\n" in cmd:
             return "Error: multi-line commands not allowed in restricted mode"
 
         first_token = cmd.split()[0] if cmd else ""
