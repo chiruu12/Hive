@@ -68,7 +68,7 @@ def check_lmstudio(host: str, model_name: str) -> bool:
         if resp.status_code == 200:
             data = resp.json()
             models = [m.get("id", "") for m in data.get("data", [])]
-            if model_name in models or "loaded-model" in models or models:
+            if model_name in models or "loaded-model" in models:
                 return True
             console.print(
                 f"  [yellow]Warning:[/yellow] {host} is up but "

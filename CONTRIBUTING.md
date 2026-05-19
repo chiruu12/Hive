@@ -1,5 +1,18 @@
 # Contributing to Hive
 
+## Branching Rules
+
+**Never push directly to `main`.** Always create a feature branch and open a PR.
+
+```bash
+git checkout -b feat/my-feature   # new feature
+git checkout -b fix/bug-name      # bug fix
+git checkout -b docs/update       # documentation
+git checkout -b ci/improvement    # CI/CD changes
+```
+
+Open a PR to `main`, wait for CI to pass, then merge.
+
 ## Development Setup
 
 ```bash
