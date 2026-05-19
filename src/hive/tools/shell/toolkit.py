@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 
 from hive.tools.base import Toolkit, tool
@@ -80,7 +81,7 @@ class ShellToolkit(Toolkit):
         self._timeout = timeout
         self._restrict = restrict
 
-    SHELL_OPERATORS = {";", "&&", "||", "|", "$(", "`"}
+    SHELL_OPERATORS = ("&&", "||", "$(", ";", "|", "`", ">>", "&>", "<")
 
     def _check_command(self, command: str) -> str | None:
         if not self._restrict:
@@ -93,7 +94,16 @@ class ShellToolkit(Toolkit):
             if op in cmd:
                 return f"Error: shell operator '{op}' not allowed in restricted mode"
 
-        if "\n" in cmd:
+        if re.search(r"(?<![>&])>(?![>&])", cmd):
+            return "Error: output redirect '>' not allowed in restricted mode"
+
+        if re.search(r">&(?!\d)", cmd):
+            return "Error: output redirect '>&' not allowed in restricted mode"
+
+        if re.search(r"(?<![>&])&(?![>&])", cmd):
+            return "Error: background operator '&' not allowed in restricted mode"
+
+        if "\n" in cmd or "\\n" in cmd:
             return "Error: multi-line commands not allowed in restricted mode"
 
         first_token = cmd.split()[0] if cmd else ""

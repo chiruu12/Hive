@@ -75,7 +75,7 @@ class Agent:
         self._response_model = response_model
 
         for tk in self._toolkits:
-            if not tk._agent_id:
+            if not tk.is_bound:
                 tk.bind(self._agent_id)
 
         toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]

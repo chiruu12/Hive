@@ -141,6 +141,62 @@ class TestShellToolkit:
         result = await st.shell_exec("echo hello world")
         assert "hello world" in result
 
+    @pytest.mark.asyncio
+    async def test_blocks_output_redirect(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo foo > /tmp/evil")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_append_redirect(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo foo >> /tmp/evil")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_input_redirect(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("cat < /etc/passwd")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_multiline_command(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo hello\necho world")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_empty_command(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("")
+        assert "empty command" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_blocks_combined_redirect(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo foo &>/tmp/evil")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_background_operator(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("python -c 'import time; time.sleep(99)' &")
+        assert "not allowed" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_ampersand_separator(self, st: ShellToolkit) -> None:
+        result = await st.shell_exec("echo hello & rm -rf /")
+        assert "not allowed" in result
+
+    def test_check_command_single_redirect(self, st: ShellToolkit) -> None:
+        assert st._check_command("echo foo > /path") is not None
+
+    def test_check_command_append_redirect(self, st: ShellToolkit) -> None:
+        assert st._check_command("echo foo >> /path") is not None
+
+    def test_check_command_stderr_redirect_allowed(self, st: ShellToolkit) -> None:
+        assert st._check_command("echo foo >&2") is None
+
+    def test_check_command_blocks_file_redirect_via_ampersand(self, st: ShellToolkit) -> None:
+        assert st._check_command("echo evil >&output.txt") is not None
+
+    def test_check_command_unrestricted_allows_all(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path, restrict=False)
+        assert st._check_command("sudo rm -rf / && echo done") is None
+
 
 class TestGitToolkit:
     @pytest.fixture
