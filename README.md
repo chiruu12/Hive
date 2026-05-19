@@ -151,6 +151,27 @@ Persistent notepads with presets (journal, evolution, tool requests, custom).
 
 Compare models on scenarios. Export runs as standalone HTML reports.
 
+## LLM Poker Tournament
+
+We ran 5 Texas Hold'em tournaments with 6 AI models (1.2B to ~1T parameters). Results:
+
+| Run | Winner | Size | Type |
+|-----|--------|------|------|
+| 1 | Qwen | 1.7B | local |
+| 2 | MiniMax | 230B | cloud |
+| 3 | Liquid | 1.2B | local |
+| 4 | Kimi | ~1T | cloud |
+| 5 | Liquid | 1.2B | local |
+
+The 1.2B local model won 2 out of 5 tournaments. [Full results and analysis](hive-arena/tournaments/results/)
+
+```bash
+cd hive-arena
+python -m poker.cli --preset local --hands 25 --dramatic
+```
+
+See [hive-arena/](hive-arena/) for the poker engine, arena games, and life simulation.
+
 ## Community Profiles
 
 Dramatic agent personalities for the simulation:
