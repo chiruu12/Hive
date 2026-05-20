@@ -9,6 +9,7 @@ from hive.agents.suffering import StressorType, SufferingState
 from hive.api import Hive
 from hive.config import HiveConfig, load_config
 from hive.context import ExecutionContext
+from hive.daemon.hooks import HookRegistry
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
 from hive.memory.events import EventLog, EventType, HiveEvent
@@ -76,6 +77,7 @@ __all__ = [
     "Instructions",
     "HiveConfig",
     "HiveDaemon",
+    "HookRegistry",
     "HiveEvent",
     "HiveStore",
     "LMStudio",

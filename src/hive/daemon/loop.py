@@ -16,6 +16,7 @@ from hive.agents.swarm import SwarmLearning
 from hive.checkpoint import CheckpointManager
 from hive.config import get_config, load_config
 from hive.context import ExecutionContext
+from hive.daemon.hooks import HookRegistry
 from hive.interactions.a2a import A2AStore
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
@@ -104,6 +105,7 @@ class HiveDaemon:
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
         self._fresh = fresh
+        self._hooks = HookRegistry()
 
         from hive.runtime.plugin_loader import PluginLoader
 
@@ -114,6 +116,10 @@ class HiveDaemon:
             ]
         )
         self._plugin_toolkits: list[type[Any]] = []
+
+    @property
+    def hooks(self) -> HookRegistry:
+        return self._hooks
 
     def _build_toolkits(self, agent_id: str) -> list[Any]:
         workspace = self._hive_dir / "workspaces" / agent_id
@@ -271,6 +277,8 @@ class HiveDaemon:
             await asyncio.sleep(self._heartbeat)
 
     async def _run_agent_cycle(self, agent: AgentState) -> str:
+        await self._hooks.emit("cycle_start", agent_id=agent.agent_id, cycle_num=self._cycle_count)
+
         suffering = self._get_suffering(agent.agent_id)
         prev_stressors = {s.type.value for s in suffering.active}
         suffering.escalate_all()
@@ -346,6 +354,9 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "summary": outcome.summary},
                 )
                 result = "completed"
+                await self._hooks.emit(
+                    "goal_completed", agent_id=agent.agent_id, goal_id=active_goal["goal_id"]
+                )
                 if persona is not None:
                     persona.update_from_event("goal_completed", outcome.summary)
                 self._identity.update_narrative(
@@ -396,6 +407,9 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "reason": outcome.summary},
                 )
                 result = "abandoned"
+                await self._hooks.emit(
+                    "goal_abandoned", agent_id=agent.agent_id, goal_id=active_goal["goal_id"]
+                )
                 if persona is not None:
                     persona.update_from_event("goal_abandoned", outcome.summary)
                 self._specialization.record(
@@ -459,6 +473,16 @@ class HiveDaemon:
             )
             goal = await existence.generate_goal(suffering, peers, nudges)
 
+            if goal:
+                active = await self._store.get_active_goal(agent.agent_id)
+                if active:
+                    await self._hooks.emit(
+                        "goal_generated",
+                        agent_id=agent.agent_id,
+                        goal_id=active["goal_id"],
+                        objective=goal,
+                    )
+
             await self._emit(
                 agent.agent_id,
                 session_id,
@@ -494,6 +518,12 @@ class HiveDaemon:
                 "active_count": len(suffering.active),
                 "stressors": [s.type.value for s in suffering.active],
             },
+        )
+        await self._hooks.emit(
+            "suffering_changed", agent_id=agent.agent_id, suffering_state=suffering
+        )
+        await self._hooks.emit(
+            "cycle_end", agent_id=agent.agent_id, cycle_num=self._cycle_count, result=result
         )
 
         return result
