@@ -12,6 +12,7 @@ from hive.context import ExecutionContext
 from hive.daemon.hooks import HookRegistry
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
+from hive.interactions.registry import PatternRegistry
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.models.anthropic import Anthropic
@@ -87,6 +88,7 @@ __all__ = [
     "Message",
     "Ollama",
     "OpenAI",
+    "PatternRegistry",
     "Persona",
     "PersistentMemory",
     "Step",

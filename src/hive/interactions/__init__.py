@@ -29,6 +29,11 @@ from hive.interactions.participants import (
     HumanParticipant,
 )
 from hive.interactions.presets import agent_chat, debate, group_discussion, interview
+from hive.interactions.registry import (
+    InteractionPatternRegistry,
+    MemoryStrategyRegistry,
+    PatternRegistry,
+)
 from hive.interactions.runner import ScenarioRunner
 from hive.tools.a2a import A2AToolkit
 
@@ -49,10 +54,13 @@ __all__ = [
     "HumanParticipant",
     "InteractionMessage",
     "InteractionPattern",
+    "InteractionPatternRegistry",
     "MemoryStrategy",
+    "MemoryStrategyRegistry",
     "MentorPattern",
     "Message",
     "Participant",
+    "PatternRegistry",
     "ReviewPattern",
     "RoundResult",
     "Scenario",
