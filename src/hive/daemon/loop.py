@@ -280,7 +280,7 @@ class HiveDaemon:
         await self._hooks.emit("cycle_start", agent_id=agent.agent_id, cycle_num=self._cycle_count)
 
         suffering = self._get_suffering(agent.agent_id)
-        prev_stressors = {s.type.value for s in suffering.active}
+        prev_stressors = {s.type for s in suffering.active}
         suffering.escalate_all()
         result = "idle"
 
@@ -490,7 +490,7 @@ class HiveDaemon:
                 {"goal_generated": goal or "none", "suffering_load": suffering.cumulative_load},
             )
 
-        current_stressors = {s.type.value for s in suffering.active}
+        current_stressors = {s.type for s in suffering.active}
         events = []
         for s in current_stressors - prev_stressors:
             events.append(f"added:{s}")
@@ -516,7 +516,7 @@ class HiveDaemon:
             {
                 "load": suffering.cumulative_load,
                 "active_count": len(suffering.active),
-                "stressors": [s.type.value for s in suffering.active],
+                "stressors": [s.type for s in suffering.active],
             },
         )
         await self._hooks.emit(

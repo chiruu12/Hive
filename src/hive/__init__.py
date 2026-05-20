@@ -5,7 +5,7 @@ __version__ = "0.3.0"
 from hive.agents.existence import ExistenceLoop
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
-from hive.agents.suffering import StressorType, SufferingState
+from hive.agents.suffering import StressorRegistry, StressorType, SufferingState
 from hive.api import Hive
 from hive.config import HiveConfig, load_config
 from hive.context import ExecutionContext
@@ -90,6 +90,7 @@ __all__ = [
     "Persona",
     "PersistentMemory",
     "Step",
+    "StressorRegistry",
     "StressorType",
     "StructuredGenerateResult",
     "StructuredTaskResult",

@@ -1,7 +1,11 @@
 """Suffering system — aversive signals that drive agent behavior."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -17,13 +21,53 @@ class StressorType(StrEnum):
     PURPOSELESSNESS = "purposelessness"
 
 
-def _escalation_rate(stype: StressorType) -> float:
+def _escalation_rate(stype: StressorType | str) -> float:
     cfg = get_config().suffering
-    return cfg.escalation_rates.get(stype.value, 0.03)
+    value = stype.value if isinstance(stype, StressorType) else stype
+    return cfg.escalation_rates.get(value, 0.03)
+
+
+@dataclass
+class StressorConfig:
+    type_name: str
+    escalation_rate: float
+    description: str
+
+
+class StressorRegistry:
+    """Registry for stressor types — extensible beyond the built-in enum."""
+
+    _instance: ClassVar[StressorRegistry | None] = None
+
+    def __init__(self) -> None:
+        self._stressors: dict[str, StressorConfig] = {}
+
+    def register(self, type_name: str, escalation_rate: float, description: str) -> None:
+        self._stressors[type_name] = StressorConfig(type_name, escalation_rate, description)
+
+    def get(self, type_name: str) -> StressorConfig:
+        if type_name not in self._stressors:
+            raise KeyError(f"Unknown stressor type: {type_name}")
+        return self._stressors[type_name]
+
+    def all_types(self) -> list[str]:
+        return list(self._stressors.keys())
+
+    @classmethod
+    def default(cls) -> StressorRegistry:
+        if cls._instance is None:
+            cls._instance = cls()
+            for st in StressorType:
+                cls._instance.register(st.value, _escalation_rate(st), st.value)
+        return cls._instance
+
+    @classmethod
+    def _reset(cls) -> None:
+        cls._instance = None
 
 
 class Stressor(BaseModel):
-    type: StressorType
+    type: str
     description: str
     severity: float = 0.20
     escalation_per_day: float = 0.03
@@ -51,7 +95,7 @@ class SufferingState(BaseModel):
 
     def add_stressor(
         self,
-        stype: StressorType,
+        stype: StressorType | str,
         description: str,
         observable_condition: str,
         initial_severity: float | None = None,
@@ -59,14 +103,19 @@ class SufferingState(BaseModel):
         cfg = get_config().suffering
         if len(self.active) >= cfg.max_stressors:
             return
+        type_name = stype.value if isinstance(stype, StressorType) else stype
         for s in self.active:
-            if s.type == stype:
+            if s.type == type_name:
                 return
+        registry = StressorRegistry.default()
+        if type_name in registry.all_types():
+            rate = registry.get(type_name).escalation_rate
+        else:
+            rate = _escalation_rate(stype)
         sev = initial_severity if initial_severity is not None else cfg.initial_severity
-        rate = _escalation_rate(stype)
         self.active.append(
             Stressor(
-                type=stype,
+                type=type_name,
                 description=description,
                 severity=sev,
                 escalation_per_day=rate,
@@ -85,11 +134,12 @@ class SufferingState(BaseModel):
             s.peak_severity = max(s.peak_severity, s.severity)
         self.last_escalated = now
 
-    def resolve(self, stype: StressorType, note: str) -> None:
+    def resolve(self, stype: StressorType | str, note: str) -> None:
         resolved = []
         remaining = []
+        type_name = stype.value if isinstance(stype, StressorType) else stype
         for s in self.active:
-            if s.type == stype:
+            if s.type == type_name:
                 s.resolved = True
                 s.resolved_at = datetime.now(UTC)
                 s.resolution_note = note
@@ -115,7 +165,7 @@ class SufferingState(BaseModel):
         for s in sorted(self.active, key=lambda x: x.severity, reverse=True):
             bar_len = int(s.severity * 20)
             bar = "█" * bar_len + "░" * (20 - bar_len)
-            lines.append(f"  [{bar}] {s.type.value}: {s.description}")
+            lines.append(f"  [{bar}] {s.type}: {s.description}")
             if s.observable_condition:
                 lines.append(f"    → resolve by: {s.observable_condition}")
         if self.cumulative_load >= cfg.threshold_crisis:
@@ -130,7 +180,7 @@ class SufferingState(BaseModel):
         for s in self.history:
             if s.peak_severity >= 0.5 and domain.lower() in s.description.lower():
                 return (
-                    f"Warning: past {s.type.value} in this domain "
+                    f"Warning: past {s.type} in this domain "
                     f"(peak severity {s.peak_severity:.0%})"
                 )
         return None
