@@ -43,14 +43,17 @@ class StressorRegistry:
         self._stressors: dict[str, StressorConfig] = {}
 
     def register(self, type_name: str, escalation_rate: float, description: str) -> None:
+        """Register a stressor type with escalation rate."""
         self._stressors[type_name] = StressorConfig(type_name, escalation_rate, description)
 
     def get(self, type_name: str) -> StressorConfig:
+        """Get config for a stressor type, raising KeyError if unknown."""
         if type_name not in self._stressors:
             raise KeyError(f"Unknown stressor type: {type_name}")
         return self._stressors[type_name]
 
     def all_types(self) -> list[str]:
+        """Return names of all registered stressor types."""
         return list(self._stressors.keys())
 
     @classmethod

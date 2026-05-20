@@ -107,6 +107,7 @@ class IdentityManager:
         return self._dir / f"{agent_id}.json"
 
     def create(self, agent_id: str, profile: AgentProfile) -> AgentIdentity:
+        """Create a new identity for an agent."""
         identity = AgentIdentity(
             agent_id=agent_id,
             display_name=self._pick_name(),
@@ -117,6 +118,7 @@ class IdentityManager:
         return identity
 
     def load(self, agent_id: str) -> AgentIdentity | None:
+        """Load identity from disk, or None if not found."""
         path = self._path(agent_id)
         if not path.exists():
             return None
@@ -126,18 +128,21 @@ class IdentityManager:
             return None
 
     def load_or_create(self, agent_id: str, profile: AgentProfile) -> AgentIdentity:
+        """Load existing identity or create a new one."""
         existing = self.load(agent_id)
         if existing:
             return existing
         return self.create(agent_id, profile)
 
     def save(self, identity: AgentIdentity) -> None:
+        """Persist identity to disk atomically."""
         path = self._path(identity.agent_id)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(identity.model_dump_json(indent=2))
         tmp.rename(path)
 
     def update_narrative(self, agent_id: str, goal_text: str, outcome: str) -> None:
+        """Append goal outcome to the agent's narrative."""
         identity = self.load(agent_id)
         if not identity:
             return
@@ -151,6 +156,7 @@ class IdentityManager:
         self.save(identity)
 
     def add_opinion(self, agent_id: str, domain: str, opinion: str) -> None:
+        """Record an opinion the agent has formed."""
         identity = self.load(agent_id)
         if not identity:
             return
@@ -166,6 +172,7 @@ class IdentityManager:
         self.save(identity)
 
     def add_question(self, agent_id: str, question: str) -> None:
+        """Add an open question the agent is pondering."""
         identity = self.load(agent_id)
         if not identity:
             return
@@ -175,6 +182,7 @@ class IdentityManager:
         self.save(identity)
 
     def build_preamble(self, agent_id: str) -> str:
+        """Build identity context string for LLM prompts."""
         identity = self.load(agent_id)
         if not identity:
             return ""

@@ -22,6 +22,7 @@ class ExchangeRunner:
         self._config = config
 
     async def run(self, participants: list[Participant]) -> ExchangeResult:
+        """Execute the interaction exchange across all rounds."""
         result = ExchangeResult(
             participant_ids=[p.participant_id for p in participants],
         )

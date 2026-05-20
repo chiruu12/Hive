@@ -17,14 +17,17 @@ class HookRegistry:
         self._handlers: dict[str, list[Callable[..., Any]]] = {}
 
     def on(self, event: str, callback: Callable[..., Any]) -> None:
+        """Register a callback for an event."""
         self._handlers.setdefault(event, []).append(callback)
 
     def off(self, event: str, callback: Callable[..., Any]) -> None:
+        """Unregister a callback for an event."""
         handlers = self._handlers.get(event, [])
         if callback in handlers:
             handlers.remove(callback)
 
     async def emit(self, event: str, **kwargs: Any) -> None:
+        """Fire all handlers for an event with kwargs."""
         for handler in self._handlers.get(event, []):
             try:
                 result = handler(**kwargs)

@@ -18,14 +18,17 @@ class PatternRegistry:
         self._patterns: dict[str, A2APattern] = {}
 
     def register(self, name: str, pattern: A2APattern) -> None:
+        """Register an A2A pattern by name."""
         self._patterns[name] = pattern
 
     def get(self, name: str) -> A2APattern:
+        """Get a pattern by name, raising KeyError if unknown."""
         if name not in self._patterns:
             raise KeyError(f"Unknown pattern: {name}")
         return self._patterns[name]
 
     def list_patterns(self) -> list[str]:
+        """Return names of all registered patterns."""
         return list(self._patterns.keys())
 
     @classmethod
@@ -61,14 +64,17 @@ class InteractionPatternRegistry:
         self._patterns: dict[str, type[InteractionPattern]] = {}
 
     def register(self, name: str, pattern_cls: type[InteractionPattern]) -> None:
+        """Register an interaction pattern class by name."""
         self._patterns[name] = pattern_cls
 
     def get(self, name: str) -> InteractionPattern:
+        """Create and return a pattern instance by name."""
         if name not in self._patterns:
             raise KeyError(f"Unknown interaction pattern: {name}")
         return self._patterns[name]()
 
     def list_patterns(self) -> list[str]:
+        """Return names of all registered patterns."""
         return list(self._patterns.keys())
 
     @classmethod
@@ -98,14 +104,17 @@ class MemoryStrategyRegistry:
         self._strategies: dict[str, type[MemoryStrategy]] = {}
 
     def register(self, name: str, strategy_cls: type[MemoryStrategy]) -> None:
+        """Register a memory strategy class by name."""
         self._strategies[name] = strategy_cls
 
     def get(self, name: str) -> MemoryStrategy:
+        """Create and return a strategy instance by name."""
         if name not in self._strategies:
             raise KeyError(f"Unknown memory strategy: {name}")
         return self._strategies[name]()
 
     def list_strategies(self) -> list[str]:
+        """Return names of all registered strategies."""
         return list(self._strategies.keys())
 
     @classmethod
