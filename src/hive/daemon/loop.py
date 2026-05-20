@@ -7,6 +7,7 @@ from typing import Any
 
 from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
+from hive.agents.goal_strategy import GoalContext, GoalStrategy
 from hive.agents.identity import IdentityManager
 from hive.agents.profile import AgentProfile
 from hive.agents.specialization import SpecializationTracker
@@ -52,8 +53,10 @@ class HiveDaemon:
         logs_dir: Path | None = None,
         profiles: list[str] | None = None,
         fresh: bool = False,
+        goal_strategy: GoalStrategy | None = None,
     ):
         self._hive_dir = hive_dir
+        self._goal_strategy = goal_strategy
         cfg = load_config(hive_dir)
         self._heartbeat = heartbeat or cfg.daemon.heartbeat
         self._economy_enabled = cfg.economy.enabled
@@ -456,32 +459,62 @@ class HiveDaemon:
                 a2a_context = "\n".join(a2a_lines)
                 nudges.append(f"You have pending A2A messages:\n{a2a_context}")
 
-            existence = ExistenceLoop(
-                agent_id=agent.agent_id,
-                profile=profile,
-                provider=runtime_provider,
-                store=self._store,
-                event_log=self._events,
-                hive_dir=self._hive_dir,
-                log_writer=self._log,
-                session_id=session_id,
-                economy_enabled=self._economy_enabled,
-                tools_description=self._build_tools_description(agent.agent_id),
-                world_status=world_status,
-                notepad_content=notepad_content,
-                persona=persona,
-            )
-            goal = await existence.generate_goal(suffering, peers, nudges)
+            recent_goals = await self._store.list_agent_goals(agent.agent_id, limit=5)
+            goal = None
 
-            if goal:
-                active = await self._store.get_active_goal(agent.agent_id)
-                if active:
+            if self._goal_strategy is not None:
+                ctx = GoalContext(
+                    agent_id=agent.agent_id,
+                    profile=profile,
+                    persona=persona,
+                    suffering=suffering,
+                    peer_summaries=peers,
+                    nudges=nudges,
+                    recent_goals=recent_goals,
+                    tools_description=self._build_tools_description(agent.agent_id),
+                    world_status=world_status,
+                    notepad_content=notepad_content,
+                    economy_enabled=self._economy_enabled,
+                )
+                result_goal = await self._goal_strategy.generate_goal(ctx)
+                if result_goal is not None:
+                    await self._store.save_goal(
+                        result_goal.goal_id, agent.agent_id, result_goal.objective
+                    )
+                    goal = result_goal.objective
                     await self._hooks.emit(
                         "goal_generated",
                         agent_id=agent.agent_id,
-                        goal_id=active["goal_id"],
-                        objective=goal,
+                        goal_id=result_goal.goal_id,
+                        objective=result_goal.objective,
                     )
+            else:
+                existence = ExistenceLoop(
+                    agent_id=agent.agent_id,
+                    profile=profile,
+                    provider=runtime_provider,
+                    store=self._store,
+                    event_log=self._events,
+                    hive_dir=self._hive_dir,
+                    log_writer=self._log,
+                    session_id=session_id,
+                    economy_enabled=self._economy_enabled,
+                    tools_description=self._build_tools_description(agent.agent_id),
+                    world_status=world_status,
+                    notepad_content=notepad_content,
+                    persona=persona,
+                )
+                goal = await existence.generate_goal(suffering, peers, nudges)
+
+                if goal:
+                    active = await self._store.get_active_goal(agent.agent_id)
+                    if active:
+                        await self._hooks.emit(
+                            "goal_generated",
+                            agent_id=agent.agent_id,
+                            goal_id=active["goal_id"],
+                            objective=goal,
+                        )
 
             await self._emit(
                 agent.agent_id,

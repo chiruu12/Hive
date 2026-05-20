@@ -3,6 +3,7 @@
 __version__ = "0.3.0"
 
 from hive.agents.existence import ExistenceLoop
+from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import StressorRegistry, StressorType, SufferingState
@@ -73,7 +74,10 @@ __all__ = [
     "ExecutionContext",
     "ExistenceLoop",
     "GenerateResult",
+    "Goal",
+    "GoalContext",
     "GoalOutcome",
+    "GoalStrategy",
     "Groq",
     "Instructions",
     "HiveConfig",
