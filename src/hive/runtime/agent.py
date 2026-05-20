@@ -22,12 +22,27 @@ from hive.runtime.types import (
     TaskResult,
     TaskStatus,
 )
-from hive.tools.base import Tool, Toolkit
+from hive.tools.base import Tool, Toolkit, make_tool
 
 if TYPE_CHECKING:
     from hive.logging.writer import LogWriter
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_tools(items: list) -> list[Tool]:
+    """Convert a mix of Tool objects and @tool()-decorated functions to Tool list."""
+    result: list[Tool] = []
+    for item in items:
+        if isinstance(item, Tool):
+            result.append(item)
+        elif callable(item) and hasattr(item, "_tool_meta"):
+            result.append(make_tool(item))
+        elif callable(item):
+            result.append(make_tool(item))
+        else:
+            raise TypeError(f"Expected Tool or callable, got {type(item)}")
+    return result
 
 
 class Agent:
@@ -61,7 +76,7 @@ class Agent:
         self.name = name
         self._model = model
         self._toolkits = toolkits or []
-        self._extra_tools = tools or []
+        self._extra_tools = _coerce_tools(tools or [])
         self._memory = memory
         self._max_steps = max_steps
         self._temperature = temperature
@@ -377,12 +392,17 @@ class Agent:
         self,
         message: str,
         context: str | None = None,
+        max_tool_rounds: int = 5,
     ) -> str:
-        """Run a single request-response cycle. No persistence.
+        """Run a request with automatic tool-call looping. No persistence.
+
+        Loops until the model returns a text response or max_tool_rounds
+        is reached, so multi-step tool chains complete naturally.
 
         Args:
             message: The user message to process.
             context: Optional extra context injected as a system message.
+            max_tool_rounds: Max rounds of tool calls before forcing a response.
 
         Returns:
             The agent's final text response.
@@ -398,32 +418,33 @@ class Agent:
             messages.append(Message.system(context))
         messages.append(Message.user(message))
 
-        result = await self._model.generate_with_metadata(
-            messages,
-            tool_schemas,
-            self._temperature,
-            self._gen_max_tokens,
-        )
-        response = result.message
+        for _ in range(max_tool_rounds + 1):
+            result = await self._model.generate_with_metadata(
+                messages,
+                tool_schemas,
+                self._temperature,
+                self._gen_max_tokens,
+            )
+            response = result.message
 
-        if not response.tool_calls:
-            return response.content
+            if not response.tool_calls:
+                return response.content
 
-        messages.append(response)
-        for tc in response.tool_calls:
-            tool = tool_map.get(tc.name)
-            if tool:
-                try:
-                    output = await tool.call(**tc.arguments)
-                except Exception as e:
-                    output = f"Error: {e}"
-            else:
-                output = f"Unknown tool: {tc.name}"
-            messages.append(Message.tool_result(tc.id, output))
+            messages.append(response)
+            for tc in response.tool_calls:
+                tool = tool_map.get(tc.name)
+                if tool:
+                    try:
+                        output = await tool.call(**tc.arguments)
+                    except Exception as e:
+                        output = f"Error: {e}"
+                else:
+                    output = f"Unknown tool: {tc.name}"
+                messages.append(Message.tool_result(tc.id, output))
 
         final = await self._model.generate(
             messages,
-            tool_schemas,
+            None,
             self._temperature,
             self._gen_max_tokens,
         )
