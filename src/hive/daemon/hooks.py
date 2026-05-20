@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
+import inspect
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -28,10 +28,11 @@ class HookRegistry:
 
     async def emit(self, event: str, **kwargs: Any) -> None:
         """Fire all handlers for an event with kwargs."""
-        for handler in self._handlers.get(event, []):
+        snapshot = list(self._handlers.get(event, []))
+        for handler in snapshot:
             try:
                 result = handler(**kwargs)
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     await result
             except Exception:
                 logger.exception("Hook handler failed for event %s", event)

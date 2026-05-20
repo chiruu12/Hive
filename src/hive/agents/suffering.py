@@ -110,11 +110,14 @@ class SufferingState(BaseModel):
         for s in self.active:
             if s.type == type_name:
                 return
-        registry = StressorRegistry.default()
-        if type_name in registry.all_types():
-            rate = registry.get(type_name).escalation_rate
-        else:
+        if isinstance(stype, StressorType):
             rate = _escalation_rate(stype)
+        else:
+            registry = StressorRegistry.default()
+            if type_name in registry.all_types():
+                rate = registry.get(type_name).escalation_rate
+            else:
+                rate = cfg.escalation_rates.get(type_name, 0.03)
         sev = initial_severity if initial_severity is not None else cfg.initial_severity
         self.active.append(
             Stressor(

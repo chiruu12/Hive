@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class PatternRegistry:
-    """Registry for A2A collaboration patterns."""
+    """Registry for A2A collaboration patterns (stores shared instances)."""
 
     _instance: ClassVar[PatternRegistry | None] = None
 
@@ -22,7 +22,7 @@ class PatternRegistry:
         self._patterns[name] = pattern
 
     def get(self, name: str) -> A2APattern:
-        """Get a pattern by name, raising KeyError if unknown."""
+        """Get a shared pattern instance by name."""
         if name not in self._patterns:
             raise KeyError(f"Unknown pattern: {name}")
         return self._patterns[name]
@@ -56,7 +56,7 @@ class PatternRegistry:
 
 
 class InteractionPatternRegistry:
-    """Registry for scenario-based interaction patterns."""
+    """Registry for scenario-based interaction patterns (creates new instances per get)."""
 
     _instance: ClassVar[InteractionPatternRegistry | None] = None
 
@@ -68,7 +68,7 @@ class InteractionPatternRegistry:
         self._patterns[name] = pattern_cls
 
     def get(self, name: str) -> InteractionPattern:
-        """Create and return a pattern instance by name."""
+        """Create and return a new pattern instance by name."""
         if name not in self._patterns:
             raise KeyError(f"Unknown interaction pattern: {name}")
         return self._patterns[name]()

@@ -169,6 +169,7 @@ from hive.interactions import A2AStore, PatternRegistry
 
 @pytest.mark.asyncio
 async def test_brainstorm_pattern(tmp_path):
+    PatternRegistry.default().register("brainstorm", BrainstormPattern())
     store = A2AStore(tmp_path)
     pattern = PatternRegistry.default().get("brainstorm")
     result = await pattern.execute(store, "agent-a", ["agent-b", "agent-c"], "new features")

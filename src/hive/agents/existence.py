@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from hive.agents.goal_strategy import Goal, GoalContext
 from hive.agents.profile import AgentProfile
 from hive.agents.suffering import SufferingState
 from hive.logging.models import DecisionLog, GoalLog
@@ -153,19 +152,6 @@ class ExistenceLoop:
         )
 
         return goal_text
-
-    async def generate_goal_from_context(self, context: GoalContext) -> Goal | None:
-        """GoalStrategy-compatible interface for goal generation."""
-        goal_text = await self.generate_goal(
-            context.suffering,
-            context.peer_summaries,
-            context.nudges,
-        )
-        if not goal_text:
-            return None
-        active = await self._store.get_active_goal(context.agent_id)
-        goal_id = active["goal_id"] if active else f"goal-{uuid4().hex[:8]}"
-        return Goal(goal_id=goal_id, objective=goal_text)
 
     @staticmethod
     def _validate_goal(goal_text: str, recent_goals: list[dict[str, Any]]) -> str | None:

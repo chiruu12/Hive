@@ -283,6 +283,24 @@ class HiveDaemon:
         await self._hooks.emit("cycle_start", agent_id=agent.agent_id, cycle_num=self._cycle_count)
 
         suffering = self._get_suffering(agent.agent_id)
+        result = "idle"
+        try:
+            result = await self._run_agent_cycle_inner(agent, suffering)
+        finally:
+            await self._hooks.emit(
+                "suffering_changed",
+                agent_id=agent.agent_id,
+                suffering_state=suffering,
+            )
+            await self._hooks.emit(
+                "cycle_end",
+                agent_id=agent.agent_id,
+                cycle_num=self._cycle_count,
+                result=result,
+            )
+        return result
+
+    async def _run_agent_cycle_inner(self, agent: AgentState, suffering: SufferingState) -> str:
         prev_stressors = {s.type for s in suffering.active}
         suffering.escalate_all()
         result = "idle"
@@ -508,13 +526,12 @@ class HiveDaemon:
 
                 if goal:
                     active = await self._store.get_active_goal(agent.agent_id)
-                    if active:
-                        await self._hooks.emit(
-                            "goal_generated",
-                            agent_id=agent.agent_id,
-                            goal_id=active["goal_id"],
-                            objective=goal,
-                        )
+                    await self._hooks.emit(
+                        "goal_generated",
+                        agent_id=agent.agent_id,
+                        goal_id=active["goal_id"] if active else "unknown",
+                        objective=goal,
+                    )
 
             await self._emit(
                 agent.agent_id,
@@ -552,13 +569,6 @@ class HiveDaemon:
                 "stressors": [s.type for s in suffering.active],
             },
         )
-        await self._hooks.emit(
-            "suffering_changed", agent_id=agent.agent_id, suffering_state=suffering
-        )
-        await self._hooks.emit(
-            "cycle_end", agent_id=agent.agent_id, cycle_num=self._cycle_count, result=result
-        )
-
         return result
 
     def _process_payday(self, agents: list[AgentState]) -> None:
