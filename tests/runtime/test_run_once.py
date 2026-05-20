@@ -352,7 +352,8 @@ class TestRunOnceMultiRound:
         agent = Agent("test", provider, tools=[loop_tool])
         result = await agent.run_once("Loop forever", max_tool_rounds=2)
         assert isinstance(result, str)
-        assert len(provider.calls) <= 4
+        # 2 tool rounds + 1 forced final = 3 calls
+        assert len(provider.calls) <= 3
 
 
 class TestMaxTokensConfig:

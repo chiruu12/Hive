@@ -30,14 +30,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _coerce_tools(items: list) -> list[Tool]:
-    """Convert a mix of Tool objects and @tool()-decorated functions to Tool list."""
+def _coerce_tools(items: list[Any]) -> list[Tool]:
+    """Convert Tool objects, @tool()-decorated functions, or plain callables to Tools."""
     result: list[Tool] = []
     for item in items:
         if isinstance(item, Tool):
             result.append(item)
-        elif callable(item) and hasattr(item, "_tool_meta"):
-            result.append(make_tool(item))
         elif callable(item):
             result.append(make_tool(item))
         else:
@@ -62,7 +60,7 @@ class Agent:
         instructions: Instructions | str = "",
         system_prompt: str = "",
         toolkits: list[Toolkit] | None = None,
-        tools: list[Tool] | None = None,
+        tools: list[Tool | Any] | None = None,
         memory: PersistentMemory | None = None,
         max_steps: int = 25,
         temperature: float = 0.0,
@@ -402,11 +400,14 @@ class Agent:
         Args:
             message: The user message to process.
             context: Optional extra context injected as a system message.
-            max_tool_rounds: Max rounds of tool calls before forcing a response.
+            max_tool_rounds: Max tool-call rounds before forcing a text response.
 
         Returns:
             The agent's final text response.
         """
+        if max_tool_rounds < 0:
+            raise ValueError(f"max_tool_rounds must be >= 0, got {max_tool_rounds}")
+
         tools = self.get_tools()
         tool_map = {t.name: t for t in tools}
         tool_schemas = [t.to_schema() for t in tools] if tools else None
@@ -418,7 +419,7 @@ class Agent:
             messages.append(Message.system(context))
         messages.append(Message.user(message))
 
-        for _ in range(max_tool_rounds + 1):
+        for _ in range(max_tool_rounds):
             result = await self._model.generate_with_metadata(
                 messages,
                 tool_schemas,
@@ -454,6 +455,7 @@ class Agent:
         self,
         message: str,
         context: str | None = None,
+        max_tool_rounds: int = 5,
     ) -> str:
         """Synchronous version of run_once."""
         try:
@@ -463,10 +465,10 @@ class Agent:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(
                     asyncio.run,
-                    self.run_once(message, context),
+                    self.run_once(message, context, max_tool_rounds),
                 ).result()
         except RuntimeError:
-            return asyncio.run(self.run_once(message, context))
+            return asyncio.run(self.run_once(message, context, max_tool_rounds))
 
     async def run_once_structured(
         self,
