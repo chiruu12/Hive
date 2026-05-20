@@ -183,8 +183,7 @@ class SufferingState(BaseModel):
         for s in self.history:
             if s.peak_severity >= 0.5 and domain.lower() in s.description.lower():
                 return (
-                    f"Warning: past {s.type} in this domain "
-                    f"(peak severity {s.peak_severity:.0%})"
+                    f"Warning: past {s.type} in this domain (peak severity {s.peak_severity:.0%})"
                 )
         return None
 
