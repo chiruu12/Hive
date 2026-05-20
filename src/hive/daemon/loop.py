@@ -286,6 +286,9 @@ class HiveDaemon:
         result = "idle"
         try:
             result = await self._run_agent_cycle_inner(agent, suffering)
+        except Exception:
+            result = "error"
+            raise
         finally:
             await self._hooks.emit(
                 "suffering_changed",
