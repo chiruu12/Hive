@@ -13,8 +13,14 @@ from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
+from hive.models.anthropic import Anthropic
 from hive.models.base import BaseProvider
 from hive.models.factory import create_runtime_provider
+from hive.models.fireworks import Fireworks
+from hive.models.groq import Groq
+from hive.models.lmstudio import LMStudio
+from hive.models.ollama import Ollama
+from hive.models.openai import OpenAI
 from hive.runtime import (
     Agent,
     ConversationMemory,
@@ -50,6 +56,7 @@ from hive.world.state import WorldState
 __all__ = [
     "Agent",
     "AgentProfile",
+    "Anthropic",
     "BaseProvider",
     "Hive",
     "AgentState",
@@ -58,21 +65,26 @@ __all__ = [
     "ConversationMemory",
     "DaemonAgentAdapter",
     "collect_tools",
+    "Fireworks",
     "EventLog",
     "EventType",
     "ExecutionContext",
     "ExistenceLoop",
     "GenerateResult",
     "GoalOutcome",
+    "Groq",
     "Instructions",
     "HiveConfig",
     "HiveDaemon",
     "HiveEvent",
     "HiveStore",
+    "LMStudio",
     "make_tool",
     "MCPToolkit",
     "MemoryToolkit",
     "Message",
+    "Ollama",
+    "OpenAI",
     "Persona",
     "PersistentMemory",
     "Step",

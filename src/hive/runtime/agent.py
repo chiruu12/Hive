@@ -22,12 +22,25 @@ from hive.runtime.types import (
     TaskResult,
     TaskStatus,
 )
-from hive.tools.base import Tool, Toolkit
+from hive.tools.base import Tool, Toolkit, make_tool
 
 if TYPE_CHECKING:
     from hive.logging.writer import LogWriter
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_tools(items: list[Any]) -> list[Tool]:
+    """Convert Tool objects, @tool()-decorated functions, or plain callables to Tools."""
+    result: list[Tool] = []
+    for item in items:
+        if isinstance(item, Tool):
+            result.append(item)
+        elif callable(item):
+            result.append(make_tool(item))
+        else:
+            raise TypeError(f"Expected Tool or callable, got {type(item)}")
+    return result
 
 
 class Agent:
@@ -47,7 +60,7 @@ class Agent:
         instructions: Instructions | str = "",
         system_prompt: str = "",
         toolkits: list[Toolkit] | None = None,
-        tools: list[Tool] | None = None,
+        tools: list[Tool | Any] | None = None,
         memory: PersistentMemory | None = None,
         max_steps: int = 25,
         temperature: float = 0.0,
@@ -61,7 +74,7 @@ class Agent:
         self.name = name
         self._model = model
         self._toolkits = toolkits or []
-        self._extra_tools = tools or []
+        self._extra_tools = _coerce_tools(tools or [])
         self._memory = memory
         self._max_steps = max_steps
         self._temperature = temperature
@@ -377,16 +390,24 @@ class Agent:
         self,
         message: str,
         context: str | None = None,
+        max_tool_rounds: int = 5,
     ) -> str:
-        """Run a single request-response cycle. No persistence.
+        """Run a request with automatic tool-call looping. No persistence.
+
+        Loops until the model returns a text response or max_tool_rounds
+        is reached, so multi-step tool chains complete naturally.
 
         Args:
             message: The user message to process.
             context: Optional extra context injected as a system message.
+            max_tool_rounds: Max tool-call rounds before forcing a text response.
 
         Returns:
             The agent's final text response.
         """
+        if max_tool_rounds < 0:
+            raise ValueError(f"max_tool_rounds must be >= 0, got {max_tool_rounds}")
+
         tools = self.get_tools()
         tool_map = {t.name: t for t in tools}
         tool_schemas = [t.to_schema() for t in tools] if tools else None
@@ -398,32 +419,33 @@ class Agent:
             messages.append(Message.system(context))
         messages.append(Message.user(message))
 
-        result = await self._model.generate_with_metadata(
-            messages,
-            tool_schemas,
-            self._temperature,
-            self._gen_max_tokens,
-        )
-        response = result.message
+        for _ in range(max_tool_rounds):
+            result = await self._model.generate_with_metadata(
+                messages,
+                tool_schemas,
+                self._temperature,
+                self._gen_max_tokens,
+            )
+            response = result.message
 
-        if not response.tool_calls:
-            return response.content
+            if not response.tool_calls:
+                return response.content
 
-        messages.append(response)
-        for tc in response.tool_calls:
-            tool = tool_map.get(tc.name)
-            if tool:
-                try:
-                    output = await tool.call(**tc.arguments)
-                except Exception as e:
-                    output = f"Error: {e}"
-            else:
-                output = f"Unknown tool: {tc.name}"
-            messages.append(Message.tool_result(tc.id, output))
+            messages.append(response)
+            for tc in response.tool_calls:
+                tool = tool_map.get(tc.name)
+                if tool:
+                    try:
+                        output = await tool.call(**tc.arguments)
+                    except Exception as e:
+                        output = f"Error: {e}"
+                else:
+                    output = f"Unknown tool: {tc.name}"
+                messages.append(Message.tool_result(tc.id, output))
 
         final = await self._model.generate(
             messages,
-            tool_schemas,
+            None,
             self._temperature,
             self._gen_max_tokens,
         )
@@ -433,6 +455,7 @@ class Agent:
         self,
         message: str,
         context: str | None = None,
+        max_tool_rounds: int = 5,
     ) -> str:
         """Synchronous version of run_once."""
         try:
@@ -442,10 +465,10 @@ class Agent:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 return pool.submit(
                     asyncio.run,
-                    self.run_once(message, context),
+                    self.run_once(message, context, max_tool_rounds),
                 ).result()
         except RuntimeError:
-            return asyncio.run(self.run_once(message, context))
+            return asyncio.run(self.run_once(message, context, max_tool_rounds))
 
     async def run_once_structured(
         self,

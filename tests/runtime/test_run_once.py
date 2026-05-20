@@ -274,6 +274,88 @@ class TestRunOnceStructured:
         assert result.title == "Sync task"
 
 
+class TestRunOnceAutoCoerce:
+    @pytest.mark.asyncio
+    async def test_decorated_functions_accepted_directly(self) -> None:
+        @tool()
+        def greet(name: str) -> str:
+            """Say hello."""
+            return f"Hello, {name}!"
+
+        provider = MockOnceProvider(
+            [
+                Message.assistant(
+                    "Greeting.",
+                    [ToolCall(id="tc-1", name="greet", arguments={"name": "Bob"})],
+                ),
+                Message.assistant("I greeted Bob."),
+            ]
+        )
+        agent = Agent("test", provider, tools=[greet])
+        result = await agent.run_once("Greet Bob")
+        assert "Bob" in result
+
+    @pytest.mark.asyncio
+    async def test_plain_callables_accepted(self) -> None:
+        def add(a: int, b: int) -> str:
+            """Add numbers."""
+            return str(a + b)
+
+        provider = MockOnceProvider([Message.assistant("OK")])
+        agent = Agent("test", provider, tools=[add])
+        assert len(agent.get_tools()) == 1
+        assert agent.get_tools()[0].name == "add"
+
+
+class TestRunOnceMultiRound:
+    @pytest.mark.asyncio
+    async def test_loops_until_text(self) -> None:
+        @tool()
+        def step(n: int) -> str:
+            """Do a step."""
+            return f"step-{n}-done"
+
+        provider = MockOnceProvider(
+            [
+                Message.assistant(
+                    "Step 1.",
+                    [ToolCall(id="tc-1", name="step", arguments={"n": 1})],
+                ),
+                Message.assistant(
+                    "Step 2.",
+                    [ToolCall(id="tc-2", name="step", arguments={"n": 2})],
+                ),
+                Message.assistant("All done — result is 42."),
+            ]
+        )
+        agent = Agent("test", provider, tools=[step])
+        result = await agent.run_once("Do two steps")
+        assert "42" in result
+        assert len(provider.calls) == 3
+
+    @pytest.mark.asyncio
+    async def test_respects_max_tool_rounds(self) -> None:
+        @tool()
+        def loop_tool() -> str:
+            """Infinite loop tool."""
+            return "again"
+
+        responses = [
+            Message.assistant(
+                f"Round {i}.",
+                [ToolCall(id=f"tc-{i}", name="loop_tool", arguments={})],
+            )
+            for i in range(10)
+        ]
+        responses.append(Message.assistant("Forced stop."))
+        provider = MockOnceProvider(responses)
+        agent = Agent("test", provider, tools=[loop_tool])
+        result = await agent.run_once("Loop forever", max_tool_rounds=2)
+        assert isinstance(result, str)
+        # 2 tool rounds + 1 forced final = 3 calls
+        assert len(provider.calls) <= 3
+
+
 class TestMaxTokensConfig:
     @pytest.mark.asyncio
     async def test_custom_max_tokens_passed(self) -> None:
