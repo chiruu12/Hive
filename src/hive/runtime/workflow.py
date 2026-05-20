@@ -23,6 +23,7 @@ class Step:
     output_key: str = ""
 
     async def execute(self, context: dict[str, Any]) -> str:
+        """Run this step using its agent or callable."""
         resolved = self.instruction.format_map(_SafeFormatMap(context))
 
         if self.fn:
@@ -44,6 +45,7 @@ class Workflow:
     steps: list[Step] = field(default_factory=list)
 
     async def run(self, initial_context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Execute all steps in sequence, passing context."""
         context = dict(initial_context or {})
 
         for step in self.steps:

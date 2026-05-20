@@ -1,0 +1,65 @@
+# Hive
+
+> Local-first autonomous agent OS with persistent personas, suffering system, and multi-model support.
+
+## Docs
+
+- [Architecture](ARCHITECTURE.md)
+- [Extending](EXTENDING.md)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+
+## Quick Start
+
+```
+pip install hive-agent
+hive init
+hive spawn coder
+hive watch
+```
+
+## Key Classes
+
+- `Agent` (`src/hive/runtime/agent.py`): ReAct loop agent with tools and optional persona
+- `Persona` (`src/hive/runtime/persona.py`): Dynamic personality that evolves with suffering
+- `HiveDaemon` (`src/hive/daemon/loop.py`): Heartbeat loop driving all agents
+- `HookRegistry` (`src/hive/daemon/hooks.py`): Event bus for daemon lifecycle callbacks
+- `GoalStrategy` (`src/hive/agents/goal_strategy.py`): Protocol for pluggable goal generation
+- `GoalContext` (`src/hive/agents/goal_strategy.py`): Context passed to goal strategies
+- `ExistenceLoop` (`src/hive/agents/existence.py`): Default goal generation via LLM
+- `SufferingState` (`src/hive/agents/suffering.py`): Per-agent suffering tracking
+- `StressorRegistry` (`src/hive/agents/suffering.py`): Extensible stressor types
+- `Toolkit` (`src/hive/tools/base.py`): Base class for grouping agent tools
+- `Tool` (`src/hive/tools/base.py`): Single callable tool with JSON Schema
+- `BaseProvider` (`src/hive/models/base.py`): LLM provider abstract base
+- `PatternRegistry` (`src/hive/interactions/registry.py`): A2A collaboration pattern registry
+- `A2APattern` (`src/hive/interactions/a2a_patterns.py`): Collaboration pattern base class
+- `A2AStore` (`src/hive/interactions/a2a.py`): Agent-to-agent message store
+- `HiveStore` (`src/hive/memory/store.py`): SQLite persistence layer
+- `EventLog` (`src/hive/memory/events.py`): JSONL append-only event stream
+
+## Extension Points
+
+- Custom tools: Subclass `Toolkit`, use `@tool()` decorator
+- Custom providers: Subclass `BaseProvider`
+- Custom stressors: `StressorRegistry.default().register(...)`
+- Custom A2A patterns: Subclass `A2APattern`, register via `PatternRegistry`
+- Custom goal strategy: Implement `GoalStrategy` protocol, pass to `HiveDaemon`
+- Daemon hooks: `daemon.hooks.on("event_name", callback)`
+- Agent profiles: YAML files in `profiles/`
+- Plugins: Drop Toolkit subclass in `.hive/plugins/`
+
+## Model Providers
+
+- Anthropic (Claude): `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`
+- OpenAI: `gpt-*`
+- Fireworks: `fireworks:*`
+- Groq: `groq:*`
+- Ollama: `ollama:*` (local)
+- LM Studio: `lmstudio:*` (local)
+
+## Stack
+
+- Python 3.11+
+- asyncio, Typer, Rich, aiosqlite, Pydantic
+- anthropic SDK, openai SDK

@@ -3,14 +3,17 @@
 __version__ = "0.3.0"
 
 from hive.agents.existence import ExistenceLoop
+from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
-from hive.agents.suffering import StressorType, SufferingState
+from hive.agents.suffering import StressorRegistry, StressorType, SufferingState
 from hive.api import Hive
 from hive.config import HiveConfig, load_config
 from hive.context import ExecutionContext
+from hive.daemon.hooks import HookRegistry
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
+from hive.interactions.registry import PatternRegistry
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
 from hive.models.anthropic import Anthropic
@@ -71,11 +74,15 @@ __all__ = [
     "ExecutionContext",
     "ExistenceLoop",
     "GenerateResult",
+    "Goal",
+    "GoalContext",
     "GoalOutcome",
+    "GoalStrategy",
     "Groq",
     "Instructions",
     "HiveConfig",
     "HiveDaemon",
+    "HookRegistry",
     "HiveEvent",
     "HiveStore",
     "LMStudio",
@@ -85,9 +92,11 @@ __all__ = [
     "Message",
     "Ollama",
     "OpenAI",
+    "PatternRegistry",
     "Persona",
     "PersistentMemory",
     "Step",
+    "StressorRegistry",
     "StressorType",
     "StructuredGenerateResult",
     "StructuredTaskResult",

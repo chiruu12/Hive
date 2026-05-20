@@ -12,12 +12,7 @@ from hive.interactions.base import (
     Scenario,
     ScenarioResult,
 )
-from hive.interactions.memory.full import FullMemory
-from hive.interactions.memory.persona import PersonaMemory
-from hive.interactions.memory.selective import SelectiveMemory
-from hive.interactions.patterns.freeform import FreeformPattern
-from hive.interactions.patterns.pairs import PairsPattern
-from hive.interactions.patterns.round_table import RoundTablePattern
+from hive.interactions.registry import InteractionPatternRegistry, MemoryStrategyRegistry
 from hive.interactions.transcript import Transcript
 from hive.models.factory import create_runtime_provider
 from hive.runtime.types import Message as RuntimeMessage
@@ -26,23 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 def create_pattern(name: str) -> InteractionPattern:
-    patterns = {
-        "round_table": RoundTablePattern,
-        "pairs": PairsPattern,
-        "freeform": FreeformPattern,
-    }
-    cls = patterns.get(name, RoundTablePattern)
-    return cls()  # type: ignore[abstract]
+    registry = InteractionPatternRegistry.default()
+    try:
+        return registry.get(name)
+    except KeyError:
+        return registry.get("round_table")
 
 
 def create_memory(name: str) -> MemoryStrategy:
-    strategies = {
-        "full": FullMemory,
-        "selective": SelectiveMemory,
-        "persona": PersonaMemory,
-    }
-    cls = strategies.get(name, SelectiveMemory)
-    return cls()  # type: ignore[abstract]
+    registry = MemoryStrategyRegistry.default()
+    try:
+        return registry.get(name)
+    except KeyError:
+        return registry.get("selective")
 
 
 class ScenarioRunner:

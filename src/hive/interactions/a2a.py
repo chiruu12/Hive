@@ -81,6 +81,7 @@ class A2AStore:
         unread_only: bool = False,
         limit: int = 20,
     ) -> list[A2AMessage]:
+        """Retrieve messages from an agent's inbox."""
         path = self._inbox_path(agent_id)
         if not path.exists():
             return []
@@ -99,6 +100,7 @@ class A2AStore:
         return messages[:limit]
 
     async def get_outbox(self, agent_id: str, limit: int = 20) -> list[A2AMessage]:
+        """Retrieve messages from an agent's outbox."""
         path = self._outbox_path(agent_id)
         if not path.exists():
             return []
@@ -114,6 +116,7 @@ class A2AStore:
         return messages[:limit]
 
     async def get_message(self, agent_id: str, message_id: str) -> A2AMessage | None:
+        """Find a specific message by ID in inbox or outbox."""
         for path in [self._inbox_path(agent_id), self._outbox_path(agent_id)]:
             if not path.exists():
                 continue
@@ -128,6 +131,7 @@ class A2AStore:
         return None
 
     async def get_thread(self, agent_id: str, root_message_id: str) -> list[A2AMessage]:
+        """Collect all messages in a reply chain from a root."""
         all_msgs = await self.get_inbox(agent_id, limit=100)
         all_msgs.extend(await self.get_outbox(agent_id, limit=100))
 

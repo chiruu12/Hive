@@ -39,7 +39,9 @@ class AgentState(BaseModel):
     cycles_lived: int = 0
 
     def is_alive(self) -> bool:
+        """Return True if agent status is not DEAD."""
         return self.status != AgentStatus.DEAD
 
     def is_busy(self) -> bool:
+        """Return True if agent is working or waiting."""
         return self.status in (AgentStatus.WORKING, AgentStatus.WAITING)

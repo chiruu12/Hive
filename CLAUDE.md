@@ -87,6 +87,24 @@ src/hive/
 4. **Event log is immutable.** JSONL append-only. Enables replay, debugging, and recovery.
 5. **Model router is pluggable.** Protocol-based. Add new providers without changing agent code.
 6. **Plugins extend toolkits.** Drop a Python file in `.hive/plugins/` with a Toolkit subclass — auto-discovered.
+7. **Daemon is hookable.** `HookRegistry` emits lifecycle events (cycle_start/end, goal_completed/abandoned/generated, suffering_changed). Register callbacks via `daemon.hooks.on()`.
+8. **Registries over hardcoded lists.** `StressorRegistry` for suffering types, `PatternRegistry` for A2A patterns, `InteractionPatternRegistry` for scenario patterns, `MemoryStrategyRegistry` for memory strategies.
+9. **Goal generation is pluggable.** `GoalStrategy` protocol — implement `generate_goal(GoalContext)` and pass to `HiveDaemon(goal_strategy=...)` to override `ExistenceLoop`.
+
+## Extension Points
+
+| Extension | API | File |
+|-----------|-----|------|
+| Custom tool | Subclass `Toolkit`, `@tool()` methods | `src/hive/tools/base.py` |
+| Custom model provider | Subclass `BaseProvider` | `src/hive/models/base.py` |
+| Custom stressor | `StressorRegistry.default().register(name, rate, desc)` | `src/hive/agents/suffering.py` |
+| Custom A2A pattern | Subclass `A2APattern`, `PatternRegistry.default().register(name, instance)` | `src/hive/interactions/registry.py` |
+| Custom goal strategy | Implement `GoalStrategy` protocol, pass to `HiveDaemon` | `src/hive/agents/goal_strategy.py` |
+| Daemon hooks | `daemon.hooks.on("event", callback)` | `src/hive/daemon/hooks.py` |
+| Agent profile | YAML in `profiles/` | `src/hive/agents/profile.py` |
+| Plugin toolkit | Drop in `.hive/plugins/` | `src/hive/runtime/plugin_loader.py` |
+
+See `EXTENDING.md` for copy-paste code examples for each extension point.
 
 ## Commands
 

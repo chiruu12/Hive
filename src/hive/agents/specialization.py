@@ -56,9 +56,11 @@ class SpecializationTracker:
         self._recompute(agent_id)
 
     def get_profile(self, agent_id: str) -> SpecializationProfile:
+        """Return the specialization profile for an agent."""
         return self._profiles.get(agent_id, SpecializationProfile(agent_id=agent_id))
 
     def get_all_profiles(self) -> dict[str, SpecializationProfile]:
+        """Return all tracked specialization profiles."""
         return dict(self._profiles)
 
     def route_score(self, agent_id: str, task_type: str) -> float:

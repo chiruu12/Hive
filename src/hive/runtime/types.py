@@ -50,14 +50,17 @@ class Message:
 
     @staticmethod
     def system(content: str) -> Message:
+        """Create a new Message with system role."""
         return Message(role=Role.SYSTEM, content=content)
 
     @staticmethod
     def user(content: str) -> Message:
+        """Create a new Message with user role."""
         return Message(role=Role.USER, content=content)
 
     @staticmethod
     def assistant(content: str, tool_calls: list[ToolCall] | None = None) -> Message:
+        """Create a new Message with assistant role."""
         tc = tuple(tool_calls) if tool_calls else ()
         return Message(role=Role.ASSISTANT, content=content, tool_calls=tc)
 
@@ -69,6 +72,7 @@ class Message:
         is_error: bool = False,
         name: str = "",
     ) -> Message:
+        """Create a new Message with tool result role."""
         return Message(
             role=Role.TOOL,
             content=content,

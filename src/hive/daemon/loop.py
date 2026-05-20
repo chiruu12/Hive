@@ -7,6 +7,7 @@ from typing import Any
 
 from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
+from hive.agents.goal_strategy import GoalContext, GoalStrategy
 from hive.agents.identity import IdentityManager
 from hive.agents.profile import AgentProfile
 from hive.agents.specialization import SpecializationTracker
@@ -16,6 +17,7 @@ from hive.agents.swarm import SwarmLearning
 from hive.checkpoint import CheckpointManager
 from hive.config import get_config, load_config
 from hive.context import ExecutionContext
+from hive.daemon.hooks import HookRegistry
 from hive.interactions.a2a import A2AStore
 from hive.logging.models import CycleLog, GoalLog, SufferingLog
 from hive.logging.writer import LogWriter
@@ -51,8 +53,10 @@ class HiveDaemon:
         logs_dir: Path | None = None,
         profiles: list[str] | None = None,
         fresh: bool = False,
+        goal_strategy: GoalStrategy | None = None,
     ):
         self._hive_dir = hive_dir
+        self._goal_strategy = goal_strategy
         cfg = load_config(hive_dir)
         self._heartbeat = heartbeat or cfg.daemon.heartbeat
         self._economy_enabled = cfg.economy.enabled
@@ -104,6 +108,7 @@ class HiveDaemon:
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
         self._fresh = fresh
+        self._hooks = HookRegistry()
 
         from hive.runtime.plugin_loader import PluginLoader
 
@@ -114,6 +119,10 @@ class HiveDaemon:
             ]
         )
         self._plugin_toolkits: list[type[Any]] = []
+
+    @property
+    def hooks(self) -> HookRegistry:
+        return self._hooks
 
     def _build_toolkits(self, agent_id: str) -> list[Any]:
         workspace = self._hive_dir / "workspaces" / agent_id
@@ -271,8 +280,31 @@ class HiveDaemon:
             await asyncio.sleep(self._heartbeat)
 
     async def _run_agent_cycle(self, agent: AgentState) -> str:
+        await self._hooks.emit("cycle_start", agent_id=agent.agent_id, cycle_num=self._cycle_count)
+
         suffering = self._get_suffering(agent.agent_id)
-        prev_stressors = {s.type.value for s in suffering.active}
+        result = "idle"
+        try:
+            result = await self._run_agent_cycle_inner(agent, suffering)
+        except Exception:
+            result = "error"
+            raise
+        finally:
+            await self._hooks.emit(
+                "suffering_changed",
+                agent_id=agent.agent_id,
+                suffering_state=suffering,
+            )
+            await self._hooks.emit(
+                "cycle_end",
+                agent_id=agent.agent_id,
+                cycle_num=self._cycle_count,
+                result=result,
+            )
+        return result
+
+    async def _run_agent_cycle_inner(self, agent: AgentState, suffering: SufferingState) -> str:
+        prev_stressors = {s.type for s in suffering.active}
         suffering.escalate_all()
         result = "idle"
 
@@ -346,6 +378,9 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "summary": outcome.summary},
                 )
                 result = "completed"
+                await self._hooks.emit(
+                    "goal_completed", agent_id=agent.agent_id, goal_id=active_goal["goal_id"]
+                )
                 if persona is not None:
                     persona.update_from_event("goal_completed", outcome.summary)
                 self._identity.update_narrative(
@@ -396,6 +431,9 @@ class HiveDaemon:
                     {"goal_id": active_goal["goal_id"], "reason": outcome.summary},
                 )
                 result = "abandoned"
+                await self._hooks.emit(
+                    "goal_abandoned", agent_id=agent.agent_id, goal_id=active_goal["goal_id"]
+                )
                 if persona is not None:
                     persona.update_from_event("goal_abandoned", outcome.summary)
                 self._specialization.record(
@@ -442,22 +480,61 @@ class HiveDaemon:
                 a2a_context = "\n".join(a2a_lines)
                 nudges.append(f"You have pending A2A messages:\n{a2a_context}")
 
-            existence = ExistenceLoop(
-                agent_id=agent.agent_id,
-                profile=profile,
-                provider=runtime_provider,
-                store=self._store,
-                event_log=self._events,
-                hive_dir=self._hive_dir,
-                log_writer=self._log,
-                session_id=session_id,
-                economy_enabled=self._economy_enabled,
-                tools_description=self._build_tools_description(agent.agent_id),
-                world_status=world_status,
-                notepad_content=notepad_content,
-                persona=persona,
-            )
-            goal = await existence.generate_goal(suffering, peers, nudges)
+            recent_goals = await self._store.list_agent_goals(agent.agent_id, limit=5)
+            goal = None
+
+            if self._goal_strategy is not None:
+                ctx = GoalContext(
+                    agent_id=agent.agent_id,
+                    profile=profile,
+                    persona=persona,
+                    suffering=suffering,
+                    peer_summaries=peers,
+                    nudges=nudges,
+                    recent_goals=recent_goals,
+                    tools_description=self._build_tools_description(agent.agent_id),
+                    world_status=world_status,
+                    notepad_content=notepad_content,
+                    economy_enabled=self._economy_enabled,
+                )
+                result_goal = await self._goal_strategy.generate_goal(ctx)
+                if result_goal is not None:
+                    await self._store.save_goal(
+                        result_goal.goal_id, agent.agent_id, result_goal.objective
+                    )
+                    goal = result_goal.objective
+                    await self._hooks.emit(
+                        "goal_generated",
+                        agent_id=agent.agent_id,
+                        goal_id=result_goal.goal_id,
+                        objective=result_goal.objective,
+                    )
+            else:
+                existence = ExistenceLoop(
+                    agent_id=agent.agent_id,
+                    profile=profile,
+                    provider=runtime_provider,
+                    store=self._store,
+                    event_log=self._events,
+                    hive_dir=self._hive_dir,
+                    log_writer=self._log,
+                    session_id=session_id,
+                    economy_enabled=self._economy_enabled,
+                    tools_description=self._build_tools_description(agent.agent_id),
+                    world_status=world_status,
+                    notepad_content=notepad_content,
+                    persona=persona,
+                )
+                goal = await existence.generate_goal(suffering, peers, nudges)
+
+                if goal:
+                    active = await self._store.get_active_goal(agent.agent_id)
+                    await self._hooks.emit(
+                        "goal_generated",
+                        agent_id=agent.agent_id,
+                        goal_id=active["goal_id"] if active else "unknown",
+                        objective=goal,
+                    )
 
             await self._emit(
                 agent.agent_id,
@@ -466,7 +543,7 @@ class HiveDaemon:
                 {"goal_generated": goal or "none", "suffering_load": suffering.cumulative_load},
             )
 
-        current_stressors = {s.type.value for s in suffering.active}
+        current_stressors = {s.type for s in suffering.active}
         events = []
         for s in current_stressors - prev_stressors:
             events.append(f"added:{s}")
@@ -492,10 +569,9 @@ class HiveDaemon:
             {
                 "load": suffering.cumulative_load,
                 "active_count": len(suffering.active),
-                "stressors": [s.type.value for s in suffering.active],
+                "stressors": [s.type for s in suffering.active],
             },
         )
-
         return result
 
     def _process_payday(self, agents: list[AgentState]) -> None:
