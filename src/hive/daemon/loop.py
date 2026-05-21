@@ -161,6 +161,18 @@ class HiveDaemon:
                     tk_cls.__name__,
                     e,
                 )
+
+        import shutil
+
+        if shutil.which("claude") or shutil.which("codex"):
+            from hive.orchestrator.manager import SessionManager
+            from hive.orchestrator.toolkit import OrchestratorToolkit
+
+            orch_manager = SessionManager(self._hive_dir)
+            orch_tk = OrchestratorToolkit(orch_manager)
+            orch_tk.bind(agent_id)
+            toolkits.append(orch_tk)
+
         return toolkits
 
     def _get_tool_names(self) -> list[str]:

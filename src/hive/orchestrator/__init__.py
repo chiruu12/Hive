@@ -8,11 +8,13 @@ from hive.orchestrator.session import (
     SessionResult,
     SessionStatus,
 )
+from hive.orchestrator.toolkit import OrchestratorToolkit
 
 __all__ = [
     "ClaudeCodeSession",
     "CodeSession",
     "CodexSession",
+    "OrchestratorToolkit",
     "SessionManager",
     "SessionResult",
     "SessionStatus",
