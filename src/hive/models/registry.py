@@ -37,6 +37,7 @@ class ModelRegistry(BaseModel):
     fireworks: list[ModelEntry] = []
     groq: list[ModelEntry] = []
     openai: list[ModelEntry] = []
+    openrouter: list[ModelEntry] = []
     local: list[ModelEntry] = []
 
     def all_models(self) -> list[tuple[str, ModelEntry]]:
@@ -49,6 +50,8 @@ class ModelRegistry(BaseModel):
             result.append(("groq", m))
         for m in self.openai:
             result.append(("openai", m))
+        for m in self.openrouter:
+            result.append(("openrouter", m))
         for m in self.local:
             result.append((m.provider or "local", m))
         return result

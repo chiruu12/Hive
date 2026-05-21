@@ -12,6 +12,7 @@ from hive.models.groq import Groq
 from hive.models.lmstudio import LMStudio
 from hive.models.ollama import Ollama
 from hive.models.openai import OpenAI
+from hive.models.openrouter import OpenRouter
 
 
 def _patch_env(return_value: str = "test-key"):
@@ -109,6 +110,24 @@ class TestTierPresets:
             g = Groq.pro()
             assert g.model == "llama-3.3-70b-versatile"
 
+    # --- OpenRouter ---
+
+    def test_openrouter_lite(self) -> None:
+        with _patch_env():
+            o = OpenRouter.lite()
+            assert o.model == "deepseek/deepseek-v4-flash"
+            assert isinstance(o, BaseProvider)
+
+    def test_openrouter_standard(self) -> None:
+        with _patch_env():
+            o = OpenRouter.standard()
+            assert o.model == "moonshotai/kimi-latest"
+
+    def test_openrouter_pro(self) -> None:
+        with _patch_env():
+            o = OpenRouter.pro()
+            assert o.model == "anthropic/claude-sonnet-latest"
+
     # --- LMStudio ---
 
     def test_lmstudio_lite(self) -> None:
@@ -141,6 +160,18 @@ class TestFactory:
             assert isinstance(p, OpenAI)
             assert p.model == "gpt-5.4-nano"
 
+    def test_routes_openrouter(self) -> None:
+        with _patch_env():
+            p = create_runtime_provider("openrouter:deepseek/deepseek-v4-flash")
+            assert isinstance(p, OpenRouter)
+            assert p.model == "deepseek/deepseek-v4-flash"
+
+    def test_routes_openrouter_with_claude_model(self) -> None:
+        with _patch_env():
+            p = create_runtime_provider("openrouter:anthropic/claude-sonnet-latest")
+            assert isinstance(p, OpenRouter)
+            assert p.model == "anthropic/claude-sonnet-latest"
+
     def test_routes_fireworks(self) -> None:
         with _patch_env():
             p = create_runtime_provider("fireworks:accounts/fireworks/models/deepseek-v4-pro")
@@ -172,6 +203,7 @@ class TestFactory:
             for model in [
                 "claude-haiku-4-5",
                 "gpt-5.4-nano",
+                "openrouter:deepseek/deepseek-v4-flash",
                 "groq:llama-3.1-8b-instant",
                 "fireworks:accounts/fireworks/models/minimax-m2p7",
                 "lmstudio:loaded-model",
@@ -211,6 +243,13 @@ class TestRepr:
             r = repr(f)
             assert "Fireworks" in r
             assert "minimax-m2p7" in r
+
+    def test_openrouter_repr(self) -> None:
+        with _patch_env():
+            o = OpenRouter.lite()
+            r = repr(o)
+            assert "OpenRouter" in r
+            assert "deepseek-v4-flash" in r
 
     def test_ollama_repr(self) -> None:
         o = Ollama.lite()
