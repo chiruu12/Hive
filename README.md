@@ -151,9 +151,9 @@ Persistent notepads with presets (journal, evolution, tool requests, custom).
 
 Compare models on scenarios. Export runs as standalone HTML reports.
 
-## LLM Poker Tournament
+## LLM Poker & Arena
 
-We ran 5 Texas Hold'em tournaments with 6 AI models (1.2B to ~1T parameters). Results:
+[Hive Arena](https://github.com/chiruu12/hive-arena) is a companion project -- LLM poker tournaments, economic arena games, and life simulation. In 5 tournaments with 6 models (1.2B to ~1T parameters), the 1.2B local model won the most:
 
 | Run | Winner | Size | Type |
 |-----|--------|------|------|
@@ -163,14 +163,7 @@ We ran 5 Texas Hold'em tournaments with 6 AI models (1.2B to ~1T parameters). Re
 | 4 | Kimi | ~1T | cloud |
 | 5 | Liquid | 1.2B | local |
 
-The 1.2B local model won 2 out of 5 tournaments. [Full results and analysis](hive-arena/tournaments/results/)
-
-```bash
-cd hive-arena
-python -m poker.cli --preset local --hands 25 --dramatic
-```
-
-See [hive-arena/](hive-arena/) for the poker engine, arena games, and life simulation.
+[Full results and analysis](https://github.com/chiruu12/hive-arena/tree/main/tournaments/results/)
 
 ## Community Profiles
 
