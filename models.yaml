@@ -89,17 +89,17 @@ openai:
 
 # OpenRouter models (200+ models via one API key)
 openrouter:
-  - id: "openrouter:deepseek/deepseek-v4-flash"
+  - id: "deepseek/deepseek-v4-flash"
     display: DeepSeek V4 Flash (OpenRouter)
     cost_input_per_1k: 0.0001
     cost_output_per_1k: 0.0004
     tier: routine
-  - id: "openrouter:moonshotai/kimi-latest"
+  - id: "moonshotai/kimi-latest"
     display: Kimi (OpenRouter)
     cost_input_per_1k: 0.002
     cost_output_per_1k: 0.008
     tier: planning
-  - id: "openrouter:anthropic/claude-sonnet-latest"
+  - id: "anthropic/claude-sonnet-latest"
     display: Claude Sonnet (OpenRouter)
     cost_input_per_1k: 0.003
     cost_output_per_1k: 0.015
