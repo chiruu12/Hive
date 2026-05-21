@@ -233,8 +233,13 @@ src/hive/
 
 ## Documentation
 
-- [User Guide](docs/user-guide.md) — comprehensive developer guide
-- [Agent Guide](docs/agent-guide.md) — reference for AI coding assistants
+**[Full documentation site](https://chiruu12.github.io/Hive)**
+
+- [Developer Guide](https://chiruu12.github.io/Hive/guide/developer-guide/) — comprehensive SDK reference
+- [Suffering System](https://chiruu12.github.io/Hive/guide/suffering/) — how agents suffer and change behavior
+- [Persona System](https://chiruu12.github.io/Hive/guide/persona/) — personality, values, and dynamic state
+- [Architecture](https://chiruu12.github.io/Hive/guide/architecture/) — how Hive works under the hood
+- [Extending Hive](https://chiruu12.github.io/Hive/extending/) — 8 extension points with copy-paste examples
 - [Examples](examples/) — 15 runnable code samples
 - [Contributing](CONTRIBUTING.md) — how to add toolkits, providers, profiles
 - [Changelog](CHANGELOG.md) — version history
