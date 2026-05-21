@@ -55,17 +55,21 @@ nav:
   - Home: index.md
   - Getting Started:
     - Installation: getting-started/installation.md
-    - Quickstart: getting-started/quickstart.md
+    - SDK Quickstart: getting-started/quickstart.md
     - CLI Quickstart: getting-started/cli-quickstart.md
   - Guide:
     - Developer Guide: guide/developer-guide.md
+    - Built-in Toolkits: guide/toolkits.md
+    - Daemon Mode: guide/daemon-mode.md
     - Suffering System: guide/suffering.md
     - Persona System: guide/persona.md
+    - CLI Reference: guide/cli-reference.md
     - Architecture: guide/architecture.md
   - Extending:
     - Extension Points: extending/index.md
   - API Reference:
     - SDK Reference: api/sdk-reference.md
+    - Python API: api/python-api.md
   - Examples:
     - Overview: examples/index.md
   - Contributing: contributing.md

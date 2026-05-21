@@ -86,10 +86,10 @@ src/hive/
 3. **YAML profiles define agents.** Role, model, tools, autonomy level, system prompt. No code needed to create an agent.
 4. **Event log is immutable.** JSONL append-only. Enables replay, debugging, and recovery.
 5. **Model router is pluggable.** Protocol-based. Add new providers without changing agent code.
-6. **Plugins extend toolkits.** Drop a Python file in `.hive/plugins/` with a Toolkit subclass — auto-discovered.
+6. **Plugins extend toolkits.** Drop a Python file in `.hive/plugins/` with a Toolkit subclass -- auto-discovered.
 7. **Daemon is hookable.** `HookRegistry` emits lifecycle events (cycle_start/end, goal_completed/abandoned/generated, suffering_changed). Register callbacks via `daemon.hooks.on()`.
 8. **Registries over hardcoded lists.** `StressorRegistry` for suffering types, `PatternRegistry` for A2A patterns, `InteractionPatternRegistry` for scenario patterns, `MemoryStrategyRegistry` for memory strategies.
-9. **Goal generation is pluggable.** `GoalStrategy` protocol — implement `generate_goal(GoalContext)` and pass to `HiveDaemon(goal_strategy=...)` to override `ExistenceLoop`.
+9. **Goal generation is pluggable.** `GoalStrategy` protocol -- implement `generate_goal(GoalContext)` and pass to `HiveDaemon(goal_strategy=...)` to override `ExistenceLoop`.
 
 ## Extension Points
 
@@ -124,7 +124,7 @@ uv run pytest && uv run ruff check src/ && uv run mypy src/
 ## Adding a New Tool
 
 1. Create a `Toolkit` subclass in `src/hive/runtime/toolkits.py` (or a plugin file)
-2. Decorate methods with `@tool()` — JSON Schema auto-extracted from type hints
+2. Decorate methods with `@tool()` -- JSON Schema auto-extracted from type hints
 3. Instantiate in `daemon/loop.py:_build_toolkits()` or drop in `.hive/plugins/`
 
 ## Adding a New Model Provider
@@ -139,3 +139,37 @@ uv run pytest && uv run ruff check src/ && uv run mypy src/
 1. Create YAML file in `profiles/`
 2. Define: name, role, model, tools, autonomy, system_prompt
 3. It's immediately available via `hive spawn <name>`
+
+## Documentation
+
+The docs site lives in `docs/` and is built with MkDocs + Material theme.
+
+### Documentation Rules
+
+**When making code changes, update docs in the same PR:**
+
+- **New toolkit**: Add to `docs/guide/toolkits.md` with tool table and usage example
+- **New CLI command**: Add to `docs/guide/cli-reference.md` with flags and examples
+- **New model provider**: Add to provider table in `docs/index.md` and `docs/api/python-api.md`
+- **New agent profile**: Add to profiles table in `docs/index.md`
+- **New extension point**: Add to `docs/extending/index.md` with copy-paste example and test
+- **Changed API (Agent, Hive, Persona, etc.)**: Update `docs/api/python-api.md` and `docs/api/sdk-reference.md`
+- **Changed daemon behavior**: Update `docs/guide/daemon-mode.md`
+- **Changed suffering/persona mechanics**: Update `docs/guide/suffering.md` or `docs/guide/persona.md`
+- **New config option**: Add to config table in `docs/getting-started/cli-quickstart.md` and `docs/guide/architecture.md`
+
+### Style
+
+- Use `--` (double hyphen) not em dashes
+- Code examples must be runnable -- no pseudocode
+- Tables for API references, prose for concepts
+- Keep pages focused -- one topic per page
+
+### Building
+
+```bash
+uv run mkdocs build --strict   # Build and check for errors
+uv run mkdocs serve            # Local preview at localhost:8000
+```
+
+Docs auto-deploy to GitHub Pages on push to main via `.github/workflows/docs.yml`.
