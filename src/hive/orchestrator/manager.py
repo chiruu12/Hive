@@ -12,7 +12,6 @@ from hive.orchestrator.session import (
     ClaudeCodeSession,
     CodexSession,
     SessionResult,
-    SessionStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,24 +74,20 @@ class SessionManager:
                 logger.error("Session %s failed: %s", session_id, e)
                 self._results[session_id] = SessionResult(
                     session_id=session_id,
-                    task="",
+                    task=session._task,
                     output=f"Error: {e}",
                     exit_code=-1,
                     duration_ms=0,
-                    model="",
-                    tool="unknown",
+                    model=session._model,
+                    tool="codex" if isinstance(session, CodexSession) else "claude",
                 )
 
     def get_status(self, session_id: str) -> str:
-        if session_id in self._results:
-            return (
-                SessionStatus.COMPLETED
-                if self._results[session_id].exit_code == 0
-                else SessionStatus.FAILED
-            )
         session = self._sessions.get(session_id)
         if session is None:
             return "not_found"
+        if session_id in self._results:
+            return session.status.value
         return session.status.value
 
     def get_result(self, session_id: str) -> SessionResult | None:
@@ -111,6 +106,12 @@ class SessionManager:
                 }
             )
         return sessions
+
+    async def await_session(self, session_id: str) -> None:
+        """Wait for a session's background task to complete."""
+        task = self._tasks.get(session_id)
+        if task and not task.done():
+            await task
 
     async def terminate(self, session_id: str) -> None:
         session = self._sessions.get(session_id)

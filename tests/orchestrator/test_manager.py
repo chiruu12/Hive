@@ -50,7 +50,7 @@ class TestSessionManager:
         mock_exec.return_value = _mock_process(stdout=b"done")
 
         sid = await manager.create("task", "/w")
-        await manager._tasks[sid]
+        await manager.await_session(sid)
 
         result = manager.get_result(sid)
         assert result is not None
@@ -63,7 +63,7 @@ class TestSessionManager:
         mock_exec.return_value = _mock_process()
 
         sid = await manager.create("task", "/w")
-        await manager._tasks[sid]
+        await manager.await_session(sid)
 
         status = manager.get_status(sid)
         assert status == "completed"
@@ -90,7 +90,7 @@ class TestSessionManager:
         mock_exec.return_value = _mock_process(stdout=b"result")
 
         sid = await manager.create("task", "/w")
-        await manager._tasks[sid]
+        await manager.await_session(sid)
 
         json_path = manager._sessions_dir / f"{sid}.json"
         assert json_path.exists()

@@ -129,6 +129,10 @@ class ClaudeCodeSession:
                 await asyncio.wait_for(self._process.wait(), timeout=5)
             except (TimeoutError, ProcessLookupError):
                 self._process.kill()
+                try:
+                    await self._process.wait()
+                except Exception:
+                    pass
         if self._status not in (SessionStatus.TIMEOUT, SessionStatus.COMPLETED):
             self._status = SessionStatus.FAILED
 
@@ -215,5 +219,9 @@ class CodexSession:
                 await asyncio.wait_for(self._process.wait(), timeout=5)
             except (TimeoutError, ProcessLookupError):
                 self._process.kill()
+                try:
+                    await self._process.wait()
+                except Exception:
+                    pass
         if self._status not in (SessionStatus.TIMEOUT, SessionStatus.COMPLETED):
             self._status = SessionStatus.FAILED

@@ -54,9 +54,7 @@ class OrchestratorToolkit(Toolkit):
             model=model,
         )
 
-        bg_task = self._manager._tasks.get(session_id)
-        if bg_task:
-            await bg_task
+        await self._manager.await_session(session_id)
 
         result = self._manager.get_result(session_id)
         if result is None:
