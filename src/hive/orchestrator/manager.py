@@ -70,12 +70,12 @@ class SessionManager:
                 result = await session.wait()
                 self._results[session_id] = result
                 self._persist_result(result)
-            except Exception as e:
+            except BaseException as e:
                 logger.error("Session %s failed: %s", session_id, e)
                 self._results[session_id] = SessionResult(
                     session_id=session_id,
                     task=session._task,
-                    output=f"Error: {e}",
+                    output="Cancelled" if isinstance(e, asyncio.CancelledError) else f"Error: {e}",
                     exit_code=-1,
                     duration_ms=0,
                     model=session._model,

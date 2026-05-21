@@ -63,7 +63,7 @@ class OrchestratorToolkit(Toolkit):
         return json.dumps(
             {
                 "session_id": result.session_id,
-                "status": "completed" if result.exit_code == 0 else "failed",
+                "status": self._manager.get_status(result.session_id),
                 "exit_code": result.exit_code,
                 "duration_ms": result.duration_ms,
                 "model": result.model,
