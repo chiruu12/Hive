@@ -6,10 +6,6 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-      - "ARCHITECTURE.md"
-      - "EXTENDING.md"
-      - "CONTRIBUTING.md"
-      - "CHANGELOG.md"
 
 permissions:
   contents: write
@@ -19,8 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: pip install mkdocs-material
-      - run: mkdocs gh-deploy --force
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev
+      - run: uv run mkdocs gh-deploy --force
