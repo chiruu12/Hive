@@ -82,6 +82,28 @@ CREATE TABLE IF NOT EXISTS sub_agents (
     completed_at TEXT,
     FOREIGN KEY (parent_agent_id) REFERENCES agents(agent_id)
 );
+
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    priority TEXT DEFAULT 'medium',
+    status TEXT DEFAULT 'pending',
+    due_date TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
+);
+
+CREATE TABLE IF NOT EXISTS alarms (
+    alarm_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    fire_at TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
+);
 """
 
 
@@ -438,6 +460,120 @@ class HiveStore:
             ) as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
+
+    # --- Tasks ---
+
+    async def save_task(
+        self,
+        task_id: str,
+        agent_id: str,
+        description: str,
+        priority: str = "medium",
+        due_date: str | None = None,
+    ) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """INSERT INTO tasks
+                   (task_id, agent_id, description, priority, due_date, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    task_id, agent_id, description, priority,
+                    due_date, datetime.now(UTC).isoformat(),
+                ),
+            )
+            await db.commit()
+
+    async def list_tasks(
+        self, agent_id: str, status: str = "pending"
+    ) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM tasks WHERE agent_id = ? AND status = ? ORDER BY created_at DESC",
+                (agent_id, status),
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    async def complete_task(self, task_id: str) -> bool:
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                """UPDATE tasks SET status = 'done', completed_at = ?
+                   WHERE task_id = ? AND status = 'pending'""",
+                (datetime.now(UTC).isoformat(), task_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def delete_task(self, task_id: str) -> bool:
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def list_all_tasks(self, status: str = "pending") -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC",
+                (status,),
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    # --- Alarms ---
+
+    async def save_alarm(
+        self, alarm_id: str, agent_id: str, description: str, fire_at: str
+    ) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """INSERT INTO alarms (alarm_id, agent_id, description, fire_at, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (alarm_id, agent_id, description, fire_at, datetime.now(UTC).isoformat()),
+            )
+            await db.commit()
+
+    async def list_pending_alarms(self, agent_id: str) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM alarms WHERE agent_id = ? AND status = 'pending' ORDER BY fire_at",
+                (agent_id,),
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    async def get_due_alarms(self) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM alarms WHERE status = 'pending' AND fire_at <= ?",
+                (datetime.now(UTC).isoformat(),),
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    async def mark_alarm_fired(self, alarm_id: str) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE alarms SET status = 'fired' WHERE alarm_id = ?",
+                (alarm_id,),
+            )
+            await db.commit()
+
+    async def cancel_alarm(self, alarm_id: str) -> bool:
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                "DELETE FROM alarms WHERE alarm_id = ? AND status = 'pending'",
+                (alarm_id,),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def list_all_pending_alarms(self) -> list[dict[str, Any]]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM alarms WHERE status = 'pending' ORDER BY fire_at",
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
 
     def _row_to_state(self, row: aiosqlite.Row) -> AgentState:
         return AgentState(
