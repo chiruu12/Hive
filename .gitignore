@@ -224,3 +224,8 @@ tmp/
 # Experiment outputs (large, generated)
 experiments/results/
 experiments/reports/
+
+# Local workspace artifacts (separate repos / drafts)
+launch/
+poker-engine/
+hive-arena/
