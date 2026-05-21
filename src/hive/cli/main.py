@@ -975,6 +975,95 @@ def threads(
         console.print("[dim]No threads found.[/dim]")
 
 
+@app.command()
+def orchestrate(
+    task: str = typer.Argument(help="High-level coding task to orchestrate"),
+    workspace: str = typer.Option(".", "--workspace", "-w", help="Project directory"),
+    tool: str = typer.Option("claude", "--tool", "-t", help="CLI tool: claude or codex"),
+    model: str = typer.Option("sonnet", "--model", "-m", help="Model to use for subtasks"),
+) -> None:
+    """Orchestrate a complex coding task by breaking it into subtasks."""
+    import shutil
+
+    from hive.models.factory import create_runtime_provider
+    from hive.orchestrator.manager import SessionManager
+    from hive.orchestrator.toolkit import OrchestratorToolkit
+    from hive.runtime.agent import Agent
+    from hive.runtime.persona import Persona
+
+    workspace_path = Path(workspace).resolve()
+    if not workspace_path.is_dir():
+        console.print(f"[red]Workspace not found: {workspace}[/red]")
+        raise typer.Exit(1)
+
+    if tool == "claude" and not shutil.which("claude"):
+        console.print("[red]Claude Code CLI not found. Install it first.[/red]")
+        raise typer.Exit(1)
+    if tool == "codex" and not shutil.which("codex"):
+        console.print("[red]Codex CLI not found. Install it first.[/red]")
+        raise typer.Exit(1)
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        hive_dir.mkdir(parents=True)
+
+    manager = SessionManager(hive_dir)
+    orch_toolkit = OrchestratorToolkit(manager)
+
+    persona = Persona(
+        name="Orchestrator",
+        purpose="Break down and delegate coding tasks",
+        personality=["systematic", "thorough"],
+        instructions=[
+            f"You are orchestrating the following task: {task}",
+            f"The workspace is: {workspace_path}",
+            f"Use the '{tool}' CLI tool with model '{model}' for each subtask.",
+            "Break the main task into clear, independent subtasks.",
+            "Run each subtask using run_code_task.",
+            "Review the output of each completed task.",
+            "Provide a final summary of all results.",
+        ],
+    )
+
+    provider = create_runtime_provider("claude-haiku-4-5")
+    agent = Agent(
+        name="orchestrator",
+        model=provider,
+        persona=persona,
+        toolkits=[orch_toolkit],
+        max_steps=50,
+    )
+
+    console.print(
+        Panel(
+            f"[bold]Orchestrating:[/bold] {task}\n"
+            f"  Workspace: {workspace_path}\n"
+            f"  Tool: {tool}\n"
+            f"  Model: {model}\n\n"
+            f"[dim]This may take several minutes...[/dim]",
+            border_style="blue",
+        )
+    )
+
+    async def _run() -> str:
+        return await agent.run_once(
+            f"Execute this task by breaking it into subtasks and running each one: {task}",
+            max_tool_rounds=20,
+        )
+
+    try:
+        result = asyncio.run(_run())
+        console.print()
+        from rich.markdown import Markdown
+
+        console.print(Panel(Markdown(result), title="Orchestration Complete", border_style="green"))
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Orchestration cancelled.[/yellow]")
+    except Exception as e:
+        console.print(f"\n[red]Orchestration failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
 demo_app = typer.Typer(
     name="demo",
     help="Run built-in demos that showcase Hive features.",
