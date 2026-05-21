@@ -12,6 +12,7 @@ from hive.models.groq import Groq
 from hive.models.lmstudio import LMStudio
 from hive.models.ollama import Ollama
 from hive.models.openai import OpenAI
+from hive.models.openrouter import OpenRouter
 
 
 def _patch_env(return_value: str = "test-key"):
@@ -109,6 +110,24 @@ class TestTierPresets:
             g = Groq.pro()
             assert g.model == "llama-3.3-70b-versatile"
 
+    # --- OpenRouter ---
+
+    def test_openrouter_lite(self) -> None:
+        with _patch_env():
+            o = OpenRouter.lite()
+            assert o.model == "google/gemini-2.0-flash-001"
+            assert isinstance(o, BaseProvider)
+
+    def test_openrouter_standard(self) -> None:
+        with _patch_env():
+            o = OpenRouter.standard()
+            assert o.model == "anthropic/claude-sonnet-4-6"
+
+    def test_openrouter_pro(self) -> None:
+        with _patch_env():
+            o = OpenRouter.pro()
+            assert o.model == "google/gemini-2.5-pro"
+
     # --- LMStudio ---
 
     def test_lmstudio_lite(self) -> None:
@@ -141,6 +160,12 @@ class TestFactory:
             assert isinstance(p, OpenAI)
             assert p.model == "gpt-5.4-nano"
 
+    def test_routes_openrouter(self) -> None:
+        with _patch_env():
+            p = create_runtime_provider("openrouter:google/gemini-2.0-flash-001")
+            assert isinstance(p, OpenRouter)
+            assert p.model == "google/gemini-2.0-flash-001"
+
     def test_routes_fireworks(self) -> None:
         with _patch_env():
             p = create_runtime_provider("fireworks:accounts/fireworks/models/deepseek-v4-pro")
@@ -172,6 +197,7 @@ class TestFactory:
             for model in [
                 "claude-haiku-4-5",
                 "gpt-5.4-nano",
+                "openrouter:google/gemini-2.0-flash-001",
                 "groq:llama-3.1-8b-instant",
                 "fireworks:accounts/fireworks/models/minimax-m2p7",
                 "lmstudio:loaded-model",
@@ -211,6 +237,13 @@ class TestRepr:
             r = repr(f)
             assert "Fireworks" in r
             assert "minimax-m2p7" in r
+
+    def test_openrouter_repr(self) -> None:
+        with _patch_env():
+            o = OpenRouter.lite()
+            r = repr(o)
+            assert "OpenRouter" in r
+            assert "gemini-2.0-flash" in r
 
     def test_ollama_repr(self) -> None:
         o = Ollama.lite()

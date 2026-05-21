@@ -86,6 +86,12 @@ def detect_models() -> dict[str, list[ModelInfo]]:
     if reg.openai:
         providers["OpenAI"] = [ModelInfo(m.id, "openai", has_openai) for m in reg.openai]
 
+    has_openrouter = bool(get_env("OPENROUTER_API_KEY"))
+    if reg.openrouter:
+        providers["OpenRouter"] = [
+            ModelInfo(m.id, "openrouter", has_openrouter) for m in reg.openrouter
+        ]
+
     if reg.local:
         local_models = []
         for m in reg.local:

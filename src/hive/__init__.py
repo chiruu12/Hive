@@ -24,6 +24,7 @@ from hive.models.groq import Groq
 from hive.models.lmstudio import LMStudio
 from hive.models.ollama import Ollama
 from hive.models.openai import OpenAI
+from hive.models.openrouter import OpenRouter
 from hive.orchestrator import (
     ClaudeCodeSession,
     CodexSession,
@@ -100,6 +101,7 @@ __all__ = [
     "Message",
     "Ollama",
     "OpenAI",
+    "OpenRouter",
     "OrchestratorToolkit",
     "PatternRegistry",
     "Persona",
