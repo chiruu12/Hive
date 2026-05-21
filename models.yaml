@@ -94,15 +94,15 @@ openrouter:
     cost_input_per_1k: 0.0001
     cost_output_per_1k: 0.0004
     tier: routine
-  - id: "openrouter:moonshotai/kimi-k2.6"
-    display: Kimi K2.6 (OpenRouter)
+  - id: "openrouter:moonshotai/kimi-latest"
+    display: Kimi (OpenRouter)
     cost_input_per_1k: 0.002
     cost_output_per_1k: 0.008
     tier: planning
-  - id: "openrouter:google/gemini-2.5-pro"
-    display: Gemini 2.5 Pro (OpenRouter)
-    cost_input_per_1k: 0.00125
-    cost_output_per_1k: 0.01
+  - id: "openrouter:anthropic/claude-sonnet-latest"
+    display: Claude Sonnet (OpenRouter)
+    cost_input_per_1k: 0.003
+    cost_output_per_1k: 0.015
     tier: pro
 
 # Local models (no API key needed)

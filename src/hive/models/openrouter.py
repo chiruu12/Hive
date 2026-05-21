@@ -13,15 +13,16 @@ class OpenRouter(OpenAI):
 
     def __init__(
         self,
-        model: str = "anthropic/claude-sonnet-4-6",
+        model: str = "deepseek/deepseek-v4-flash",
         api_key: str | None = None,
     ):
-        key = api_key or get_env("OPENROUTER_API_KEY") or None
+        key = api_key or get_env("OPENROUTER_API_KEY")
         super().__init__(
             model=model,
-            api_key=key,
+            api_key=key or "not-set",
             base_url="https://openrouter.ai/api/v1",
         )
+        self._has_key = bool(key)
 
     @classmethod
     def lite(cls, **kwargs: Any) -> OpenRouter:
@@ -30,10 +31,10 @@ class OpenRouter(OpenAI):
 
     @classmethod
     def standard(cls, **kwargs: Any) -> OpenRouter:
-        """Moonshot Kimi K2.6 — balanced."""
-        return cls(model="moonshotai/kimi-k2.6", **kwargs)
+        """Moonshot Kimi — balanced."""
+        return cls(model="moonshotai/kimi-latest", **kwargs)
 
     @classmethod
     def pro(cls, **kwargs: Any) -> OpenRouter:
-        """Google Gemini 2.5 Pro — most capable."""
-        return cls(model="google/gemini-2.5-pro", **kwargs)
+        """Anthropic Claude Sonnet — most capable."""
+        return cls(model="anthropic/claude-sonnet-latest", **kwargs)

@@ -121,12 +121,12 @@ class TestTierPresets:
     def test_openrouter_standard(self) -> None:
         with _patch_env():
             o = OpenRouter.standard()
-            assert o.model == "moonshotai/kimi-k2.6"
+            assert o.model == "moonshotai/kimi-latest"
 
     def test_openrouter_pro(self) -> None:
         with _patch_env():
             o = OpenRouter.pro()
-            assert o.model == "google/gemini-2.5-pro"
+            assert o.model == "anthropic/claude-sonnet-latest"
 
     # --- LMStudio ---
 
@@ -165,6 +165,12 @@ class TestFactory:
             p = create_runtime_provider("openrouter:deepseek/deepseek-v4-flash")
             assert isinstance(p, OpenRouter)
             assert p.model == "deepseek/deepseek-v4-flash"
+
+    def test_routes_openrouter_with_claude_model(self) -> None:
+        with _patch_env():
+            p = create_runtime_provider("openrouter:anthropic/claude-sonnet-latest")
+            assert isinstance(p, OpenRouter)
+            assert p.model == "anthropic/claude-sonnet-latest"
 
     def test_routes_fireworks(self) -> None:
         with _patch_env():

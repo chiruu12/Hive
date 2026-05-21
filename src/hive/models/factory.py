@@ -25,12 +25,6 @@ def create_runtime_provider(model_name: str) -> BaseProvider:
     from hive.models.openai import OpenAI
     from hive.models.openrouter import OpenRouter
 
-    if "claude" in model_name or model_name.startswith("claude-"):
-        return Anthropic(model=model_name)
-
-    if model_name.startswith("gpt-"):
-        return OpenAI(model=model_name)
-
     if model_name.startswith("openrouter:"):
         clean = model_name.removeprefix("openrouter:")
         return OpenRouter(model=clean)
@@ -46,6 +40,12 @@ def create_runtime_provider(model_name: str) -> BaseProvider:
     if model_name.startswith("lmstudio:"):
         clean = model_name.removeprefix("lmstudio:")
         return LMStudio(model=clean)
+
+    if "claude" in model_name or model_name.startswith("claude-"):
+        return Anthropic(model=model_name)
+
+    if model_name.startswith("gpt-"):
+        return OpenAI(model=model_name)
 
     clean = model_name.removeprefix("ollama:")
     return Ollama(model=clean)
