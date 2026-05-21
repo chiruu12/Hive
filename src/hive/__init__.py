@@ -24,6 +24,12 @@ from hive.models.groq import Groq
 from hive.models.lmstudio import LMStudio
 from hive.models.ollama import Ollama
 from hive.models.openai import OpenAI
+from hive.orchestrator import (
+    ClaudeCodeSession,
+    CodexSession,
+    OrchestratorToolkit,
+    SessionManager,
+)
 from hive.runtime import (
     Agent,
     ConversationMemory,
@@ -60,6 +66,8 @@ __all__ = [
     "Agent",
     "AgentProfile",
     "Anthropic",
+    "ClaudeCodeSession",
+    "CodexSession",
     "BaseProvider",
     "Hive",
     "AgentState",
@@ -92,6 +100,7 @@ __all__ = [
     "Message",
     "Ollama",
     "OpenAI",
+    "OrchestratorToolkit",
     "PatternRegistry",
     "Persona",
     "PersistentMemory",
@@ -102,6 +111,7 @@ __all__ = [
     "StructuredTaskResult",
     "SufferingState",
     "Role",
+    "SessionManager",
     "Task",
     "TaskResult",
     "TaskStatus",

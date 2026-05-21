@@ -109,6 +109,7 @@ class HiveDaemon:
         self._profiles = profiles or []
         self._fresh = fresh
         self._hooks = HookRegistry()
+        self._orch_manager: Any = None
 
         from hive.runtime.plugin_loader import PluginLoader
 
@@ -161,6 +162,19 @@ class HiveDaemon:
                     tk_cls.__name__,
                     e,
                 )
+
+        import shutil
+
+        if shutil.which("claude") or shutil.which("codex"):
+            from hive.orchestrator.manager import SessionManager
+            from hive.orchestrator.toolkit import OrchestratorToolkit
+
+            if self._orch_manager is None:
+                self._orch_manager = SessionManager(self._hive_dir)
+            orch_tk = OrchestratorToolkit(self._orch_manager)
+            orch_tk.bind(agent_id)
+            toolkits.append(orch_tk)
+
         return toolkits
 
     def _get_tool_names(self) -> list[str]:
