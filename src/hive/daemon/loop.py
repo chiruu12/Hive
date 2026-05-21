@@ -109,6 +109,7 @@ class HiveDaemon:
         self._profiles = profiles or []
         self._fresh = fresh
         self._hooks = HookRegistry()
+        self._orch_manager: Any = None
 
         from hive.runtime.plugin_loader import PluginLoader
 
@@ -168,8 +169,9 @@ class HiveDaemon:
             from hive.orchestrator.manager import SessionManager
             from hive.orchestrator.toolkit import OrchestratorToolkit
 
-            orch_manager = SessionManager(self._hive_dir)
-            orch_tk = OrchestratorToolkit(orch_manager)
+            if self._orch_manager is None:
+                self._orch_manager = SessionManager(self._hive_dir)
+            orch_tk = OrchestratorToolkit(self._orch_manager)
             orch_tk.bind(agent_id)
             toolkits.append(orch_tk)
 

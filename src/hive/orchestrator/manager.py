@@ -43,6 +43,7 @@ class SessionManager:
         timeout: int = 300,
     ) -> str:
         """Create and start a new code session. Returns session_id."""
+        session: ClaudeCodeSession | CodexSession
         if tool == "codex":
             session = CodexSession(
                 task=task,
