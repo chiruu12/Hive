@@ -1064,6 +1064,216 @@ def orchestrate(
         raise typer.Exit(1)
 
 
+tasks_app = typer.Typer(
+    name="tasks",
+    help="Manage agent tasks.",
+    invoke_without_command=True,
+)
+app.add_typer(tasks_app, name="tasks")
+
+
+@tasks_app.callback()
+def tasks_list(
+    ctx: typer.Context,
+    status: str = typer.Option("pending", "--status", "-s", help="Filter by status"),
+) -> None:
+    """List tasks across all agents."""
+    if ctx.invoked_subcommand is not None:
+        return
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+    asyncio.run(store.initialize())
+    tasks = asyncio.run(store.list_all_tasks(status))
+    if not tasks:
+        console.print(f"[dim]No {status} tasks.[/dim]")
+        return
+
+    table = Table(title=f"{status.title()} Tasks")
+    table.add_column("ID", style="cyan")
+    table.add_column("Agent", style="dim")
+    table.add_column("Description")
+    table.add_column("Priority")
+    table.add_column("Due", style="dim")
+
+    for t in tasks:
+        table.add_row(
+            t["task_id"],
+            t["agent_id"].split("-")[0],
+            t["description"][:60],
+            t["priority"],
+            t["due_date"] or "-",
+        )
+    console.print(table)
+
+
+@tasks_app.command("done")
+def tasks_done(task_id: str = typer.Argument(help="Task ID to complete")) -> None:
+    """Mark a task as done."""
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+    asyncio.run(store.initialize())
+    ok = asyncio.run(store.complete_task(task_id))
+    if ok:
+        console.print(f"[green]✓ Task {task_id} completed.[/green]")
+    else:
+        console.print(f"[red]Task {task_id} not found or already done.[/red]")
+
+
+notes_app = typer.Typer(
+    name="notes",
+    help="Browse and search knowledge notes.",
+    invoke_without_command=True,
+)
+app.add_typer(notes_app, name="notes")
+
+
+@notes_app.callback()
+def notes_list(
+    ctx: typer.Context,
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of notes"),
+) -> None:
+    """List recent notes across all agents."""
+    if ctx.invoked_subcommand is not None:
+        return
+    from hive.memory.semantic import SemanticMemory
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    memory_dir = hive_dir / "memory"
+    if not memory_dir.exists():
+        console.print("[dim]No notes yet.[/dim]")
+        return
+
+    all_notes = []
+    for agent_dir in memory_dir.iterdir():
+        if agent_dir.is_dir():
+            mem = SemanticMemory(hive_dir, agent_dir.name)
+            all_notes.extend(
+                (agent_dir.name, n) for n in mem.recent(limit)
+            )
+    all_notes.sort(key=lambda x: x[1].ts, reverse=True)
+
+    if not all_notes:
+        console.print("[dim]No notes yet.[/dim]")
+        return
+
+    table = Table(title="Recent Notes")
+    table.add_column("ID", style="cyan")
+    table.add_column("Agent", style="dim")
+    table.add_column("Content")
+    table.add_column("Tags", style="dim")
+    table.add_column("Time", style="dim")
+
+    for agent, note in all_notes[:limit]:
+        table.add_row(
+            note.memory_id,
+            agent.split("-")[0],
+            note.thought[:60],
+            note.metadata.get("tags", ""),
+            note.ts.strftime("%Y-%m-%d %H:%M"),
+        )
+    console.print(table)
+
+
+@notes_app.command("search")
+def notes_search(
+    query: str = typer.Argument(help="Search query"),
+    limit: int = typer.Option(5, "--limit", "-n", help="Max results"),
+) -> None:
+    """Search the knowledge base."""
+    from hive.memory.semantic import SemanticMemory
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    memory_dir = hive_dir / "memory"
+    if not memory_dir.exists():
+        console.print("[dim]No notes yet.[/dim]")
+        return
+
+    all_results = []
+    for agent_dir in memory_dir.iterdir():
+        if agent_dir.is_dir():
+            mem = SemanticMemory(hive_dir, agent_dir.name)
+
+            async def _search():
+                return await mem.search(query, top_k=limit)
+
+            results = asyncio.run(_search())
+            all_results.extend(
+                (agent_dir.name, r) for r in results
+            )
+
+    if not all_results:
+        console.print("[dim]No matching notes.[/dim]")
+        return
+
+    table = Table(title=f"Search: {query}")
+    table.add_column("ID", style="cyan")
+    table.add_column("Agent", style="dim")
+    table.add_column("Content")
+    table.add_column("Tags", style="dim")
+
+    for agent, note in all_results[:limit]:
+        table.add_row(
+            note.memory_id,
+            agent.split("-")[0],
+            note.thought[:80],
+            note.metadata.get("tags", ""),
+        )
+    console.print(table)
+
+
+@app.command()
+def alarms() -> None:
+    """List all pending alarms."""
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+    asyncio.run(store.initialize())
+    pending = asyncio.run(store.list_all_pending_alarms())
+    if not pending:
+        console.print("[dim]No pending alarms.[/dim]")
+        return
+
+    table = Table(title="Pending Alarms")
+    table.add_column("ID", style="cyan")
+    table.add_column("Agent", style="dim")
+    table.add_column("Description")
+    table.add_column("Fires At", style="yellow")
+
+    for a in pending:
+        table.add_row(
+            a["alarm_id"],
+            a["agent_id"].split("-")[0],
+            a["description"][:60],
+            a["fire_at"],
+        )
+    console.print(table)
+
+
 demo_app = typer.Typer(
     name="demo",
     help="Run built-in demos that showcase Hive features.",
