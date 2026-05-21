@@ -115,13 +115,13 @@ class TestTierPresets:
     def test_openrouter_lite(self) -> None:
         with _patch_env():
             o = OpenRouter.lite()
-            assert o.model == "google/gemini-2.0-flash-001"
+            assert o.model == "deepseek/deepseek-v4-flash"
             assert isinstance(o, BaseProvider)
 
     def test_openrouter_standard(self) -> None:
         with _patch_env():
             o = OpenRouter.standard()
-            assert o.model == "anthropic/claude-sonnet-4-6"
+            assert o.model == "moonshotai/kimi-k2.6"
 
     def test_openrouter_pro(self) -> None:
         with _patch_env():
@@ -162,9 +162,9 @@ class TestFactory:
 
     def test_routes_openrouter(self) -> None:
         with _patch_env():
-            p = create_runtime_provider("openrouter:google/gemini-2.0-flash-001")
+            p = create_runtime_provider("openrouter:deepseek/deepseek-v4-flash")
             assert isinstance(p, OpenRouter)
-            assert p.model == "google/gemini-2.0-flash-001"
+            assert p.model == "deepseek/deepseek-v4-flash"
 
     def test_routes_fireworks(self) -> None:
         with _patch_env():
@@ -197,7 +197,7 @@ class TestFactory:
             for model in [
                 "claude-haiku-4-5",
                 "gpt-5.4-nano",
-                "openrouter:google/gemini-2.0-flash-001",
+                "openrouter:deepseek/deepseek-v4-flash",
                 "groq:llama-3.1-8b-instant",
                 "fireworks:accounts/fireworks/models/minimax-m2p7",
                 "lmstudio:loaded-model",
@@ -243,7 +243,7 @@ class TestRepr:
             o = OpenRouter.lite()
             r = repr(o)
             assert "OpenRouter" in r
-            assert "gemini-2.0-flash" in r
+            assert "deepseek-v4-flash" in r
 
     def test_ollama_repr(self) -> None:
         o = Ollama.lite()

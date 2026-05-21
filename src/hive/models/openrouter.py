@@ -25,13 +25,13 @@ class OpenRouter(OpenAI):
 
     @classmethod
     def lite(cls, **kwargs: Any) -> OpenRouter:
-        """Google Gemini 2.0 Flash — fast and cheap."""
-        return cls(model="google/gemini-2.0-flash-001", **kwargs)
+        """DeepSeek V4 Flash — fast and cheap."""
+        return cls(model="deepseek/deepseek-v4-flash", **kwargs)
 
     @classmethod
     def standard(cls, **kwargs: Any) -> OpenRouter:
-        """Anthropic Claude Sonnet 4.6 — balanced."""
-        return cls(model="anthropic/claude-sonnet-4-6", **kwargs)
+        """Moonshot Kimi K2.6 — balanced."""
+        return cls(model="moonshotai/kimi-k2.6", **kwargs)
 
     @classmethod
     def pro(cls, **kwargs: Any) -> OpenRouter:
