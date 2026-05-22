@@ -1271,32 +1271,6 @@ def alarms() -> None:
     console.print(table)
 
 
-demo_app = typer.Typer(
-    name="demo",
-    help="Run built-in demos that showcase Hive features.",
-    no_args_is_help=True,
-)
-app.add_typer(demo_app, name="demo")
-
-
-@demo_app.command("survival")
-def demo_survival() -> None:
-    """3 agents, 30 cycles, economy on. Watch them struggle and thrive."""
-    from hive.demos.survival import run_survival_demo
-
-    run_survival_demo()
-
-
-@demo_app.command("detective")
-def demo_detective(
-    model: str = typer.Option("claude-haiku-4-5", "--model", "-m", help="Model for detectives"),
-) -> None:
-    """Multi-model murder mystery investigation."""
-    from hive.demos.detective import run_detective_demo
-
-    run_detective_demo(model=model)
-
-
 agent_app = typer.Typer(
     name="agent",
     help="Run individual agents interactively.",

@@ -58,19 +58,20 @@ DETECTIVES = [
 ]
 
 
-def run_detective_demo(model: str = "claude-haiku-4-5") -> None:
+def run_detective_demo(model: str = "claude-haiku-4-5", quiet: bool = False) -> None:
     """Run the detective scenario with Rich output."""
-    console.print(
-        Panel(
-            "[bold]Hive Detective Demo[/bold]\n\n"
-            "A murder at the Thornfield Gallery. 3 detectives investigate.\n"
-            f"  Model: [green]{model}[/green]\n"
-            "  Rounds: 4 + final accusation\n\n"
-            "[dim]Each detective sees the crime scene, gets clues, and forms theories.[/dim]",
-            border_style="blue",
-            title="Detective",
+    if not quiet:
+        console.print(
+            Panel(
+                "[bold]Hive Detective Demo[/bold]\n\n"
+                "A murder at the Thornfield Gallery. 3 detectives investigate.\n"
+                f"  Model: [green]{model}[/green]\n"
+                "  Rounds: 4 + final accusation\n\n"
+                "[dim]Each detective sees the crime scene, gets clues, and forms theories.[/dim]",
+                border_style="blue",
+                title="Detective",
+            )
         )
-    )
 
     crime_scene = _load_crime_scene()
     if not crime_scene:
@@ -78,7 +79,7 @@ def run_detective_demo(model: str = "claude-haiku-4-5") -> None:
         return
 
     clues = _load_clues()
-    asyncio.run(_run_investigation(model, crime_scene, clues))
+    asyncio.run(_run_investigation(model, crime_scene, clues, quiet=quiet))
 
 
 def _load_crime_scene() -> str:
@@ -96,7 +97,9 @@ def _load_clues() -> list[str]:
     return [f.read_text() for f in clue_files]
 
 
-async def _run_investigation(model: str, crime_scene: str, clues: list[str]) -> None:
+async def _run_investigation(
+    model: str, crime_scene: str, clues: list[str], quiet: bool = False
+) -> None:
     from hive.models.factory import create_runtime_provider
     from hive.runtime.types import Message
 
@@ -104,13 +107,22 @@ async def _run_investigation(model: str, crime_scene: str, clues: list[str]) -> 
     theories: dict[str, list[dict[str, Any]]] = {d["name"]: [] for d in DETECTIVES}
     rounds = min(4, len(clues)) if clues else 2
 
+    pbar = None
+    total_steps = rounds * len(DETECTIVES)
+    if quiet:
+        from tqdm import tqdm
+
+        pbar = tqdm(total=total_steps, desc="Investigation", unit="query")
+
     for round_num in range(1, rounds + 1):
-        console.print(f"\n[bold]--- Round {round_num} ---[/bold]")
+        if not quiet:
+            console.print(f"\n[bold]--- Round {round_num} ---[/bold]")
         clue = clues[round_num - 1] if round_num <= len(clues) else ""
 
         for det in DETECTIVES:
             name = det["name"]
-            console.print(f"  [cyan]{name}[/cyan] investigating...", end="")
+            if not quiet:
+                console.print(f"  [cyan]{name}[/cyan] investigating...", end="")
 
             other_theories = ""
             for other_name, t_list in theories.items():
@@ -146,15 +158,24 @@ async def _run_investigation(model: str, crime_scene: str, clues: list[str]) -> 
                 parsed = extract_json(result.content)
                 if parsed:
                     theories[name].append(parsed)
-                    suspect = parsed.get("suspect", "unknown")
-                    conf = parsed.get("confidence", "?")
-                    console.print(f" suspects [bold]{suspect}[/bold] ({conf}%)")
+                    if not quiet:
+                        suspect = parsed.get("suspect", "unknown")
+                        conf = parsed.get("confidence", "?")
+                        console.print(f" suspects [bold]{suspect}[/bold] ({conf}%)")
                 else:
                     theories[name].append({"suspect": "unknown", "confidence": 0})
-                    console.print(" [dim]could not parse response[/dim]")
+                    if not quiet:
+                        console.print(" [dim]could not parse response[/dim]")
             except Exception as e:
-                console.print(f" [red]error: {e}[/red]")
+                if not quiet:
+                    console.print(f" [red]error: {e}[/red]")
                 theories[name].append({"suspect": "unknown", "confidence": 0})
+
+            if pbar:
+                pbar.update(1)
+
+    if pbar:
+        pbar.close()
 
     console.print("\n[bold]--- Final Accusations ---[/bold]\n")
     table = Table(title="Investigation Results")
