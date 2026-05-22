@@ -40,6 +40,10 @@ dev = [
     "mypy>=1.10",
     "types-PyYAML>=6.0",
 ]
+chromadb = [
+    "chromadb>=0.5",
+    "sentence-transformers>=3.0",
+]
 
 [project.scripts]
 hive = "hive.cli.main:app"
