@@ -124,4 +124,5 @@ class ChromaBackend:
         self._collection.delete(ids=[memory_id])
 
     def count(self) -> int:
-        return self._collection.count()
+        result: int = self._collection.count()
+        return result

@@ -35,21 +35,24 @@ class SemanticMemory:
         self._hive_dir = hive_dir
 
         if backend is not None:
-            self._backend = backend
+            self._backend: Any = backend
         else:
             from hive.memory.tfidf_backend import TFIDFBackend
 
             self._backend = TFIDFBackend(hive_dir, agent_id)
 
     async def store(self, thought: str, metadata: dict[str, Any] | None = None) -> str:
-        return await self._backend.store(thought, metadata or {})
+        result: str = await self._backend.store(thought, metadata or {})
+        return result
 
     async def search(self, query: str, top_k: int = 5) -> list[MemoryRecord]:
-        return await self._backend.search(query, top_k)
+        result: list[MemoryRecord] = await self._backend.search(query, top_k)
+        return result
 
     async def recall(self, memory_id: str) -> MemoryRecord | None:
         if hasattr(self._backend, "recall"):
-            return await self._backend.recall(memory_id)
+            result: MemoryRecord | None = await self._backend.recall(memory_id)
+            return result
         return None
 
     async def forget(self, memory_id: str) -> None:
@@ -57,15 +60,18 @@ class SemanticMemory:
 
     async def consolidate(self, max_age_days: int = 30, min_access: int = 2) -> int:
         if hasattr(self._backend, "consolidate"):
-            return await self._backend.consolidate(max_age_days, min_access)
+            result: int = await self._backend.consolidate(max_age_days, min_access)
+            return result
         return 0
 
     def count(self) -> int:
-        return self._backend.count()
+        result: int = self._backend.count()
+        return result
 
     def recent(self, limit: int = 5) -> list[MemoryRecord]:
         if hasattr(self._backend, "recent_sync"):
-            return self._backend.recent_sync(limit)
+            result: list[MemoryRecord] = self._backend.recent_sync(limit)
+            return result
         import asyncio
 
         try:
@@ -73,6 +79,10 @@ class SemanticMemory:
             import concurrent.futures
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, self._backend.recent(limit)).result()
+                r: list[MemoryRecord] = pool.submit(
+                    asyncio.run, self._backend.recent(limit)
+                ).result()
+                return r
         except RuntimeError:
-            return asyncio.run(self._backend.recent(limit))
+            r2: list[MemoryRecord] = asyncio.run(self._backend.recent(limit))
+            return r2
