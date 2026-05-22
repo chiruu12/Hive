@@ -7,6 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
+import httpx
 from pydantic import BaseModel
 
 from hive.runtime.types import GenerateResult, Message
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
+NON_RETRYABLE_STATUS_CODES = {400, 401, 403}
 MAX_RETRIES = 3
 BASE_DELAY = 1.0
 
@@ -85,8 +87,11 @@ class BaseProvider(ABC):
                 return await fn(*args, **kwargs)
             except Exception as e:
                 status = getattr(e, "status_code", getattr(e, "status", 0))
+                if status in NON_RETRYABLE_STATUS_CODES:
+                    raise
                 is_timeout = "timeout" in type(e).__name__.lower() or isinstance(e, TimeoutError)
-                is_retryable = status in RETRYABLE_STATUS_CODES or is_timeout
+                is_connect = isinstance(e, (httpx.ConnectError, ConnectionError))
+                is_retryable = status in RETRYABLE_STATUS_CODES or is_timeout or is_connect
 
                 if not is_retryable or attempt >= max_retries:
                     raise
