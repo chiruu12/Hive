@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from hive.logging.models import DecisionLog, ToolLog
@@ -70,6 +71,7 @@ class Agent:
         max_tokens: int = 0,
         response_model: type[Any] | None = None,
         persona: Persona | None = None,
+        conversation_log_dir: Path | str | None = None,
     ):
         self.name = name
         self._model = model
@@ -87,6 +89,7 @@ class Agent:
         self._total_tokens = 0
         self._budget_warned = False
         self._response_model = response_model
+        self._conversation_log_dir = Path(conversation_log_dir) if conversation_log_dir else None
 
         for tk in self._toolkits:
             if not tk.is_bound:
@@ -300,6 +303,9 @@ class Agent:
                 self._check_budget_warning()
                 budget_msg = self._check_budget()
                 if budget_msg:
+                    self._write_conversation_log(
+                        task.id, conversation.get_messages(), "failed"
+                    )
                     return TaskResult(
                         task_id=task.id,
                         status=TaskStatus.FAILED,
@@ -319,6 +325,9 @@ class Agent:
                     exc_info=True,
                 )
                 self._log_decision_failure(steps, e)
+                self._write_conversation_log(
+                    task.id, conversation.get_messages(), "failed"
+                )
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.FAILED,
@@ -332,6 +341,9 @@ class Agent:
             conversation.add(response)
 
             if not response.tool_calls:
+                self._write_conversation_log(
+                    task.id, conversation.get_messages(), "completed"
+                )
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.COMPLETED,
@@ -345,6 +357,9 @@ class Agent:
                 response.tool_calls, tool_map, conversation
             )
 
+        self._write_conversation_log(
+            task.id, conversation.get_messages(), "max_steps"
+        )
         return TaskResult(
             task_id=task.id,
             status=TaskStatus.MAX_STEPS,
@@ -455,9 +470,11 @@ class Agent:
             self._check_budget_warning()
             budget_msg = self._check_budget()
             if budget_msg:
+                self._write_conversation_log("run_once", messages, "budget_exceeded")
                 return budget_msg
 
             if not response.tool_calls:
+                self._write_conversation_log("run_once", messages, "completed")
                 return response.content
 
             messages.append(response)
@@ -480,6 +497,7 @@ class Agent:
         )
         self._total_tokens += final_result.input_tokens + final_result.output_tokens
         self._total_cost += final_result.cost_usd or 0.0
+        self._write_conversation_log("run_once", messages, "completed")
         return final_result.message.content
 
     def run_once_sync(
@@ -561,6 +579,46 @@ class Agent:
             return asyncio.run(
                 self.run_once_structured(message, output_type, context),
             )
+
+    def _write_conversation_log(
+        self,
+        task_id: str,
+        messages: list[Message],
+        status: str,
+    ) -> None:
+        """Write conversation to JSON file. Failures are silently logged."""
+        if not self._conversation_log_dir:
+            return
+        try:
+            agent_dir = self._conversation_log_dir / self._agent_id
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y%m%dT%H%M%S")
+            path = agent_dir / f"{timestamp}.json"
+            log_data = {
+                "agent_id": self._agent_id,
+                "agent_name": self.name,
+                "task_id": task_id,
+                "timestamp": timestamp,
+                "model": str(self._model),
+                "total_cost_usd": self._total_cost,
+                "total_tokens": self._total_tokens,
+                "status": status,
+                "messages": [
+                    {
+                        "role": msg.role.value if hasattr(msg.role, "value") else str(msg.role),
+                        "content": msg.content,
+                        "tool_calls": [
+                            {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                            for tc in (msg.tool_calls or [])
+                        ],
+                        "tool_call_id": msg.tool_call_id,
+                    }
+                    for msg in messages
+                ],
+            }
+            path.write_text(json.dumps(log_data, indent=2, default=str))
+        except Exception:
+            logger.debug("Failed to write conversation log", exc_info=True)
 
     def _check_budget(self) -> str | None:
         """Return an error message if budget exceeded, None otherwise."""
