@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from hive.tools.base import Toolkit, tool
@@ -14,11 +15,32 @@ class KnowledgeToolkit(Toolkit):
     """Tools for storing and searching knowledge notes.
 
     Usage:
+        # Daemon mode (shared memory):
         tk = KnowledgeToolkit(memory=semantic_memory)
+
+        # Standalone mode (creates own memory):
+        tk = KnowledgeToolkit(memory_dir="/path/to/data")
     """
 
-    def __init__(self, memory: SemanticMemory):
-        self._memory = memory
+    def __init__(
+        self,
+        memory: SemanticMemory | None = None,
+        memory_dir: str | Path | None = None,
+    ):
+        if memory is not None:
+            self._memory = memory
+        elif memory_dir is not None:
+            self._memory_dir = Path(memory_dir)
+            self._memory = None  # type: ignore[assignment]
+        else:
+            raise ValueError("KnowledgeToolkit requires either memory or memory_dir")
+
+    def bind(self, agent_id: str) -> None:
+        super().bind(agent_id)
+        if self._memory is None and hasattr(self, "_memory_dir"):
+            from hive.memory.semantic import SemanticMemory
+
+            self._memory = SemanticMemory(self._memory_dir, agent_id)
 
     @property
     def instructions(self) -> str:

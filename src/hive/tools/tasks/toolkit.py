@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -15,11 +17,27 @@ class TaskToolkit(Toolkit):
     """Tools for managing tasks.
 
     Usage:
-        tk = TaskToolkit(store=my_store)
+        # Daemon mode (shared store):
+        tk = TaskToolkit(store=hive_store)
+
+        # Standalone mode (own DB connection):
+        tk = TaskToolkit(db_path="/path/to/app.db")
     """
 
-    def __init__(self, store: HiveStore):
-        self._store = store
+    def __init__(
+        self,
+        store: HiveStore | None = None,
+        db_path: str | Path | None = None,
+    ):
+        if store is not None:
+            self._store = store
+        elif db_path is not None:
+            from hive.memory.store import HiveStore as _Store
+
+            self._store = _Store(Path(db_path))
+            asyncio.run(self._store.initialize())
+        else:
+            raise ValueError("TaskToolkit requires either store or db_path")
 
     @property
     def instructions(self) -> str:
@@ -29,7 +47,9 @@ class TaskToolkit(Toolkit):
         )
 
     @tool()
-    async def create_task(self, description: str, priority: str = "medium", due: str = "") -> str:
+    async def create_task(
+        self, description: str, priority: str = "medium", due: str = ""
+    ) -> str:
         """Create a new task.
 
         Args:

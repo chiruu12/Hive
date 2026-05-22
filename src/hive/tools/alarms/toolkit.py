@@ -6,6 +6,7 @@ import asyncio
 import logging
 import platform
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -46,11 +47,27 @@ class AlarmToolkit(Toolkit):
     """Tools for setting and managing alarms.
 
     Usage:
-        tk = AlarmToolkit(store=my_store)
+        # Daemon mode (shared store):
+        tk = AlarmToolkit(store=hive_store)
+
+        # Standalone mode (own DB connection):
+        tk = AlarmToolkit(db_path="/path/to/app.db")
     """
 
-    def __init__(self, store: HiveStore):
-        self._store = store
+    def __init__(
+        self,
+        store: HiveStore | None = None,
+        db_path: str | Path | None = None,
+    ):
+        if store is not None:
+            self._store = store
+        elif db_path is not None:
+            from hive.memory.store import HiveStore as _Store
+
+            self._store = _Store(Path(db_path))
+            asyncio.run(self._store.initialize())
+        else:
+            raise ValueError("AlarmToolkit requires either store or db_path")
 
     @property
     def instructions(self) -> str:
