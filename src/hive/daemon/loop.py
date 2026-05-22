@@ -274,7 +274,13 @@ class HiveDaemon:
                     elif result == "abandoned":
                         goals_abandoned += 1
                 except Exception as e:
-                    logger.error("Cycle failed for %s: %s", agent.agent_id, e)
+                    logger.error(
+                        "Cycle %d failed for agent %s: %s",
+                        self._cycle_count,
+                        agent.agent_id,
+                        e,
+                        exc_info=True,
+                    )
                     await self._store.update_agent_status(
                         agent.agent_id, AgentStatus.ERROR, error=str(e)
                     )

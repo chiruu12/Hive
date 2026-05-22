@@ -210,6 +210,12 @@ class Agent:
 
             if tool is None:
                 available = ", ".join(tool_map.keys())
+                logger.warning(
+                    "Agent %r: unknown tool %r requested. Available: %s",
+                    self.name,
+                    tc.name,
+                    available,
+                )
                 conversation.add(
                     Message.tool_result(
                         tc.id,
@@ -234,7 +240,14 @@ class Agent:
                     int((time.time() - tool_t0) * 1000),
                 )
             except Exception as e:
-                logger.warning("Tool %s failed: %s", tc.name, e)
+                logger.warning(
+                    "Agent %r: tool %r failed with args %s: %s",
+                    self.name,
+                    tc.name,
+                    tc.arguments,
+                    e,
+                    exc_info=True,
+                )
                 conversation.add(
                     Message.tool_result(
                         tc.id,
@@ -297,7 +310,14 @@ class Agent:
                         duration_seconds=time.time() - t0,
                     )
             except Exception as e:
-                logger.error("Model generation failed: %s", e)
+                logger.error(
+                    "Agent %r: model generation failed at step %d (model=%s): %s",
+                    self.name,
+                    steps,
+                    self._model,
+                    e,
+                    exc_info=True,
+                )
                 self._log_decision_failure(steps, e)
                 return TaskResult(
                     task_id=task.id,
