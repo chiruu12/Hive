@@ -23,7 +23,12 @@ async def fire_notification(description: str) -> bool:
         logger.info("Alarm (non-macOS): %s", description)
         return True
 
-    escaped = description.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = (
+        description.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", " ")
+        .replace("\r", " ")
+    )
     script = (
         f'display notification "{escaped}" '
         f'with title "Hive Alarm" sound name "Glass"'

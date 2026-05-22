@@ -242,10 +242,12 @@ class HiveDaemon:
                 due = await self._store.get_due_alarms()
                 for alarm in due:
                     ok = await fire_notification(alarm["description"])
-                    if ok:
-                        await self._store.mark_alarm_fired(
-                            alarm["alarm_id"]
+                    if not ok:
+                        logger.warning(
+                            "Alarm %s notification failed, marking fired anyway",
+                            alarm["alarm_id"],
                         )
+                    await self._store.mark_alarm_fired(alarm["alarm_id"])
             except Exception as e:
                 logger.warning("Alarm check failed: %s", e)
             await asyncio.sleep(15)
@@ -809,6 +811,10 @@ class HiveDaemon:
         """Checkpoint all agents, then write life summaries if economy is on."""
         if hasattr(self, "_alarm_task") and not self._alarm_task.done():
             self._alarm_task.cancel()
+            try:
+                await self._alarm_task
+            except asyncio.CancelledError:
+                pass
         try:
             agents = await self._store.list_agents()
             for agent in agents:
