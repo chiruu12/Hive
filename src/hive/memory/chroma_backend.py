@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 class ChromaBackend:
     """Memory backend using ChromaDB for vector similarity search.
 
+    Use the async factory to create: ``backend = await ChromaBackend.create()``
+
     All blocking I/O (embedding inference, ChromaDB HTTP calls) is offloaded
     to a thread via run_in_executor to avoid blocking the event loop.
 
@@ -27,13 +29,21 @@ class ChromaBackend:
     Install: pip install hive-agent[chromadb]
     """
 
-    def __init__(
-        self,
+    def __init__(self, client: Any, collection: Any, embedder: Any, agent_id: str = ""):
+        self._agent_id = agent_id
+        self._client = client
+        self._collection = collection
+        self._embedder = embedder
+
+    @classmethod
+    async def create(
+        cls,
         collection_name: str = "hive_notes",
         agent_id: str = "",
         chroma_url: str = "http://localhost:8000",
         embedding_model: str = "all-MiniLM-L6-v2",
-    ):
+    ) -> ChromaBackend:
+        """Async factory — offloads model loading and HTTP calls to a thread."""
         try:
             import chromadb
             from sentence_transformers import SentenceTransformer
@@ -45,13 +55,20 @@ class ChromaBackend:
 
         from urllib.parse import urlparse
 
-        self._agent_id = agent_id
         parsed = urlparse(chroma_url)
         host = parsed.hostname or "localhost"
         port = parsed.port or 8000
-        self._client = chromadb.HttpClient(host=host, port=port)
-        self._collection = self._client.get_or_create_collection(collection_name)
-        self._embedder = SentenceTransformer(embedding_model)
+
+        loop = asyncio.get_running_loop()
+
+        def _init() -> tuple[Any, Any, Any]:
+            client = chromadb.HttpClient(host=host, port=port)
+            collection = client.get_or_create_collection(collection_name)
+            embedder = SentenceTransformer(embedding_model)
+            return client, collection, embedder
+
+        client, collection, embedder = await loop.run_in_executor(None, _init)
+        return cls(client, collection, embedder, agent_id)
 
     async def _run_sync(self, fn: Any, *args: Any) -> Any:
         """Offload a blocking call to a thread."""

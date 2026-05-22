@@ -54,7 +54,7 @@ async def main() -> None:
         from hive.memory.chroma_backend import ChromaBackend  # noqa: F401
 
         print("  chromadb + sentence-transformers available")
-        print("  Usage: ChromaBackend(collection_name='notes', agent_id='my-agent')")
+        print("  Usage: backend = await ChromaBackend.create(collection_name='notes', agent_id='my-agent')")
         print("  Then: SemanticMemory(hive_dir, agent_id, backend=chroma_backend)")
     except ImportError:
         print("  Not installed. Run: pip install hive-agent[chromadb]")

@@ -133,9 +133,10 @@ class TestSemanticMemoryWithBackend:
 
 
 class TestChromaBackendImport:
-    def test_import_error_without_deps(self):
+    @pytest.mark.asyncio
+    async def test_import_error_without_deps(self):
         with patch.dict("sys.modules", {"chromadb": None, "sentence_transformers": None}):
             from hive.memory.chroma_backend import ChromaBackend
 
             with pytest.raises(ImportError, match="chromadb"):
-                ChromaBackend()
+                await ChromaBackend.create()
