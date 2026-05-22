@@ -151,13 +151,10 @@ async def test_log_contains_tool_calls(tmp_path: Any) -> None:
 @pytest.mark.asyncio
 async def test_multiple_runs_create_separate_logs(tmp_path: Any) -> None:
     """Each run() creates a separate log file."""
-    import time
-
     provider = _MockProvider([Message.assistant("ok")])
     agent = Agent(name="multi", model=provider, conversation_log_dir=tmp_path)
 
     await agent.run(Task(instruction="run 1"))
-    time.sleep(1.1)  # ensure different second-resolution timestamp
     await agent.run(Task(instruction="run 2"))
 
     files = list((tmp_path / "multi").glob("*.json"))

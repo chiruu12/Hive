@@ -198,8 +198,8 @@ class HiveConfig(BaseModel):
         """Check API keys for configured models. Returns a list of warnings."""
         warnings: list[str] = []
         model_key_map = {
-            "claude": "ANTHROPIC_API_KEY",
-            "gpt": "OPENAI_API_KEY",
+            "claude-": "ANTHROPIC_API_KEY",
+            "gpt-": "OPENAI_API_KEY",
             "groq:": "GROQ_API_KEY",
             "fireworks:": "FIREWORKS_API_KEY",
             "openrouter:": "OPENROUTER_API_KEY",

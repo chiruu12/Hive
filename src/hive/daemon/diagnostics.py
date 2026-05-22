@@ -166,12 +166,12 @@ def check_dependencies() -> CheckResult:
     return CheckResult("Dependencies", "ok", "All installed")
 
 
-def check_config_valid() -> CheckResult:
+def check_config_valid(hive_dir: Path | None = None) -> CheckResult:
     """Validate config values against field validators."""
     try:
         from hive.config import HiveConfig
 
-        cfg = HiveConfig()
+        cfg = HiveConfig.load(hive_dir)
         env_warnings = cfg.validate_environment()
         if env_warnings:
             return CheckResult(
@@ -195,7 +195,7 @@ def run_all_checks(hive_dir: Path | None = None) -> list[CheckResult]:
     return [
         check_python_version(),
         check_dependencies(),
-        check_config_valid(),
+        check_config_valid(hive),
         check_anthropic_key(),
         check_openai_key(),
         check_groq_key(),

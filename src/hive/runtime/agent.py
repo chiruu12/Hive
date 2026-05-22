@@ -592,10 +592,12 @@ class Agent:
         if not self._conversation_log_dir:
             return
         try:
+            from uuid import uuid4
+
             agent_dir = self._conversation_log_dir / self._agent_id
             agent_dir.mkdir(parents=True, exist_ok=True)
             timestamp = time.strftime("%Y%m%dT%H%M%S")
-            path = agent_dir / f"{timestamp}.json"
+            path = agent_dir / f"{timestamp}_{uuid4().hex[:6]}.json"
             log_data = {
                 "agent_id": self._agent_id,
                 "agent_name": self.name,
