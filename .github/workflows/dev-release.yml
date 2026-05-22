@@ -12,9 +12,6 @@ jobs:
   publish-dev:
     name: Publish dev version to PyPI
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,8 +35,7 @@ jobs:
         run: |
           BASE=$(python3 -c "import re; print(re.search(r'version\s*=\s*\"(.+?)\"', open('pyproject.toml').read()).group(1))")
           COMMITS=$(git rev-list --count HEAD)
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          DEV_VERSION="${BASE}.dev${COMMITS}+${SHORT_SHA}"
+          DEV_VERSION="${BASE}.dev${COMMITS}"
           echo "DEV_VERSION=${DEV_VERSION}" >> $GITHUB_ENV
           sed -i "s/version = \"${BASE}\"/version = \"${DEV_VERSION}\"/" pyproject.toml
           echo "Publishing ${DEV_VERSION}"
@@ -48,4 +44,6 @@ jobs:
         run: uv build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        run: uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
