@@ -355,3 +355,66 @@ def test_plugin_discovered():
     names = [tk.__name__ for tk in toolkits]
     assert "CalculatorToolkit" in names
 ```
+
+## 9. Lightweight Agent (Server/API Pattern)
+
+Use Hive as a backend for HTTP servers (FastAPI, Flask) without the full daemon. Toolkits are created once at startup and reused across requests. Agents are created per-request (~1ms overhead).
+
+```python
+# server.py -- FastAPI example
+import asyncio
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from hive import Agent, Persona
+from hive.models.groq import Groq
+from hive.tools.alarms import AlarmChecker, AlarmToolkit
+from hive.tools.knowledge import KnowledgeToolkit
+from hive.tools.tasks import TaskToolkit
+
+DB_PATH = "app.db"
+
+# Create once at startup (reusable, thread-safe)
+task_tk = TaskToolkit(db_path=DB_PATH)
+alarm_tk = AlarmToolkit(db_path=DB_PATH)
+knowledge_tk = KnowledgeToolkit(memory_dir="./data")
+checker = AlarmChecker(db_path=DB_PATH, check_interval=15)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    alarm_task = asyncio.create_task(checker.run_forever())
+    yield
+    await checker.stop()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.post("/ask")
+async def ask(query: str, agent_id: str = "assistant"):
+    # Bind toolkits to the requesting agent
+    for tk in (task_tk, alarm_tk, knowledge_tk):
+        tk.bind(agent_id)
+
+    agent = Agent(
+        name=agent_id,
+        model=Groq.lite(),
+        persona=Persona(
+            name="Assistant",
+            purpose="Help with tasks, notes, and reminders",
+        ),
+        toolkits=[task_tk, alarm_tk, knowledge_tk],
+    )
+    result = await agent.run_once(query, max_tool_rounds=10)
+    return {"response": result}
+```
+
+Key points:
+- **Toolkits accept `db_path=`** for standalone SQLite (no HiveStore needed)
+- **KnowledgeToolkit accepts `memory_dir=`** for standalone SemanticMemory
+- **AlarmChecker** runs independently -- polls every 15s, fires macOS notifications
+- **Agent creation is cheap** (~1ms) -- no disk I/O in the constructor
+- **Toolkits are reusable** -- call `bind(agent_id)` to switch context between requests
+- **Memory backends are pluggable** -- swap `TFIDFBackend` for `ChromaBackend` via `SemanticMemory(hive_dir, agent_id, backend=ChromaBackend(...))`
