@@ -5,6 +5,8 @@ Requires optional dependencies: pip install hive-agent[chromadb]
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -17,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 class ChromaBackend:
     """Memory backend using ChromaDB for vector similarity search.
+
+    All blocking I/O (embedding inference, ChromaDB HTTP calls) is offloaded
+    to a thread via run_in_executor to avoid blocking the event loop.
 
     Requires: chromadb, sentence-transformers
     Install: pip install hive-agent[chromadb]
@@ -48,35 +53,49 @@ class ChromaBackend:
         self._collection = self._client.get_or_create_collection(collection_name)
         self._embedder = SentenceTransformer(embedding_model)
 
+    async def _run_sync(self, fn: Any, *args: Any) -> Any:
+        """Offload a blocking call to a thread."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, functools.partial(fn, *args))
+
     async def store(self, text: str, metadata: dict[str, Any] | None = None) -> str:
         mid = f"mem-{uuid4().hex[:8]}"
         meta = dict(metadata) if metadata else {}
         meta["agent_id"] = self._agent_id
         meta["created_at"] = datetime.now(UTC).isoformat()
 
-        embedding = self._embedder.encode(text).tolist()
-        self._collection.add(
-            ids=[mid],
-            documents=[text],
-            embeddings=[embedding],
-            metadatas=[meta],
+        embedding = await self._run_sync(self._embedder.encode, text)
+        await self._run_sync(
+            self._collection.add,
+            [mid],  # ids
+            [embedding.tolist()],  # embeddings
+            None,  # documents kwarg not positional
+        )
+        await self._run_sync(
+            lambda: self._collection.update(
+                ids=[mid], documents=[text], metadatas=[meta]
+            )
         )
         return mid
 
     async def search(self, query: str, top_k: int = 5) -> list[MemoryRecord]:
-        embedding = self._embedder.encode(query).tolist()
+        embedding = await self._run_sync(self._embedder.encode, query)
         where = {"agent_id": self._agent_id} if self._agent_id else None
-        results = self._collection.query(
-            query_embeddings=[embedding],
-            n_results=top_k,
-            where=where,
-        )
+
+        def _query() -> Any:
+            return self._collection.query(
+                query_embeddings=[embedding.tolist()],
+                n_results=top_k,
+                where=where,
+            )
+
+        results = await self._run_sync(_query)
 
         records = []
         if results["ids"] and results["ids"][0]:
             for i, mid in enumerate(results["ids"][0]):
                 doc = results["documents"][0][i] if results["documents"] else ""
-                meta = results["metadatas"][0][i] if results["metadatas"] else {}
+                meta = dict(results["metadatas"][0][i]) if results["metadatas"] else {}
                 created = meta.pop("created_at", datetime.now(UTC).isoformat())
                 agent = meta.pop("agent_id", self._agent_id)
                 records.append(
@@ -92,13 +111,17 @@ class ChromaBackend:
 
     async def recent(self, limit: int = 5) -> list[MemoryRecord]:
         where = {"agent_id": self._agent_id} if self._agent_id else None
-        results = self._collection.get(where=where)
+
+        def _get() -> Any:
+            return self._collection.get(where=where)
+
+        results = await self._run_sync(_get)
 
         records = []
         if results["ids"]:
             for i, mid in enumerate(results["ids"]):
                 doc = results["documents"][i] if results["documents"] else ""
-                meta = results["metadatas"][i] if results["metadatas"] else {}
+                meta = dict(results["metadatas"][i]) if results["metadatas"] else {}
                 created = meta.pop("created_at", datetime.now(UTC).isoformat())
                 agent = meta.pop("agent_id", self._agent_id)
                 records.append(
@@ -114,19 +137,21 @@ class ChromaBackend:
         return records[:limit]
 
     def recent_sync(self, limit: int = 5) -> list[MemoryRecord]:
-        import asyncio
-
         try:
             asyncio.get_running_loop()
             import concurrent.futures
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, self.recent(limit)).result()
+                r: list[MemoryRecord] = pool.submit(
+                    asyncio.run, self.recent(limit)
+                ).result()
+                return r
         except RuntimeError:
-            return asyncio.run(self.recent(limit))
+            r2: list[MemoryRecord] = asyncio.run(self.recent(limit))
+            return r2
 
     async def delete(self, memory_id: str) -> None:
-        self._collection.delete(ids=[memory_id])
+        await self._run_sync(self._collection.delete, [memory_id])
 
     def count(self) -> int:
         result: int = self._collection.count()
