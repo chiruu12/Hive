@@ -42,9 +42,7 @@ async def _seed_agent(store: HiveStore, name: str = "hang") -> AgentState:
 
 
 @pytest.mark.asyncio
-async def test_cycle_timeout_abandons_goal(
-    tmp_dir: Any, hive_dir: Any, store: HiveStore
-) -> None:
+async def test_cycle_timeout_abandons_goal(tmp_dir: Any, hive_dir: Any, store: HiveStore) -> None:
     cfg = HiveConfig()
     cfg.daemon.cycle_timeout = 1
     set_config(cfg)

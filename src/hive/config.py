@@ -82,9 +82,7 @@ class SufferingConfig(BaseModel):
     def _crisis_gt_dominant(cls, v: float, info: Any) -> float:
         dominant = info.data.get("threshold_dominant", 0.75)
         if v <= dominant:
-            raise ValueError(
-                f"threshold_crisis ({v}) must be > threshold_dominant ({dominant})"
-            )
+            raise ValueError(f"threshold_crisis ({v}) must be > threshold_dominant ({dominant})")
         return v
 
 
@@ -209,9 +207,7 @@ class HiveConfig(BaseModel):
         default = self.model.default_model
         for prefix, key_name in model_key_map.items():
             if default.startswith(prefix) and not get_env(key_name):
-                warnings.append(
-                    f"default_model={default!r} requires {key_name} but it is not set"
-                )
+                warnings.append(f"default_model={default!r} requires {key_name} but it is not set")
         return warnings
 
 

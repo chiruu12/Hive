@@ -129,9 +129,7 @@ async def test_log_contains_tool_calls(tmp_path: Any) -> None:
             return f"Hello {name}"
 
     responses = [
-        Message.assistant(
-            "calling", [ToolCall(id="t1", name="greet", arguments={"name": "hive"})]
-        ),
+        Message.assistant("calling", [ToolCall(id="t1", name="greet", arguments={"name": "hive"})]),
         Message.assistant("done"),
     ]
     provider = _MockProvider(responses)
@@ -145,9 +143,7 @@ async def test_log_contains_tool_calls(tmp_path: Any) -> None:
 
     files = list((tmp_path / "tool-log").glob("*.json"))
     data = json.loads(files[0].read_text())
-    tool_msgs = [
-        m for m in data["messages"] if m.get("tool_calls") and len(m["tool_calls"]) > 0
-    ]
+    tool_msgs = [m for m in data["messages"] if m.get("tool_calls") and len(m["tool_calls"]) > 0]
     assert len(tool_msgs) >= 1
     assert tool_msgs[0]["tool_calls"][0]["name"] == "greet"
 

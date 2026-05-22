@@ -326,9 +326,7 @@ class TestBudgetWarning:
         assert "budget" in result.lower() or "cost" in result.lower()
 
     @pytest.mark.asyncio
-    async def test_no_warning_when_budget_disabled(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_no_warning_when_budget_disabled(self, caplog: pytest.LogCaptureFixture) -> None:
         provider = MockProvider([Message.assistant("done")], cost_per_call=0.5)
         agent = Agent(name="test", model=provider, max_cost_usd=0.0)
         with caplog.at_level("WARNING"):
@@ -336,9 +334,7 @@ class TestBudgetWarning:
         assert not any("approaching" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_token_budget_warning_logged(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_token_budget_warning_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         """Token budget warning fires independently of cost warning."""
         responses = [
             Message.assistant("s1", [ToolCall(id="t1", name="noop", arguments={})]),

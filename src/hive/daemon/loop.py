@@ -291,9 +291,7 @@ class HiveDaemon:
                     active_goal = await self._store.get_active_goal(agent.agent_id)
                     if active_goal:
                         await self._store.abandon_goal(active_goal["goal_id"])
-                    await self._store.update_agent_status(
-                        agent.agent_id, AgentStatus.IDLE
-                    )
+                    await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
                 except Exception as e:
                     logger.error(
                         "Cycle %d failed for agent %s: %s",

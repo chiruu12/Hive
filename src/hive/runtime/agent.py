@@ -305,9 +305,7 @@ class Agent:
                 self._check_budget_warning()
                 budget_msg = self._check_budget()
                 if budget_msg:
-                    self._write_conversation_log(
-                        task.id, conversation.get_messages(), "failed"
-                    )
+                    self._write_conversation_log(task.id, conversation.get_messages(), "failed")
                     return TaskResult(
                         task_id=task.id,
                         status=TaskStatus.FAILED,
@@ -327,9 +325,7 @@ class Agent:
                     exc_info=True,
                 )
                 self._log_decision_failure(steps, e)
-                self._write_conversation_log(
-                    task.id, conversation.get_messages(), "failed"
-                )
+                self._write_conversation_log(task.id, conversation.get_messages(), "failed")
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.FAILED,
@@ -343,9 +339,7 @@ class Agent:
             conversation.add(response)
 
             if not response.tool_calls:
-                self._write_conversation_log(
-                    task.id, conversation.get_messages(), "completed"
-                )
+                self._write_conversation_log(task.id, conversation.get_messages(), "completed")
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.COMPLETED,
@@ -359,9 +353,7 @@ class Agent:
                 response.tool_calls, tool_map, conversation
             )
 
-        self._write_conversation_log(
-            task.id, conversation.get_messages(), "max_steps"
-        )
+        self._write_conversation_log(task.id, conversation.get_messages(), "max_steps")
         return TaskResult(
             task_id=task.id,
             status=TaskStatus.MAX_STEPS,
