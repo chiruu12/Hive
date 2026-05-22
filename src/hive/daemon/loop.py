@@ -128,13 +128,6 @@ class HiveDaemon:
     def hooks(self) -> HookRegistry:
         return self._hooks
 
-    def _get_or_create_memory(self, agent_id: str) -> SemanticMemory:
-        if agent_id not in self._memories:
-            self._memories[agent_id] = SemanticMemory(
-                self._hive_dir, agent_id
-            )
-        return self._memories[agent_id]
-
     def _build_toolkits(self, agent_id: str) -> list[Any]:
         workspace = self._hive_dir / "workspaces" / agent_id
         workspace.mkdir(parents=True, exist_ok=True)
@@ -156,7 +149,7 @@ class HiveDaemon:
             ScheduleToolkit(self._store),
             TaskToolkit(self._store),
             AlarmToolkit(self._store),
-            KnowledgeToolkit(self._get_or_create_memory(agent_id)),
+            KnowledgeToolkit(self._get_memory(agent_id)),
         ]
         if self._economy_enabled and self._ctx.world is not None:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
