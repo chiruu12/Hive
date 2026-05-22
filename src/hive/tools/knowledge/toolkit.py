@@ -65,7 +65,8 @@ class KnowledgeToolkit(Toolkit):
             content: The note content to save.
             tags: Optional comma-separated tags for categorization.
         """
-        assert self._memory is not None
+        if self._memory is None:
+            raise RuntimeError("KnowledgeToolkit is not bound to an agent yet.")
         metadata = {"tags": tags} if tags else {}
         mid = await self._memory.store(content, metadata)
         return f"Saved note {mid}: {content[:80]}"
