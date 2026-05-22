@@ -86,11 +86,13 @@ class BaseProvider(ABC):
             try:
                 return await fn(*args, **kwargs)
             except Exception as e:
-                status = getattr(e, "status_code", getattr(e, "status", 0))
-                if status in NON_RETRYABLE_STATUS_CODES:
-                    raise
                 is_timeout = "timeout" in type(e).__name__.lower() or isinstance(e, TimeoutError)
                 is_connect = isinstance(e, (httpx.ConnectError, ConnectionError))
+
+                status = getattr(e, "status_code", getattr(e, "status", 0))
+                if status in NON_RETRYABLE_STATUS_CODES and not is_connect:
+                    raise
+
                 is_retryable = status in RETRYABLE_STATUS_CODES or is_timeout or is_connect
 
                 if not is_retryable or attempt >= max_retries:
