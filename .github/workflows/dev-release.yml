@@ -12,6 +12,7 @@ jobs:
   publish-dev:
     name: Publish dev version to PyPI
     runs-on: ubuntu-latest
+    environment: deployment
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +45,6 @@ jobs:
         run: uv build
 
       - name: Publish to PyPI
-        run: uv publish
+        run: uv publish --token "$PYPI_TOKEN"
         env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
