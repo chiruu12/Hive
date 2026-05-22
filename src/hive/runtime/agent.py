@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from hive.logging.models import DecisionLog, ToolLog
@@ -70,6 +71,7 @@ class Agent:
         max_tokens: int = 0,
         response_model: type[Any] | None = None,
         persona: Persona | None = None,
+        conversation_log_dir: Path | str | None = None,
     ):
         self.name = name
         self._model = model
@@ -85,7 +87,10 @@ class Agent:
         self._gen_max_tokens = max_tokens or 4096
         self._total_cost = 0.0
         self._total_tokens = 0
+        self._cost_warned = False
+        self._tokens_warned = False
         self._response_model = response_model
+        self._conversation_log_dir = Path(conversation_log_dir) if conversation_log_dir else None
 
         for tk in self._toolkits:
             if not tk.is_bound:
@@ -209,6 +214,12 @@ class Agent:
 
             if tool is None:
                 available = ", ".join(tool_map.keys())
+                logger.warning(
+                    "Agent %r: unknown tool %r requested. Available: %s",
+                    self.name,
+                    tc.name,
+                    available,
+                )
                 conversation.add(
                     Message.tool_result(
                         tc.id,
@@ -233,7 +244,14 @@ class Agent:
                     int((time.time() - tool_t0) * 1000),
                 )
             except Exception as e:
-                logger.warning("Tool %s failed: %s", tc.name, e)
+                logger.warning(
+                    "Agent %r: tool %r failed with args %s: %s",
+                    self.name,
+                    tc.name,
+                    tc.arguments,
+                    e,
+                    exc_info=True,
+                )
                 conversation.add(
                     Message.tool_result(
                         tc.id,
@@ -256,6 +274,8 @@ class Agent:
         """Execute a task using the ReAct loop."""
         self._total_cost = 0.0
         self._total_tokens = 0
+        self._cost_warned = False
+        self._tokens_warned = False
         t0 = time.time()
 
         tools = self.get_tools()
@@ -282,8 +302,10 @@ class Agent:
                 self._log_decision(steps, result)
                 self._total_tokens += result.input_tokens + result.output_tokens
                 self._total_cost += result.cost_usd or 0.0
+                self._check_budget_warning()
                 budget_msg = self._check_budget()
                 if budget_msg:
+                    self._write_conversation_log(task.id, conversation.get_messages(), "failed")
                     return TaskResult(
                         task_id=task.id,
                         status=TaskStatus.FAILED,
@@ -294,8 +316,16 @@ class Agent:
                         duration_seconds=time.time() - t0,
                     )
             except Exception as e:
-                logger.error("Model generation failed: %s", e)
+                logger.error(
+                    "Agent %r: model generation failed at step %d (model=%s): %s",
+                    self.name,
+                    steps,
+                    self._model,
+                    e,
+                    exc_info=True,
+                )
                 self._log_decision_failure(steps, e)
+                self._write_conversation_log(task.id, conversation.get_messages(), "failed")
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.FAILED,
@@ -309,6 +339,7 @@ class Agent:
             conversation.add(response)
 
             if not response.tool_calls:
+                self._write_conversation_log(task.id, conversation.get_messages(), "completed")
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.COMPLETED,
@@ -322,6 +353,7 @@ class Agent:
                 response.tool_calls, tool_map, conversation
             )
 
+        self._write_conversation_log(task.id, conversation.get_messages(), "max_steps")
         return TaskResult(
             task_id=task.id,
             status=TaskStatus.MAX_STEPS,
@@ -408,6 +440,11 @@ class Agent:
         if max_tool_rounds < 0:
             raise ValueError(f"max_tool_rounds must be >= 0, got {max_tool_rounds}")
 
+        self._total_cost = 0.0
+        self._total_tokens = 0
+        self._cost_warned = False
+        self._tokens_warned = False
+
         tools = self.get_tools()
         tool_map = {t.name: t for t in tools}
         tool_schemas = [t.to_schema() for t in tools] if tools else None
@@ -427,8 +464,18 @@ class Agent:
                 self._gen_max_tokens,
             )
             response = result.message
+            self._total_tokens += result.input_tokens + result.output_tokens
+            self._total_cost += result.cost_usd or 0.0
+            self._check_budget_warning()
+            budget_msg = self._check_budget()
+            if budget_msg:
+                messages.append(response)
+                self._write_conversation_log("run_once", messages, "budget_exceeded")
+                return budget_msg
 
             if not response.tool_calls:
+                messages.append(response)
+                self._write_conversation_log("run_once", messages, "completed")
                 return response.content
 
             messages.append(response)
@@ -443,13 +490,17 @@ class Agent:
                     output = f"Unknown tool: {tc.name}"
                 messages.append(Message.tool_result(tc.id, output))
 
-        final = await self._model.generate(
+        final_result = await self._model.generate_with_metadata(
             messages,
             None,
             self._temperature,
             self._gen_max_tokens,
         )
-        return final.content
+        self._total_tokens += final_result.input_tokens + final_result.output_tokens
+        self._total_cost += final_result.cost_usd or 0.0
+        messages.append(final_result.message)
+        self._write_conversation_log("run_once", messages, "completed")
+        return final_result.message.content
 
     def run_once_sync(
         self,
@@ -531,6 +582,46 @@ class Agent:
                 self.run_once_structured(message, output_type, context),
             )
 
+    def _write_conversation_log(
+        self,
+        task_id: str,
+        messages: list[Message],
+        status: str,
+    ) -> None:
+        """Write conversation to JSON file. Failures are silently logged."""
+        if not self._conversation_log_dir:
+            return
+        try:
+            agent_dir = self._conversation_log_dir / self._agent_id
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y%m%dT%H%M%S")
+            path = agent_dir / f"{timestamp}.json"
+            log_data = {
+                "agent_id": self._agent_id,
+                "agent_name": self.name,
+                "task_id": task_id,
+                "timestamp": timestamp,
+                "model": str(self._model),
+                "total_cost_usd": self._total_cost,
+                "total_tokens": self._total_tokens,
+                "status": status,
+                "messages": [
+                    {
+                        "role": msg.role.value if hasattr(msg.role, "value") else str(msg.role),
+                        "content": msg.content,
+                        "tool_calls": [
+                            {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                            for tc in (msg.tool_calls or [])
+                        ],
+                        "tool_call_id": msg.tool_call_id,
+                    }
+                    for msg in messages
+                ],
+            }
+            path.write_text(json.dumps(log_data, indent=2, default=str))
+        except Exception:
+            logger.debug("Failed to write conversation log", exc_info=True)
+
     def _check_budget(self) -> str | None:
         """Return an error message if budget exceeded, None otherwise."""
         if self._max_cost_usd and self._total_cost >= self._max_cost_usd:
@@ -538,6 +629,29 @@ class Agent:
         if self._max_tokens and self._total_tokens >= self._max_tokens:
             return f"Token budget exceeded: {self._total_tokens:,} >= {self._max_tokens:,}"
         return None
+
+    def _check_budget_warning(self) -> None:
+        """Log a warning once per budget type when 80% is consumed."""
+        cost_over = self._max_cost_usd and self._total_cost >= self._max_cost_usd * 0.8
+        if not self._cost_warned and cost_over:
+            logger.warning(
+                "Agent %r approaching cost limit: $%.4f / $%.4f (%.0f%%)",
+                self.name,
+                self._total_cost,
+                self._max_cost_usd,
+                (self._total_cost / self._max_cost_usd) * 100,
+            )
+            self._cost_warned = True
+        tok_over = self._max_tokens and self._total_tokens >= self._max_tokens * 0.8
+        if not self._tokens_warned and tok_over:
+            logger.warning(
+                "Agent %r approaching token limit: %d / %d (%.0f%%)",
+                self.name,
+                self._total_tokens,
+                self._max_tokens,
+                (self._total_tokens / self._max_tokens) * 100,
+            )
+            self._tokens_warned = True
 
     def _log_decision(self, step: int, result: GenerateResult) -> None:
         if not self._log_writer:

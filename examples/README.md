@@ -26,6 +26,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 | 13 | [13_instructions_deep_dive.py](13_instructions_deep_dive.py) | All ways to configure agents — Instructions, Persona, response_model, toolkit auto-merge |
 | 14 | [14_memory_and_comms.py](14_memory_and_comms.py) | Agents that remember things and message each other |
 | 15 | [15_zero_config.py](15_zero_config.py) | Every toolkit with zero setup — just create and go |
+| 21 | [21_production_hardening.py](21_production_hardening.py) | Retry, budget limits, conversation logging, safe binding, config validation, timeouts |
 
 ## Running
 
@@ -46,4 +47,4 @@ hive agent chat
 - **Tools & Output** (02, 03, 07): File/shell/git tools, structured output, custom toolkits
 - **Agent Intelligence** (11, 12, 13, 14): Notepad presets, web research, instructions, memory
 - **Multi-Agent** (04, 05, 08): Delegation, MCP integration, workflow pipelines
-- **Production** (09, 10): Error handling, budget control, multi-provider routing
+- **Production** (09, 10, 21): Error handling, budget control, multi-provider routing, hardening

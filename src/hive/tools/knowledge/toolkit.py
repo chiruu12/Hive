@@ -43,6 +43,13 @@ class KnowledgeToolkit(Toolkit):
 
             self._memory = SemanticMemory(self._memory_dir, agent_id)
 
+    def rebind(self, agent_id: str) -> None:
+        super().rebind(agent_id)
+        if self._memory_dir is not None:
+            from hive.memory.semantic import SemanticMemory
+
+            self._memory = SemanticMemory(self._memory_dir, agent_id)
+
     @property
     def instructions(self) -> str:
         return (
@@ -58,7 +65,8 @@ class KnowledgeToolkit(Toolkit):
             content: The note content to save.
             tags: Optional comma-separated tags for categorization.
         """
-        assert self._memory is not None
+        if self._memory is None:
+            raise RuntimeError("KnowledgeToolkit is not bound to an agent yet.")
         metadata = {"tags": tags} if tags else {}
         mid = await self._memory.store(content, metadata)
         return f"Saved note {mid}: {content[:80]}"

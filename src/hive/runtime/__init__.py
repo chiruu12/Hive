@@ -19,7 +19,7 @@ from hive.runtime.types import (
     ToolResult,
 )
 from hive.runtime.workflow import Step, Workflow
-from hive.tools import Tool, Toolkit, collect_tools, make_tool, tool
+from hive.tools import Tool, Toolkit, ToolkitAlreadyBoundError, collect_tools, make_tool, tool
 
 __all__ = [
     "Agent",
@@ -43,6 +43,7 @@ __all__ = [
     "ToolCall",
     "ToolResult",
     "Toolkit",
+    "ToolkitAlreadyBoundError",
     "Workflow",
     "collect_tools",
     "make_tool",

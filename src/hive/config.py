@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 from dotenv import dotenv_values
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 _dotenv_cache: dict[str, str | None] = {}
 
@@ -57,6 +57,34 @@ class SufferingConfig(BaseModel):
         }
     )
 
+    @field_validator("threshold_constrained")
+    @classmethod
+    def _constrained_gt_prominent(cls, v: float, info: Any) -> float:
+        prominent = info.data.get("threshold_prominent", 0.35)
+        if v <= prominent:
+            raise ValueError(
+                f"threshold_constrained ({v}) must be > threshold_prominent ({prominent})"
+            )
+        return v
+
+    @field_validator("threshold_dominant")
+    @classmethod
+    def _dominant_gt_constrained(cls, v: float, info: Any) -> float:
+        constrained = info.data.get("threshold_constrained", 0.55)
+        if v <= constrained:
+            raise ValueError(
+                f"threshold_dominant ({v}) must be > threshold_constrained ({constrained})"
+            )
+        return v
+
+    @field_validator("threshold_crisis")
+    @classmethod
+    def _crisis_gt_dominant(cls, v: float, info: Any) -> float:
+        dominant = info.data.get("threshold_dominant", 0.75)
+        if v <= dominant:
+            raise ValueError(f"threshold_crisis ({v}) must be > threshold_dominant ({dominant})")
+        return v
+
 
 class EconomyConfig(BaseModel):
     enabled: bool = True
@@ -79,12 +107,34 @@ class EconomyConfig(BaseModel):
         ]
     )
 
+    @field_validator("starting_balance")
+    @classmethod
+    def _balance_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError(f"starting_balance must be >= 0, got {v}")
+        return v
+
 
 class DaemonConfig(BaseModel):
     heartbeat: int = 10
     max_retries: int = 2
     event_poll_interval: float = 0.3
     watch_refresh_rate: float = 0.5
+    cycle_timeout: int = 300
+
+    @field_validator("heartbeat")
+    @classmethod
+    def _heartbeat_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"heartbeat must be >= 1, got {v}")
+        return v
+
+    @field_validator("cycle_timeout")
+    @classmethod
+    def _timeout_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"cycle_timeout must be >= 0, got {v}")
+        return v
 
 
 class ModelConfig(BaseModel):
@@ -143,6 +193,22 @@ class HiveConfig(BaseModel):
         config_path = hive_dir / "config.yaml"
         with open(config_path, "w") as f:
             yaml.dump(self.model_dump(), f, default_flow_style=False, sort_keys=False)
+
+    def validate_environment(self) -> list[str]:
+        """Check API keys for configured models. Returns a list of warnings."""
+        warnings: list[str] = []
+        model_key_map = {
+            "claude": "ANTHROPIC_API_KEY",
+            "gpt": "OPENAI_API_KEY",
+            "groq:": "GROQ_API_KEY",
+            "fireworks:": "FIREWORKS_API_KEY",
+            "openrouter:": "OPENROUTER_API_KEY",
+        }
+        default = self.model.default_model
+        for prefix, key_name in model_key_map.items():
+            if default.startswith(prefix) and not get_env(key_name):
+                warnings.append(f"default_model={default!r} requires {key_name} but it is not set")
+        return warnings
 
 
 _config: HiveConfig | None = None

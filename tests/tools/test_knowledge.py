@@ -72,3 +72,15 @@ class TestKnowledgeToolkit:
         tools = toolkit.get_tools()
         names = {t.name for t in tools}
         assert names == {"save_note", "search_notes", "list_recent_notes"}
+
+    @pytest.mark.asyncio
+    async def test_rebind_creates_new_memory(self, tmp_path):
+        """rebind() must create a fresh SemanticMemory for the new agent."""
+        tk = KnowledgeToolkit(memory_dir=tmp_path)
+        tk.bind("agent-a")
+        await tk.save_note("Agent A's secret note")
+
+        tk.rebind("agent-b")
+        assert tk._agent_id == "agent-b"
+        result = await tk.search_notes("secret")
+        assert "No matching" in result

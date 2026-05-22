@@ -266,15 +266,40 @@ class HiveDaemon:
             alive = [a for a in agents if a.is_alive()]
             crisis_count = sum(1 for a in alive if self._get_suffering(a.agent_id).in_crisis)
 
+            cycle_timeout = get_config().daemon.cycle_timeout
+
             for agent in alive:
                 try:
-                    result = await self._run_agent_cycle(agent)
+                    if cycle_timeout > 0:
+                        result = await asyncio.wait_for(
+                            self._run_agent_cycle(agent),
+                            timeout=cycle_timeout,
+                        )
+                    else:
+                        result = await self._run_agent_cycle(agent)
                     if result == "completed":
                         goals_completed += 1
                     elif result == "abandoned":
                         goals_abandoned += 1
+                except TimeoutError:
+                    logger.warning(
+                        "Cycle %d: agent %s timed out after %ds, abandoning goal",
+                        self._cycle_count,
+                        agent.agent_id,
+                        cycle_timeout,
+                    )
+                    active_goal = await self._store.get_active_goal(agent.agent_id)
+                    if active_goal:
+                        await self._store.abandon_goal(active_goal["goal_id"])
+                    await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
                 except Exception as e:
-                    logger.error("Cycle failed for %s: %s", agent.agent_id, e)
+                    logger.error(
+                        "Cycle %d failed for agent %s: %s",
+                        self._cycle_count,
+                        agent.agent_id,
+                        e,
+                        exc_info=True,
+                    )
                     await self._store.update_agent_status(
                         agent.agent_id, AgentStatus.ERROR, error=str(e)
                     )
