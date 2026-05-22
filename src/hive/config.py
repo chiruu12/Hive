@@ -122,12 +122,20 @@ class DaemonConfig(BaseModel):
     max_retries: int = 2
     event_poll_interval: float = 0.3
     watch_refresh_rate: float = 0.5
+    cycle_timeout: int = 300
 
     @field_validator("heartbeat")
     @classmethod
     def _heartbeat_positive(cls, v: int) -> int:
         if v < 1:
             raise ValueError(f"heartbeat must be >= 1, got {v}")
+        return v
+
+    @field_validator("cycle_timeout")
+    @classmethod
+    def _timeout_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"cycle_timeout must be >= 0, got {v}")
         return v
 
 
