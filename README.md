@@ -153,7 +153,26 @@ Compare models on scenarios. Export runs as standalone HTML reports.
 
 ## LLM Poker & Arena
 
-[Hive Arena](https://github.com/chiruu12/hive-arena) is a companion project -- LLM poker tournaments, economic arena games, and life simulation. In 5 tournaments with 6 models (1.2B to ~1T parameters), the 1.2B local model won the most:
+[Hive Arena](https://github.com/chiruu12/hive-arena) is a companion project -- LLM poker tournaments, economic arena games, and life simulation.
+
+### Persona Experiment: Same Model, 6 Personalities, 100 Tournaments
+
+We gave the same 1.2B model (Liquid LFM-2.5, running locally) 6 different poker personality prompts and ran 100 Texas Hold'em tournaments. The personality text was the only variable.
+
+| Persona | Style | Wins | Avg P/L | Eliminated | Avg Place |
+|---------|-------|------|---------|------------|-----------|
+| Shark | tight-aggressive | 45 | +$1,157 | 32% | 2.3 |
+| Maniac | loose-aggressive | 24 | +$395 | 50% | 3.0 |
+| Gambler | loose-passive | 21 | +$301 | 51% | 3.6 |
+| Tilter | emotional | 10 | -$435 | 80% | 5.1 |
+| Grinder | tight-passive | 0 | -$508 | 0% | 2.7 |
+| Rock | ultra-tight | 0 | -$909 | 63% | 4.3 |
+
+A paragraph of personality text created a 45:0 win differential. The Grinder survived 100% of tournaments but won 0%. Passive play never wins -- both passive personas went 0 for 100.
+
+### Multi-Model Tournaments
+
+In separate 5-tournament runs with 6 different models (1.2B to ~1T), the smallest local model won the most:
 
 | Run | Winner | Size | Type |
 |-----|--------|------|------|
@@ -163,7 +182,7 @@ Compare models on scenarios. Export runs as standalone HTML reports.
 | 4 | Kimi | ~1T | cloud |
 | 5 | Liquid | 1.2B | local |
 
-[Full results and analysis](https://github.com/chiruu12/hive-arena/tree/main/tournaments/results/)
+[Full experiment code and details](https://github.com/chiruu12/hive-arena)
 
 ## Community Profiles
 
