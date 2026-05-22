@@ -43,6 +43,13 @@ class KnowledgeToolkit(Toolkit):
 
             self._memory = SemanticMemory(self._memory_dir, agent_id)
 
+    def rebind(self, agent_id: str) -> None:
+        super().rebind(agent_id)
+        if self._memory_dir is not None:
+            from hive.memory.semantic import SemanticMemory
+
+            self._memory = SemanticMemory(self._memory_dir, agent_id)
+
     @property
     def instructions(self) -> str:
         return (

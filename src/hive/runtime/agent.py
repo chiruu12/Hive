@@ -477,10 +477,12 @@ class Agent:
             self._check_budget_warning()
             budget_msg = self._check_budget()
             if budget_msg:
+                messages.append(response)
                 self._write_conversation_log("run_once", messages, "budget_exceeded")
                 return budget_msg
 
             if not response.tool_calls:
+                messages.append(response)
                 self._write_conversation_log("run_once", messages, "completed")
                 return response.content
 
@@ -504,6 +506,7 @@ class Agent:
         )
         self._total_tokens += final_result.input_tokens + final_result.output_tokens
         self._total_cost += final_result.cost_usd or 0.0
+        messages.append(final_result.message)
         self._write_conversation_log("run_once", messages, "completed")
         return final_result.message.content
 

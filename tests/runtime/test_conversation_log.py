@@ -166,3 +166,17 @@ async def test_multiple_runs_create_separate_logs(tmp_path: Any) -> None:
 
     files = list((tmp_path / "multi").glob("*.json"))
     assert len(files) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_once_log_includes_final_assistant_message(tmp_path: Any) -> None:
+    """run_once conversation log must include the final assistant response."""
+    provider = _MockProvider([Message.assistant("final answer")])
+    agent = Agent(name="final-msg", model=provider, conversation_log_dir=tmp_path)
+    await agent.run_once("question")
+
+    files = list((tmp_path / "final-msg").glob("*.json"))
+    data = json.loads(files[0].read_text())
+    assistant_msgs = [m for m in data["messages"] if m["role"] == "assistant"]
+    assert len(assistant_msgs) >= 1
+    assert any("final answer" in m["content"] for m in assistant_msgs)
