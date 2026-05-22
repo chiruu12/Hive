@@ -30,6 +30,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "mcp>=1.27",
     "beautifulsoup4>=4.14.3",
+    "tqdm>=4.67.3",
 ]
 
 [project.optional-dependencies]

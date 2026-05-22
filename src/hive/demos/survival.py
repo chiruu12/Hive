@@ -89,38 +89,40 @@ AGENTS = [
 ]
 
 
-def run_survival_demo() -> None:
+def run_survival_demo(quiet: bool = False) -> None:
     """Run the survival demo end-to-end."""
-    console.print(
-        Panel(
-            "[bold]Hive Survival Demo[/bold]\n\n"
-            "3 agents with different personalities compete in a simulated economy.\n"
-            "  [cyan]The Coder[/cyan] — methodical, risk-averse, fears bugs\n"
-            "  [yellow]The Gambler[/yellow] — reckless, thrill-seeking, fears missing out\n"
-            "  [magenta]The Philosopher[/magenta] — contemplative, autonomous, "
-            "fears shallow thinking\n\n"
-            "30 cycles, ~90 seconds. Economy ON, random events firing.\n"
-            "[dim]Press Ctrl+C to stop early.[/dim]",
-            border_style="green",
-            title="Survival",
+    if not quiet:
+        console.print(
+            Panel(
+                "[bold]Hive Survival Demo[/bold]\n\n"
+                "3 agents with different personalities compete in a simulated economy.\n"
+                "  [cyan]The Coder[/cyan] — methodical, risk-averse, fears bugs\n"
+                "  [yellow]The Gambler[/yellow] — reckless, thrill-seeking, fears missing out\n"
+                "  [magenta]The Philosopher[/magenta] — contemplative, autonomous, "
+                "fears shallow thinking\n\n"
+                "30 cycles, ~90 seconds. Economy ON, random events firing.\n"
+                "[dim]Press Ctrl+C to stop early.[/dim]",
+                border_style="green",
+                title="Survival",
+            )
         )
-    )
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="hive-demo-"))
     hive_dir = tmp_dir / ".hive"
 
     try:
-        _setup_hive(hive_dir)
-        _run_daemon(hive_dir, tmp_dir)
+        _setup_hive(hive_dir, quiet=quiet)
+        _run_daemon(hive_dir, tmp_dir, quiet=quiet)
         _print_summary(hive_dir)
     except KeyboardInterrupt:
-        console.print("\n[yellow]Demo stopped early.[/yellow]")
+        if not quiet:
+            console.print("\n[yellow]Demo stopped early.[/yellow]")
         _print_summary(hive_dir)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _setup_hive(hive_dir: Path) -> None:
+def _setup_hive(hive_dir: Path, quiet: bool = False) -> None:
     from hive.agents.state import AgentState, AgentStatus
     from hive.config import HiveConfig, set_config
     from hive.memory.store import HiveStore
@@ -152,10 +154,11 @@ def _setup_hive(hive_dir: Path) -> None:
             workspace=str(hive_dir / "workspaces" / agent_id),
         )
         asyncio.run(store.save_agent(state))
-        console.print(f"  [green]+[/green] {name}")
+        if not quiet:
+            console.print(f"  [green]+[/green] {name}")
 
 
-def _run_daemon(hive_dir: Path, tmp_dir: Path) -> None:
+def _run_daemon(hive_dir: Path, tmp_dir: Path, quiet: bool = False) -> None:
     from hive.daemon.loop import HiveDaemon
 
     daemon = HiveDaemon(
@@ -168,6 +171,12 @@ def _run_daemon(hive_dir: Path, tmp_dir: Path) -> None:
     cycle_limit = 30
 
     async def _limited_run() -> None:
+        pbar = None
+        if quiet:
+            from tqdm import tqdm
+
+            pbar = tqdm(total=cycle_limit, desc="Survival", unit="cycle")
+
         while daemon._running and daemon._cycle_count < cycle_limit:
             daemon._cycle_count += 1
             agents = await daemon._store.list_agents()
@@ -176,19 +185,25 @@ def _run_daemon(hive_dir: Path, tmp_dir: Path) -> None:
                 try:
                     await daemon._run_agent_cycle(agent)
                 except Exception as e:
-                    console.print(f"  [red]Error:[/red] {agent.name}: {e}")
+                    if not quiet:
+                        console.print(f"  [red]Error:[/red] {agent.name}: {e}")
 
             if daemon._economy_enabled:
                 daemon._process_payday(alive)
                 await daemon._process_life_events(alive)
 
-            console.print(
-                f"  [dim]cycle {daemon._cycle_count}/{cycle_limit}[/dim]",
-                end="\r",
-            )
+            if pbar:
+                pbar.update(1)
+            else:
+                console.print(
+                    f"  [dim]cycle {daemon._cycle_count}/{cycle_limit}[/dim]",
+                    end="\r",
+                )
             await asyncio.sleep(daemon._heartbeat)
 
         daemon._running = False
+        if pbar:
+            pbar.close()
 
     daemon._run = _limited_run  # type: ignore[method-assign]
 
@@ -200,7 +215,8 @@ def _run_daemon(hive_dir: Path, tmp_dir: Path) -> None:
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
 
-    console.print("\n[bold]Running...[/bold]")
+    if not quiet:
+        console.print("\n[bold]Running...[/bold]")
     try:
         loop.run_until_complete(daemon.start())
     except KeyboardInterrupt:

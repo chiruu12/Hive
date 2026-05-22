@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from hive.interactions.base import (
     AgentSlot,
@@ -43,10 +44,12 @@ class ScenarioRunner:
         self,
         scenario: Scenario,
         output_dir: Path | None = None,
+        quiet: bool = False,
     ):
         self._scenario = scenario
         self._output_dir = output_dir
         self._transcript = Transcript(output_dir)
+        self._quiet = quiet
 
     async def run(self) -> ScenarioResult:
         agents = self._scenario.setup()
@@ -57,7 +60,13 @@ class ScenarioRunner:
         total_tokens = 0
         total_cost = 0.0
 
-        for r in range(self._scenario.num_rounds):
+        rounds_iter: Any = range(self._scenario.num_rounds)
+        if self._quiet:
+            from tqdm import tqdm
+
+            rounds_iter = tqdm(rounds_iter, desc=self._scenario.name, unit="round")
+
+        for r in rounds_iter:
             evidence = self._scenario.get_evidence(r)
 
             def context_builder(
@@ -96,7 +105,12 @@ class ScenarioRunner:
 
         final_actions = {}
         if self._scenario.get_final_prompt(agents[0], ""):
-            for agent in agents:
+            agents_iter: Any = agents
+            if self._quiet:
+                from tqdm import tqdm
+
+                agents_iter = tqdm(agents, desc="Final actions", unit="agent")
+            for agent in agents_iter:
                 visible = pattern.get_visible_messages(agent.slot_id, history)
                 mem = memories[agent.slot_id]
                 mem_ctx = mem.build_context(agent, visible, self._scenario.num_rounds)

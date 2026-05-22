@@ -1280,21 +1280,28 @@ app.add_typer(demo_app, name="demo")
 
 
 @demo_app.command("survival")
-def demo_survival() -> None:
+def demo_survival(
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Minimal output with tqdm progress bar"
+    ),
+) -> None:
     """3 agents, 30 cycles, economy on. Watch them struggle and thrive."""
     from hive.demos.survival import run_survival_demo
 
-    run_survival_demo()
+    run_survival_demo(quiet=quiet)
 
 
 @demo_app.command("detective")
 def demo_detective(
     model: str = typer.Option("claude-haiku-4-5", "--model", "-m", help="Model for detectives"),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Minimal output with tqdm progress bar"
+    ),
 ) -> None:
     """Multi-model murder mystery investigation."""
     from hive.demos.detective import run_detective_demo
 
-    run_detective_demo(model=model)
+    run_detective_demo(model=model, quiet=quiet)
 
 
 agent_app = typer.Typer(
