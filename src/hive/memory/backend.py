@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from hive.memory.semantic import MemoryRecord
 
@@ -13,7 +13,7 @@ class MemoryBackend(Protocol):
     Implementations: TFIDFBackend (default), ChromaBackend (optional).
     """
 
-    async def store(self, text: str, metadata: dict) -> str:
+    async def store(self, text: str, metadata: dict[str, Any] | None = None) -> str:
         """Store a memory. Returns memory_id."""
         ...
 

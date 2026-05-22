@@ -59,15 +59,21 @@ class AlarmToolkit(Toolkit):
         store: HiveStore | None = None,
         db_path: str | Path | None = None,
     ):
+        self._initialized = False
         if store is not None:
             self._store = store
+            self._initialized = True
         elif db_path is not None:
             from hive.memory.store import HiveStore as _Store
 
             self._store = _Store(Path(db_path))
-            asyncio.run(self._store.initialize())
         else:
             raise ValueError("AlarmToolkit requires either store or db_path")
+
+    async def _ensure_init(self) -> None:
+        if not self._initialized:
+            await self._store.initialize()
+            self._initialized = True
 
     @property
     def instructions(self) -> str:
@@ -92,6 +98,7 @@ class AlarmToolkit(Toolkit):
             minutes: Minutes from now.
             seconds: Seconds from now.
         """
+        await self._ensure_init()
         total = timedelta(hours=hours, minutes=minutes, seconds=seconds)
         if total.total_seconds() <= 0:
             return "Alarm must be at least 1 second in the future."
@@ -114,6 +121,7 @@ class AlarmToolkit(Toolkit):
     @tool()
     async def list_alarms(self) -> str:
         """List all pending alarms."""
+        await self._ensure_init()
         alarms = await self._store.list_pending_alarms(self._agent_id)
         if not alarms:
             return "No pending alarms."
@@ -129,6 +137,7 @@ class AlarmToolkit(Toolkit):
         Args:
             alarm_id: The alarm ID to cancel.
         """
+        await self._ensure_init()
         ok = await self._store.cancel_alarm(alarm_id)
         if ok:
             return f"Alarm {alarm_id} cancelled."

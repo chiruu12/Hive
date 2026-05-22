@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -29,15 +28,21 @@ class TaskToolkit(Toolkit):
         store: HiveStore | None = None,
         db_path: str | Path | None = None,
     ):
+        self._initialized = False
         if store is not None:
             self._store = store
+            self._initialized = True
         elif db_path is not None:
             from hive.memory.store import HiveStore as _Store
 
             self._store = _Store(Path(db_path))
-            asyncio.run(self._store.initialize())
         else:
             raise ValueError("TaskToolkit requires either store or db_path")
+
+    async def _ensure_init(self) -> None:
+        if not self._initialized:
+            await self._store.initialize()
+            self._initialized = True
 
     @property
     def instructions(self) -> str:
@@ -47,9 +52,7 @@ class TaskToolkit(Toolkit):
         )
 
     @tool()
-    async def create_task(
-        self, description: str, priority: str = "medium", due: str = ""
-    ) -> str:
+    async def create_task(self, description: str, priority: str = "medium", due: str = "") -> str:
         """Create a new task.
 
         Args:
@@ -57,6 +60,7 @@ class TaskToolkit(Toolkit):
             priority: Priority level — high, medium, or low.
             due: Optional due date or deadline description.
         """
+        await self._ensure_init()
         if priority not in ("high", "medium", "low"):
             return "Priority must be high, medium, or low."
         task_id = f"task-{uuid4().hex[:8]}"
@@ -76,6 +80,7 @@ class TaskToolkit(Toolkit):
         Args:
             status: Filter by status — pending or done.
         """
+        await self._ensure_init()
         tasks = await self._store.list_tasks(self._agent_id, status)
         if not tasks:
             return f"No {status} tasks."
@@ -92,6 +97,7 @@ class TaskToolkit(Toolkit):
         Args:
             task_id: The task ID to complete.
         """
+        await self._ensure_init()
         ok = await self._store.complete_task(task_id)
         return f"Task {task_id} completed." if ok else f"Task {task_id} not found or already done."
 
@@ -102,5 +108,6 @@ class TaskToolkit(Toolkit):
         Args:
             task_id: The task ID to delete.
         """
+        await self._ensure_init()
         ok = await self._store.delete_task(task_id)
         return f"Task {task_id} deleted." if ok else f"Task {task_id} not found."

@@ -27,17 +27,18 @@ class KnowledgeToolkit(Toolkit):
         memory: SemanticMemory | None = None,
         memory_dir: str | Path | None = None,
     ):
+        self._memory: SemanticMemory | None = None
+        self._memory_dir: Path | None = None
         if memory is not None:
             self._memory = memory
         elif memory_dir is not None:
             self._memory_dir = Path(memory_dir)
-            self._memory = None  # type: ignore[assignment]
         else:
             raise ValueError("KnowledgeToolkit requires either memory or memory_dir")
 
     def bind(self, agent_id: str) -> None:
         super().bind(agent_id)
-        if self._memory is None and hasattr(self, "_memory_dir"):
+        if self._memory is None and self._memory_dir is not None:
             from hive.memory.semantic import SemanticMemory
 
             self._memory = SemanticMemory(self._memory_dir, agent_id)

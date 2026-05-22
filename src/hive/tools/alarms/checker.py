@@ -33,11 +33,17 @@ class AlarmChecker:
         self._store = HiveStore(Path(db_path))
         self._interval = check_interval
         self._running = False
+        self._initialized = False
         self._task: asyncio.Task[None] | None = None
+
+    async def _ensure_initialized(self) -> None:
+        if not self._initialized:
+            await self._store.initialize()
+            self._initialized = True
 
     async def run_forever(self) -> None:
         """Poll for due alarms continuously until stopped."""
-        await self._store.initialize()
+        await self._ensure_initialized()
         self._running = True
         while self._running:
             try:
@@ -48,6 +54,7 @@ class AlarmChecker:
 
     async def check_once(self) -> list[str]:
         """Check for due alarms, fire notifications, return fired IDs."""
+        await self._ensure_initialized()
         due = await self._store.get_due_alarms()
         fired_ids = []
         for alarm in due:

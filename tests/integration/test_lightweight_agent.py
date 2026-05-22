@@ -228,4 +228,4 @@ class TestLightweightAgent:
             )
         elapsed = (time.perf_counter() - start) / 100
 
-        assert elapsed < 0.05, f"Agent creation took {elapsed*1000:.1f}ms (limit: 50ms)"
+        assert elapsed < 0.05, f"Agent creation took {elapsed * 1000:.1f}ms (limit: 50ms)"
