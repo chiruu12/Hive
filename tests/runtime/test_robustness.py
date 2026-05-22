@@ -27,7 +27,12 @@ class MockProvider(BaseProvider):
         return True
 
     async def generate_with_metadata(
-        self, messages: list[Message], **kwargs: Any
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+        **kwargs: Any,
     ) -> GenerateResult:
         if self._call_count < len(self._responses):
             response = self._responses[self._call_count]
@@ -239,3 +244,93 @@ class TestGoalValidation:
         recent = [{"objective": "Learn Python", "status": "abandoned"}]
         result = ExistenceLoop._validate_goal("Write documentation for the API endpoints", recent)
         assert result is None
+
+
+class TestBudgetWarning:
+    @pytest.mark.asyncio
+    async def test_80_percent_warning_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Warning fires when cost reaches 80% of budget."""
+        responses = [
+            Message.assistant("step 1", [ToolCall(id="t1", name="noop", arguments={})]),
+            Message.assistant("done"),
+        ]
+
+        class NoopToolkit(Toolkit):
+            @tool()
+            def noop(self) -> str:
+                """Do nothing."""
+                return "ok"
+
+        provider = MockProvider(responses, cost_per_call=0.009)
+        agent = Agent(
+            name="budget-test",
+            model=provider,
+            toolkits=[NoopToolkit()],
+            max_cost_usd=0.01,
+        )
+        with caplog.at_level("WARNING"):
+            await agent.run(Task(instruction="do stuff"))
+        assert any("approaching cost limit" in r.message for r in caplog.records)
+        assert any("budget-test" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_warning_fires_only_once(self, caplog: pytest.LogCaptureFixture) -> None:
+        responses = [
+            Message.assistant("s1", [ToolCall(id="t1", name="noop", arguments={})]),
+            Message.assistant("s2", [ToolCall(id="t2", name="noop", arguments={})]),
+            Message.assistant("done"),
+        ]
+
+        class NoopToolkit(Toolkit):
+            @tool()
+            def noop(self) -> str:
+                """Do nothing."""
+                return "ok"
+
+        provider = MockProvider(responses, cost_per_call=0.004)
+        agent = Agent(
+            name="test",
+            model=provider,
+            toolkits=[NoopToolkit()],
+            max_cost_usd=0.005,
+        )
+        with caplog.at_level("WARNING"):
+            await agent.run(Task(instruction="stuff"))
+        warning_count = sum(1 for r in caplog.records if "approaching cost limit" in r.message)
+        assert warning_count == 1
+
+    @pytest.mark.asyncio
+    async def test_run_once_respects_budget(self) -> None:
+        provider = MockProvider(
+            [
+                Message.assistant("s1", [ToolCall(id="t1", name="noop", arguments={})]),
+                Message.assistant("s2", [ToolCall(id="t2", name="noop", arguments={})]),
+                Message.assistant("done"),
+            ],
+            cost_per_call=0.006,
+        )
+
+        class NoopToolkit(Toolkit):
+            @tool()
+            def noop(self) -> str:
+                """Do nothing."""
+                return "ok"
+
+        agent = Agent(
+            name="test",
+            model=provider,
+            toolkits=[NoopToolkit()],
+            max_cost_usd=0.01,
+        )
+        result = await agent.run_once("do stuff", max_tool_rounds=5)
+        assert "budget" in result.lower() or "cost" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_no_warning_when_budget_disabled(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        provider = MockProvider([Message.assistant("done")], cost_per_call=0.5)
+        agent = Agent(name="test", model=provider, max_cost_usd=0.0)
+        with caplog.at_level("WARNING"):
+            await agent.run(Task(instruction="hi"))
+        assert not any("approaching" in r.message for r in caplog.records)

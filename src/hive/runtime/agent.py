@@ -85,6 +85,7 @@ class Agent:
         self._gen_max_tokens = max_tokens or 4096
         self._total_cost = 0.0
         self._total_tokens = 0
+        self._budget_warned = False
         self._response_model = response_model
 
         for tk in self._toolkits:
@@ -256,6 +257,7 @@ class Agent:
         """Execute a task using the ReAct loop."""
         self._total_cost = 0.0
         self._total_tokens = 0
+        self._budget_warned = False
         t0 = time.time()
 
         tools = self.get_tools()
@@ -282,6 +284,7 @@ class Agent:
                 self._log_decision(steps, result)
                 self._total_tokens += result.input_tokens + result.output_tokens
                 self._total_cost += result.cost_usd or 0.0
+                self._check_budget_warning()
                 budget_msg = self._check_budget()
                 if budget_msg:
                     return TaskResult(
@@ -427,6 +430,12 @@ class Agent:
                 self._gen_max_tokens,
             )
             response = result.message
+            self._total_tokens += result.input_tokens + result.output_tokens
+            self._total_cost += result.cost_usd or 0.0
+            self._check_budget_warning()
+            budget_msg = self._check_budget()
+            if budget_msg:
+                return budget_msg
 
             if not response.tool_calls:
                 return response.content
@@ -443,13 +452,15 @@ class Agent:
                     output = f"Unknown tool: {tc.name}"
                 messages.append(Message.tool_result(tc.id, output))
 
-        final = await self._model.generate(
+        final_result = await self._model.generate_with_metadata(
             messages,
             None,
             self._temperature,
             self._gen_max_tokens,
         )
-        return final.content
+        self._total_tokens += final_result.input_tokens + final_result.output_tokens
+        self._total_cost += final_result.cost_usd or 0.0
+        return final_result.message.content
 
     def run_once_sync(
         self,
@@ -538,6 +549,29 @@ class Agent:
         if self._max_tokens and self._total_tokens >= self._max_tokens:
             return f"Token budget exceeded: {self._total_tokens:,} >= {self._max_tokens:,}"
         return None
+
+    def _check_budget_warning(self) -> None:
+        """Log a warning once when 80% of budget is consumed."""
+        if self._budget_warned:
+            return
+        if self._max_cost_usd and self._total_cost >= self._max_cost_usd * 0.8:
+            logger.warning(
+                "Agent %r approaching cost limit: $%.4f / $%.4f (%.0f%%)",
+                self.name,
+                self._total_cost,
+                self._max_cost_usd,
+                (self._total_cost / self._max_cost_usd) * 100,
+            )
+            self._budget_warned = True
+        if self._max_tokens and self._total_tokens >= self._max_tokens * 0.8:
+            logger.warning(
+                "Agent %r approaching token limit: %d / %d (%.0f%%)",
+                self.name,
+                self._total_tokens,
+                self._max_tokens,
+                (self._total_tokens / self._max_tokens) * 100,
+            )
+            self._budget_warned = True
 
     def _log_decision(self, step: int, result: GenerateResult) -> None:
         if not self._log_writer:
