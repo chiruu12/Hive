@@ -4,6 +4,7 @@ import asyncio
 import signal
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import typer
@@ -1159,7 +1160,7 @@ def notes_list(
         console.print("[dim]No notes yet.[/dim]")
         return
 
-    all_notes = []
+    all_notes: list[tuple[str, Any]] = []
     for agent_dir in memory_dir.iterdir():
         if agent_dir.is_dir():
             mem = SemanticMemory(hive_dir, agent_dir.name)
@@ -1206,12 +1207,12 @@ def notes_search(
         console.print("[dim]No notes yet.[/dim]")
         return
 
-    all_results = []
+    all_results: list[tuple[str, Any]] = []
     for agent_dir in memory_dir.iterdir():
         if agent_dir.is_dir():
             mem = SemanticMemory(hive_dir, agent_dir.name)
 
-            async def _search():
+            async def _search() -> list[Any]:
                 return await mem.search(query, top_k=limit)
 
             results = asyncio.run(_search())
