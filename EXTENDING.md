@@ -394,9 +394,9 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post("/ask")
 async def ask(query: str, agent_id: str = "assistant"):
-    # Bind toolkits to the requesting agent
+    # rebind() switches shared toolkits to the requesting agent
     for tk in (task_tk, alarm_tk, knowledge_tk):
-        tk.bind(agent_id)
+        tk.rebind(agent_id)
 
     agent = Agent(
         name=agent_id,
@@ -416,5 +416,5 @@ Key points:
 - **KnowledgeToolkit accepts `memory_dir=`** for standalone SemanticMemory
 - **AlarmChecker** runs independently -- polls every 15s, fires macOS notifications
 - **Agent creation is cheap** (~1ms) -- no disk I/O in the constructor
-- **Toolkits are reusable** -- call `bind(agent_id)` to switch context between requests
+- **Toolkits are reusable** -- call `rebind(agent_id)` to switch context between requests. `bind()` raises `ToolkitAlreadyBoundError` if the toolkit is already bound to a different agent (prevents accidental state leakage in daemon mode)
 - **Memory backends are pluggable** -- swap `TFIDFBackend` for `ChromaBackend` via `SemanticMemory(hive_dir, agent_id, backend=ChromaBackend(...))`

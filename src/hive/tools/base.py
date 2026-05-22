@@ -14,6 +14,10 @@ from typing import Any, Literal, Union, get_args, get_origin
 logger = logging.getLogger(__name__)
 
 
+class ToolkitAlreadyBoundError(RuntimeError):
+    """Raised when binding a toolkit that is already bound to a different agent."""
+
+
 @dataclass
 class Tool:
     """A callable tool with metadata and JSON Schema."""
@@ -314,10 +318,19 @@ class Toolkit:
         return bool(self._agent_id)
 
     def bind(self, agent_id: str) -> None:
-        """Called by the Agent to set the agent context. Override if needed."""
+        """Bind this toolkit to an agent. Raises if already bound to a different agent."""
         if self._agent_id and self._agent_id != agent_id:
-            logger.warning(
-                "Toolkit %s already bound to %r, rebinding to %r",
+            raise ToolkitAlreadyBoundError(
+                f"Toolkit {self.__class__.__name__} is already bound to {self._agent_id!r}. "
+                f"Use rebind() to switch agents or create a new instance."
+            )
+        self._agent_id = agent_id
+
+    def rebind(self, agent_id: str) -> None:
+        """Rebind to a different agent. Use for server/API patterns with shared toolkits."""
+        if self._agent_id and self._agent_id != agent_id:
+            logger.debug(
+                "Toolkit %s rebinding from %r to %r",
                 self.__class__.__name__,
                 self._agent_id,
                 agent_id,
