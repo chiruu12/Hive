@@ -141,3 +141,46 @@ def test_validate_environment_no_warnings_for_local_model():
     cfg.model.default_model = "ollama:llama3.2"
     warnings = cfg.validate_environment()
     assert not any("ANTHROPIC_API_KEY" in w for w in warnings)
+
+
+# --- Equal thresholds (must be strictly increasing) ---
+
+
+def test_threshold_equal_prominent_constrained_invalid():
+    with pytest.raises(ValidationError, match="threshold_constrained"):
+        SufferingConfig(threshold_prominent=0.5, threshold_constrained=0.5)
+
+
+def test_threshold_equal_constrained_dominant_invalid():
+    with pytest.raises(ValidationError, match="threshold_dominant"):
+        SufferingConfig(threshold_constrained=0.6, threshold_dominant=0.6)
+
+
+def test_threshold_equal_dominant_crisis_invalid():
+    with pytest.raises(ValidationError, match="threshold_crisis"):
+        SufferingConfig(threshold_dominant=0.8, threshold_crisis=0.8)
+
+
+# --- Groq / Fireworks environment warnings ---
+
+
+def test_validate_environment_warns_groq_missing_key(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    import hive.config as _cfg_mod
+
+    monkeypatch.setattr(_cfg_mod, "_dotenv_cache", {"GROQ_API_KEY": None})
+    cfg = HiveConfig()
+    cfg.model.default_model = "groq:mixtral-8x7b"
+    warnings = cfg.validate_environment()
+    assert any("GROQ_API_KEY" in w for w in warnings)
+
+
+def test_validate_environment_warns_fireworks_missing_key(monkeypatch):
+    monkeypatch.delenv("FIREWORKS_API_KEY", raising=False)
+    import hive.config as _cfg_mod
+
+    monkeypatch.setattr(_cfg_mod, "_dotenv_cache", {"FIREWORKS_API_KEY": None})
+    cfg = HiveConfig()
+    cfg.model.default_model = "fireworks:llama-v2"
+    warnings = cfg.validate_environment()
+    assert any("FIREWORKS_API_KEY" in w for w in warnings)

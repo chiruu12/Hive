@@ -334,3 +334,89 @@ class TestBudgetWarning:
         with caplog.at_level("WARNING"):
             await agent.run(Task(instruction="hi"))
         assert not any("approaching" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_token_budget_warning_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Token budget warning fires independently of cost warning."""
+        responses = [
+            Message.assistant("s1", [ToolCall(id="t1", name="noop", arguments={})]),
+            Message.assistant("done"),
+        ]
+
+        class NoopToolkit(Toolkit):
+            @tool()
+            def noop(self) -> str:
+                """Do nothing."""
+                return "ok"
+
+        # Each call = 150 tokens. Budget=180, 80%=144. First call (150) triggers.
+        provider = MockProvider(responses)
+        agent = Agent(
+            name="tok-warn",
+            model=provider,
+            toolkits=[NoopToolkit()],
+            max_tokens=180,
+        )
+        with caplog.at_level("WARNING"):
+            await agent.run(Task(instruction="do stuff"))
+        assert any("token limit" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_independent_cost_and_token_warnings(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Cost and token warnings fire independently."""
+        responses = [
+            Message.assistant("s1", [ToolCall(id="t1", name="noop", arguments={})]),
+            Message.assistant("done"),
+        ]
+
+        class NoopToolkit(Toolkit):
+            @tool()
+            def noop(self) -> str:
+                """Do nothing."""
+                return "ok"
+
+        # cost_per_call=0.009, max_cost=0.01 → 90% on first call
+        # tokens=150 per call, max_tokens=180 → 83% on first call
+        provider = MockProvider(responses, cost_per_call=0.009)
+        agent = Agent(
+            name="both-warn",
+            model=provider,
+            toolkits=[NoopToolkit()],
+            max_cost_usd=0.01,
+            max_tokens=180,
+        )
+        with caplog.at_level("WARNING"):
+            await agent.run(Task(instruction="do stuff"))
+        cost_warns = [r for r in caplog.records if "cost limit" in r.message]
+        token_warns = [r for r in caplog.records if "token limit" in r.message]
+        assert len(cost_warns) >= 1
+        assert len(token_warns) >= 1
+
+    @pytest.mark.asyncio
+    async def test_run_once_respects_token_budget(self) -> None:
+        provider = MockProvider(
+            [
+                Message.assistant("s1", [ToolCall(id="t1", name="noop", arguments={})]),
+                Message.assistant("s2"),
+            ],
+        )
+
+        class NoopToolkit(Toolkit):
+            @tool()
+            def noop(self) -> str:
+                """Do nothing."""
+                return "ok"
+
+        # 150 tokens per call, budget=149 → exceeds on first call
+        agent = Agent(
+            name="test",
+            model=provider,
+            toolkits=[NoopToolkit()],
+            max_tokens=149,
+        )
+        result = await agent.run_once("do stuff", max_tool_rounds=5)
+        assert "token" in result.lower() or "budget" in result.lower()

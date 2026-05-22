@@ -92,3 +92,27 @@ def test_agent_constructor_skips_already_bound() -> None:
     tk.bind("my-agent")
     Agent(name="my-agent", model=AsyncMock(), toolkits=[tk], agent_id="my-agent")
     assert tk._agent_id == "my-agent"
+
+
+def test_rebind_then_bind_same_agent() -> None:
+    """bind → rebind → bind(same) all succeed."""
+    tk = _DummyToolkit()
+    tk.bind("agent-a")
+    tk.rebind("agent-b")
+    tk.bind("agent-b")  # idempotent after rebind
+    assert tk._agent_id == "agent-b"
+
+
+@pytest.mark.asyncio
+async def test_rebound_toolkit_tools_use_new_agent_id() -> None:
+    """Tool calls reflect the rebound agent_id."""
+    tk = _DummyToolkit()
+    tk.bind("agent-a")
+    greet = tk.get_tools()[0]
+    result_a = await greet.call(name="world")
+    assert "agent-a" in result_a
+
+    tk.rebind("agent-b")
+    result_b = await greet.call(name="world")
+    assert "agent-b" in result_b
+    assert "agent-a" not in result_b

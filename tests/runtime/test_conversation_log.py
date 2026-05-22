@@ -114,3 +114,55 @@ async def test_log_string_dir(tmp_path: Any) -> None:
 
     files = list((tmp_path / "str-dir").glob("*.json"))
     assert len(files) == 1
+
+
+@pytest.mark.asyncio
+async def test_log_contains_tool_calls(tmp_path: Any) -> None:
+    """Conversation log captures tool call details."""
+    from hive.runtime.types import ToolCall
+    from hive.tools import Toolkit, tool
+
+    class _NoopToolkit(Toolkit):
+        @tool()
+        def greet(self, name: str = "world") -> str:
+            """Say hi."""
+            return f"Hello {name}"
+
+    responses = [
+        Message.assistant(
+            "calling", [ToolCall(id="t1", name="greet", arguments={"name": "hive"})]
+        ),
+        Message.assistant("done"),
+    ]
+    provider = _MockProvider(responses)
+    agent = Agent(
+        name="tool-log",
+        model=provider,
+        toolkits=[_NoopToolkit()],
+        conversation_log_dir=tmp_path,
+    )
+    await agent.run(Task(instruction="use tool"))
+
+    files = list((tmp_path / "tool-log").glob("*.json"))
+    data = json.loads(files[0].read_text())
+    tool_msgs = [
+        m for m in data["messages"] if m.get("tool_calls") and len(m["tool_calls"]) > 0
+    ]
+    assert len(tool_msgs) >= 1
+    assert tool_msgs[0]["tool_calls"][0]["name"] == "greet"
+
+
+@pytest.mark.asyncio
+async def test_multiple_runs_create_separate_logs(tmp_path: Any) -> None:
+    """Each run() creates a separate log file."""
+    import time
+
+    provider = _MockProvider([Message.assistant("ok")])
+    agent = Agent(name="multi", model=provider, conversation_log_dir=tmp_path)
+
+    await agent.run(Task(instruction="run 1"))
+    time.sleep(1.1)  # ensure different second-resolution timestamp
+    await agent.run(Task(instruction="run 2"))
+
+    files = list((tmp_path / "multi").glob("*.json"))
+    assert len(files) == 2

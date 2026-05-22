@@ -147,3 +147,34 @@ async def test_exponential_backoff_delays(mock_sleep: AsyncMock, provider: _Stub
     await provider._retry_with_backoff(fn)
     delays = [call.args[0] for call in mock_sleep.call_args_list]
     assert delays == [1.0, 2.0, 4.0]
+
+
+@pytest.mark.asyncio
+@patch("asyncio.sleep", new_callable=AsyncMock)
+async def test_httpx_timeout_exception_retries(
+    mock_sleep: AsyncMock, provider: _StubProvider
+) -> None:
+    fn = AsyncMock(side_effect=[httpx.TimeoutException("timed out"), "ok"])
+    result = await provider._retry_with_backoff(fn)
+    assert result == "ok"
+    assert fn.call_count == 2
+
+
+@pytest.mark.asyncio
+@patch("asyncio.sleep", new_callable=AsyncMock)
+async def test_custom_base_delay(mock_sleep: AsyncMock, provider: _StubProvider) -> None:
+    fn = AsyncMock(side_effect=[_APIError(429), _APIError(429), "ok"])
+    await provider._retry_with_backoff(fn, base_delay=0.5)
+    delays = [call.args[0] for call in mock_sleep.call_args_list]
+    assert delays == [0.5, 1.0]
+
+
+@pytest.mark.asyncio
+@patch("asyncio.sleep", new_callable=AsyncMock)
+async def test_arguments_preserved_across_retries(
+    mock_sleep: AsyncMock, provider: _StubProvider
+) -> None:
+    fn = AsyncMock(side_effect=[_APIError(429), "ok"])
+    await provider._retry_with_backoff(fn, "arg1", key="val")
+    for call in fn.call_args_list:
+        assert call == (("arg1",), {"key": "val"})
