@@ -20,7 +20,17 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Publish to PyPI
-        run: uv publish
+      - name: Check secret exists
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::PYPI_TOKEN secret is empty or not set"
+            exit 1
+          fi
+          echo "Token is set (${#TOKEN} chars)"
         env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          TOKEN: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Publish to PyPI
+        run: uv publish --token "$PYPI_TOKEN"
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
