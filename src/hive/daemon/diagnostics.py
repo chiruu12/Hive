@@ -166,11 +166,36 @@ def check_dependencies() -> CheckResult:
     return CheckResult("Dependencies", "ok", "All installed")
 
 
+def check_config_valid() -> CheckResult:
+    """Validate config values against field validators."""
+    try:
+        from hive.config import HiveConfig
+
+        cfg = HiveConfig()
+        env_warnings = cfg.validate_environment()
+        if env_warnings:
+            return CheckResult(
+                "Config validation",
+                "warn",
+                "; ".join(env_warnings),
+                fix="Set the required API key in .env or environment",
+            )
+        return CheckResult("Config validation", "ok", "All values valid")
+    except Exception as e:
+        return CheckResult(
+            "Config validation",
+            "fail",
+            str(e),
+            fix="Check .hive/config.yaml for invalid values",
+        )
+
+
 def run_all_checks(hive_dir: Path | None = None) -> list[CheckResult]:
     hive = hive_dir or (Path.cwd() / ".hive")
     return [
         check_python_version(),
         check_dependencies(),
+        check_config_valid(),
         check_anthropic_key(),
         check_openai_key(),
         check_groq_key(),

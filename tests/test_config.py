@@ -1,6 +1,16 @@
 """Tests for config system."""
 
-from hive.config import HiveConfig, load_config, set_config
+import pytest
+from pydantic import ValidationError
+
+from hive.config import (
+    DaemonConfig,
+    EconomyConfig,
+    HiveConfig,
+    SufferingConfig,
+    load_config,
+    set_config,
+)
 
 
 def test_default_config():
@@ -52,3 +62,82 @@ def test_load_config_sets_global(tmp_dir):
     config_path.write_text("daemon:\n  heartbeat: 55\n")
     load_config(tmp_dir)
     assert get_config().daemon.heartbeat == 55
+
+
+# --- Threshold ordering validation ---
+
+
+def test_threshold_ordering_valid():
+    cfg = SufferingConfig(
+        threshold_prominent=0.2,
+        threshold_constrained=0.4,
+        threshold_dominant=0.6,
+        threshold_crisis=0.8,
+    )
+    assert cfg.threshold_crisis == 0.8
+
+
+def test_threshold_constrained_lte_prominent_invalid():
+    with pytest.raises(ValidationError, match="threshold_constrained"):
+        SufferingConfig(threshold_prominent=0.8, threshold_constrained=0.5)
+
+
+def test_threshold_dominant_lte_constrained_invalid():
+    with pytest.raises(ValidationError, match="threshold_dominant"):
+        SufferingConfig(threshold_constrained=0.7, threshold_dominant=0.5)
+
+
+def test_threshold_crisis_lte_dominant_invalid():
+    with pytest.raises(ValidationError, match="threshold_crisis"):
+        SufferingConfig(threshold_dominant=0.9, threshold_crisis=0.8)
+
+
+# --- Heartbeat validation ---
+
+
+def test_heartbeat_zero_invalid():
+    with pytest.raises(ValidationError, match="heartbeat"):
+        DaemonConfig(heartbeat=0)
+
+
+def test_heartbeat_negative_invalid():
+    with pytest.raises(ValidationError, match="heartbeat"):
+        DaemonConfig(heartbeat=-1)
+
+
+def test_heartbeat_one_valid():
+    cfg = DaemonConfig(heartbeat=1)
+    assert cfg.heartbeat == 1
+
+
+# --- Starting balance validation ---
+
+
+def test_starting_balance_negative_invalid():
+    with pytest.raises(ValidationError, match="starting_balance"):
+        EconomyConfig(starting_balance=-10.0)
+
+
+def test_starting_balance_zero_valid():
+    cfg = EconomyConfig(starting_balance=0.0)
+    assert cfg.starting_balance == 0.0
+
+
+# --- Environment validation ---
+
+
+def test_validate_environment_warns_missing_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    import hive.config as _cfg_mod
+
+    monkeypatch.setattr(_cfg_mod, "_dotenv_cache", {"ANTHROPIC_API_KEY": None})
+    cfg = HiveConfig()
+    warnings = cfg.validate_environment()
+    assert any("ANTHROPIC_API_KEY" in w for w in warnings)
+
+
+def test_validate_environment_no_warnings_for_local_model():
+    cfg = HiveConfig()
+    cfg.model.default_model = "ollama:llama3.2"
+    warnings = cfg.validate_environment()
+    assert not any("ANTHROPIC_API_KEY" in w for w in warnings)
