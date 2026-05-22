@@ -1163,9 +1163,7 @@ def notes_list(
     for agent_dir in memory_dir.iterdir():
         if agent_dir.is_dir():
             mem = SemanticMemory(hive_dir, agent_dir.name)
-            all_notes.extend(
-                (agent_dir.name, n) for n in mem.recent(limit)
-            )
+            all_notes.extend((agent_dir.name, n) for n in mem.recent(limit))
     all_notes.sort(key=lambda x: x[1].ts, reverse=True)
 
     if not all_notes:
@@ -1217,9 +1215,7 @@ def notes_search(
                 return await mem.search(query, top_k=limit)
 
             results = asyncio.run(_search())
-            all_results.extend(
-                (agent_dir.name, r) for r in results
-            )
+            all_results.extend((agent_dir.name, r) for r in results)
 
     if not all_results:
         console.print("[dim]No matching notes.[/dim]")

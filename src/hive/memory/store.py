@@ -477,15 +477,17 @@ class HiveStore:
                    (task_id, agent_id, description, priority, due_date, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (
-                    task_id, agent_id, description, priority,
-                    due_date, datetime.now(UTC).isoformat(),
+                    task_id,
+                    agent_id,
+                    description,
+                    priority,
+                    due_date,
+                    datetime.now(UTC).isoformat(),
                 ),
             )
             await db.commit()
 
-    async def list_tasks(
-        self, agent_id: str, status: str = "pending"
-    ) -> list[dict[str, Any]]:
+    async def list_tasks(self, agent_id: str, status: str = "pending") -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

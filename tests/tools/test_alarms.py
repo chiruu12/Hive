@@ -69,7 +69,9 @@ class TestAlarmToolkit:
     @pytest.mark.asyncio
     async def test_due_alarms(self, store):
         await store.save_alarm(
-            "alarm-past", "test-agent", "Overdue",
+            "alarm-past",
+            "test-agent",
+            "Overdue",
             "2020-01-01T00:00:00+00:00",
         )
         due = await store.get_due_alarms()
@@ -79,7 +81,9 @@ class TestAlarmToolkit:
     @pytest.mark.asyncio
     async def test_mark_fired(self, store):
         await store.save_alarm(
-            "alarm-fire", "test-agent", "Fire me",
+            "alarm-fire",
+            "test-agent",
+            "Fire me",
             "2020-01-01T00:00:00+00:00",
         )
         await store.mark_alarm_fired("alarm-fire")

@@ -29,9 +29,7 @@ class TaskToolkit(Toolkit):
         )
 
     @tool()
-    async def create_task(
-        self, description: str, priority: str = "medium", due: str = ""
-    ) -> str:
+    async def create_task(self, description: str, priority: str = "medium", due: str = "") -> str:
         """Create a new task.
 
         Args:

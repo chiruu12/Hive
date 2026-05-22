@@ -24,18 +24,14 @@ async def fire_notification(description: str) -> bool:
         return True
 
     escaped = (
-        description.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", " ")
-        .replace("\r", " ")
+        description.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ")
     )
-    script = (
-        f'display notification "{escaped}" '
-        f'with title "Hive Alarm" sound name "Glass"'
-    )
+    script = f'display notification "{escaped}" with title "Hive Alarm" sound name "Glass"'
     try:
         proc = await asyncio.create_subprocess_exec(
-            "osascript", "-e", script,
+            "osascript",
+            "-e",
+            script,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -85,9 +81,7 @@ class AlarmToolkit(Toolkit):
 
         fire_at = datetime.now(UTC) + total
         alarm_id = f"alarm-{uuid4().hex[:8]}"
-        await self._store.save_alarm(
-            alarm_id, self._agent_id, description, fire_at.isoformat()
-        )
+        await self._store.save_alarm(alarm_id, self._agent_id, description, fire_at.isoformat())
 
         parts = []
         if hours:
