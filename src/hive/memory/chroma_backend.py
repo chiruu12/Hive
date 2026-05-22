@@ -72,9 +72,7 @@ class ChromaBackend:
             None,  # documents kwarg not positional
         )
         await self._run_sync(
-            lambda: self._collection.update(
-                ids=[mid], documents=[text], metadatas=[meta]
-            )
+            lambda: self._collection.update(ids=[mid], documents=[text], metadatas=[meta])
         )
         return mid
 
@@ -142,9 +140,7 @@ class ChromaBackend:
             import concurrent.futures
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                r: list[MemoryRecord] = pool.submit(
-                    asyncio.run, self.recent(limit)
-                ).result()
+                r: list[MemoryRecord] = pool.submit(asyncio.run, self.recent(limit)).result()
                 return r
         except RuntimeError:
             r2: list[MemoryRecord] = asyncio.run(self.recent(limit))
