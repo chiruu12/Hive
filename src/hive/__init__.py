@@ -14,8 +14,10 @@ from hive.daemon.hooks import HookRegistry
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
 from hive.interactions.registry import PatternRegistry
+from hive.memory.backend import MemoryBackend
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
+from hive.memory.tfidf_backend import TFIDFBackend
 from hive.models.anthropic import Anthropic
 from hive.models.base import BaseProvider
 from hive.models.factory import create_runtime_provider
@@ -57,15 +59,20 @@ from hive.runtime import (
     make_tool,
     tool,
 )
+from hive.tools.alarms import AlarmChecker, AlarmToolkit
 from hive.tools.comms import CommsToolkit
+from hive.tools.knowledge import KnowledgeToolkit
 from hive.tools.mcp import MCPToolkit
 from hive.tools.memory import MemoryToolkit
+from hive.tools.tasks import TaskToolkit
 from hive.tools.world import WorldToolkit
 from hive.world.state import WorldState
 
 __all__ = [
     "Agent",
     "AgentProfile",
+    "AlarmChecker",
+    "AlarmToolkit",
     "Anthropic",
     "ClaudeCodeSession",
     "CodexSession",
@@ -94,9 +101,11 @@ __all__ = [
     "HookRegistry",
     "HiveEvent",
     "HiveStore",
+    "KnowledgeToolkit",
     "LMStudio",
     "make_tool",
     "MCPToolkit",
+    "MemoryBackend",
     "MemoryToolkit",
     "Message",
     "Ollama",
@@ -114,9 +123,11 @@ __all__ = [
     "SufferingState",
     "Role",
     "SessionManager",
+    "TFIDFBackend",
     "Task",
     "TaskResult",
     "TaskStatus",
+    "TaskToolkit",
     "Tool",
     "ToolCall",
     "ToolResult",
