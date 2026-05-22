@@ -28,15 +28,18 @@ from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent, DaemonAgentAdapter, Message
 from hive.runtime.persona import Persona
 from hive.tools.a2a import A2AToolkit
+from hive.tools.alarms import AlarmToolkit, fire_notification
 from hive.tools.comms import CommsToolkit
 from hive.tools.delegation import DaemonDelegationToolkit
 from hive.tools.file import FileToolkit
 from hive.tools.git import GitToolkit
+from hive.tools.knowledge import KnowledgeToolkit
 from hive.tools.memory import MemoryToolkit
 from hive.tools.notepad import NotepadManager, NotepadToolkit
 from hive.tools.schedule import ScheduleToolkit
 from hive.tools.shell import ShellToolkit
 from hive.tools.sub_agents import SubAgentManager, SubAgentToolkit
+from hive.tools.tasks import TaskToolkit
 from hive.tools.web import WebToolkit
 from hive.tools.world import WorldToolkit
 
@@ -144,6 +147,9 @@ class HiveDaemon:
             A2AToolkit(self._a2a_store, self._store),
             WebToolkit(),
             ScheduleToolkit(self._store),
+            TaskToolkit(self._store),
+            AlarmToolkit(self._store),
+            KnowledgeToolkit(self._get_memory(agent_id)),
         ]
         if self._economy_enabled and self._ctx.world is not None:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
@@ -218,8 +224,26 @@ class HiveDaemon:
         )
         self._running = True
         self._pending_shutdown = False
+        self._alarm_task = asyncio.create_task(self._alarm_check_loop())
         await self._run()
         await self._shutdown()
+
+    async def _alarm_check_loop(self) -> None:
+        """Poll for due alarms every 15 seconds and fire notifications."""
+        while self._running:
+            try:
+                due = await self._store.get_due_alarms()
+                for alarm in due:
+                    ok = await fire_notification(alarm["description"])
+                    if not ok:
+                        logger.warning(
+                            "Alarm %s notification failed, marking fired anyway",
+                            alarm["alarm_id"],
+                        )
+                    await self._store.mark_alarm_fired(alarm["alarm_id"])
+            except Exception as e:
+                logger.warning("Alarm check failed: %s", e)
+            await asyncio.sleep(15)
 
     async def _run(self) -> None:
         goals_completed = 0
@@ -778,6 +802,12 @@ class HiveDaemon:
 
     async def _shutdown(self) -> None:
         """Checkpoint all agents, then write life summaries if economy is on."""
+        if hasattr(self, "_alarm_task") and not self._alarm_task.done():
+            self._alarm_task.cancel()
+            try:
+                await self._alarm_task
+            except asyncio.CancelledError:
+                pass
         try:
             agents = await self._store.list_agents()
             for agent in agents:
