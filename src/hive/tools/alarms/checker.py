@@ -45,6 +45,7 @@ class AlarmChecker:
         """Poll for due alarms continuously until stopped."""
         await self._ensure_initialized()
         self._running = True
+        self._task = asyncio.current_task()
         while self._running:
             try:
                 await self.check_once()
@@ -69,7 +70,7 @@ class AlarmChecker:
         return fired_ids
 
     async def stop(self) -> None:
-        """Stop the polling loop."""
+        """Stop the polling loop and cancel the background task."""
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
@@ -77,3 +78,4 @@ class AlarmChecker:
                 await self._task
             except asyncio.CancelledError:
                 pass
+            self._task = None

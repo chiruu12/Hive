@@ -38,14 +38,19 @@ class ChromaBackend:
                 "Install with: pip install hive-agent[chromadb]"
             ) from e
 
+        from urllib.parse import urlparse
+
         self._agent_id = agent_id
-        self._client = chromadb.HttpClient(host=chroma_url.replace("http://", "").split(":")[0])
+        parsed = urlparse(chroma_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 8000
+        self._client = chromadb.HttpClient(host=host, port=port)
         self._collection = self._client.get_or_create_collection(collection_name)
         self._embedder = SentenceTransformer(embedding_model)
 
     async def store(self, text: str, metadata: dict[str, Any] | None = None) -> str:
         mid = f"mem-{uuid4().hex[:8]}"
-        meta = metadata or {}
+        meta = dict(metadata) if metadata else {}
         meta["agent_id"] = self._agent_id
         meta["created_at"] = datetime.now(UTC).isoformat()
 
@@ -87,7 +92,7 @@ class ChromaBackend:
 
     async def recent(self, limit: int = 5) -> list[MemoryRecord]:
         where = {"agent_id": self._agent_id} if self._agent_id else None
-        results = self._collection.get(where=where, limit=limit)
+        results = self._collection.get(where=where)
 
         records = []
         if results["ids"]:

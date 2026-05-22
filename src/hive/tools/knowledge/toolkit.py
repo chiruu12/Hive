@@ -38,7 +38,7 @@ class KnowledgeToolkit(Toolkit):
 
     def bind(self, agent_id: str) -> None:
         super().bind(agent_id)
-        if self._memory is None and self._memory_dir is not None:
+        if self._memory_dir is not None:
             from hive.memory.semantic import SemanticMemory
 
             self._memory = SemanticMemory(self._memory_dir, agent_id)
