@@ -38,6 +38,10 @@ class TFIDFBackend:
         tmp.write_text("\n".join(lines) + "\n" if lines else "")
         tmp.rename(self._path)
 
+    def _append(self, rec: MemoryRecord) -> None:
+        with open(self._path, "a") as f:
+            f.write(rec.model_dump_json() + "\n")
+
     async def store(self, text: str, metadata: dict[str, Any] | None = None) -> str:
         mid = f"mem-{uuid4().hex[:8]}"
         rec = MemoryRecord(
@@ -47,7 +51,7 @@ class TFIDFBackend:
             metadata=metadata or {},
         )
         self._records[mid] = rec
-        self._save()
+        self._append(rec)
         return mid
 
     async def search(self, query: str, top_k: int = 5) -> list[MemoryRecord]:

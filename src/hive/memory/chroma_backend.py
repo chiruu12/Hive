@@ -65,15 +65,16 @@ class ChromaBackend:
         meta["created_at"] = datetime.now(UTC).isoformat()
 
         embedding = await self._run_sync(self._embedder.encode, text)
-        await self._run_sync(
-            self._collection.add,
-            [mid],  # ids
-            [embedding.tolist()],  # embeddings
-            None,  # documents kwarg not positional
-        )
-        await self._run_sync(
-            lambda: self._collection.update(ids=[mid], documents=[text], metadatas=[meta])
-        )
+
+        def _add() -> None:
+            self._collection.add(
+                ids=[mid],
+                embeddings=[embedding.tolist()],
+                documents=[text],
+                metadatas=[meta],
+            )
+
+        await self._run_sync(_add)
         return mid
 
     async def search(self, query: str, top_k: int = 5) -> list[MemoryRecord]:
@@ -150,5 +151,4 @@ class ChromaBackend:
         await self._run_sync(self._collection.delete, [memory_id])
 
     def count(self) -> int:
-        result: int = self._collection.count()
-        return result
+        return self._collection.count()  # type: ignore[no-any-return]
