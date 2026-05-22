@@ -221,9 +221,9 @@ __marimo__/
 tmp/
 .hive/
 
-# Experiment outputs (large, generated)
-experiments/results/
-experiments/reports/
+# Experiments and logs (keep locally, not in repo)
+experiments/
+logs/
 
 # Local workspace artifacts (separate repos / drafts)
 launch/
