@@ -17,7 +17,7 @@ try:
 
     _HAS_PYNPUT = True
 except ImportError:
-    keyboard = None  # type: ignore[assignment]
+    keyboard = None  # type: ignore[assignment,unused-ignore]
     _HAS_PYNPUT = False
 
 _KEY_MAP: dict[str, str] = {

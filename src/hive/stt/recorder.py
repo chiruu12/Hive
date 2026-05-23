@@ -15,7 +15,7 @@ try:
 
     _HAS_SOUNDDEVICE = True
 except ImportError:
-    sd = None  # type: ignore[assignment]
+    sd = None  # type: ignore[assignment,unused-ignore]
     _HAS_SOUNDDEVICE = False
 
 
@@ -52,7 +52,7 @@ def _max_input_channels() -> int:
     if not _HAS_SOUNDDEVICE:
         return 0
     try:
-        info: dict[str, Any] = sd.query_devices(kind="input")  # type: ignore[assignment]
+        info: dict[str, Any] = sd.query_devices(kind="input")  # type: ignore[assignment,unused-ignore]
         return int(info.get("max_input_channels", 1))
     except Exception:
         return 1

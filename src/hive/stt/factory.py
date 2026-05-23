@@ -7,7 +7,7 @@ from hive.stt.deepgram_stt import DeepgramSTT
 from hive.stt.groq_stt import GroqSTT
 from hive.stt.whisper_local import WhisperLocal
 
-_PROVIDERS: dict[str, type] = {
+_PROVIDERS: dict[str, type[WhisperLocal | GroqSTT | DeepgramSTT]] = {
     "whisper": WhisperLocal,
     "groq": GroqSTT,
     "deepgram": DeepgramSTT,
