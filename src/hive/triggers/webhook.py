@@ -13,12 +13,21 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+_MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 class WebhookTrigger:
     """HTTP webhook trigger using stdlib asyncio server."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8421) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8421,
+        max_body_bytes: int = _MAX_BODY_BYTES,
+    ) -> None:
         self._host = host
         self._port = port
+        self._max_body_bytes = max_body_bytes
         self._routes: dict[str, dict[str, Any]] = {}
         self._server: asyncio.Server | None = None
 
@@ -49,9 +58,7 @@ class WebhookTrigger:
         ]
 
     async def start(self) -> None:
-        self._server = await asyncio.start_server(
-            self._handle_connection, self._host, self._port
-        )
+        self._server = await asyncio.start_server(self._handle_connection, self._host, self._port)
 
     async def stop(self) -> None:
         if self._server is not None:
@@ -86,7 +93,15 @@ class WebhookTrigger:
                     k, v = decoded.split(":", 1)
                     headers[k.strip().lower()] = v.strip()
                     if k.strip().lower() == "content-length":
-                        content_length = int(v.strip())
+                        try:
+                            content_length = int(v.strip())
+                        except ValueError:
+                            await self._send_response(writer, 400, "Bad Request")
+                            return
+
+            if content_length > self._max_body_bytes:
+                await self._send_response(writer, 413, "Payload Too Large")
+                return
 
             body = b""
             if content_length > 0:
@@ -118,9 +133,7 @@ class WebhookTrigger:
             except Exception:
                 pass
 
-    async def _send_response(
-        self, writer: asyncio.StreamWriter, status: int, message: str
-    ) -> None:
+    async def _send_response(self, writer: asyncio.StreamWriter, status: int, message: str) -> None:
         body = json.dumps({"status": status, "message": message})
         response = (
             f"HTTP/1.1 {status} {message}\r\n"

@@ -89,9 +89,7 @@ class HotkeyTrigger:
         self._pressed: set[Any] = set()
         self._lock = threading.Lock()
 
-    def register(
-        self, key_combo: str, callback: Callable[..., object], name: str = ""
-    ) -> str:
+    def register(self, key_combo: str, callback: Callable[..., object], name: str = "") -> str:
         trigger_id = str(uuid.uuid4())
         modifiers, key = _parse_combo(key_combo)
         with self._lock:
@@ -101,6 +99,7 @@ class HotkeyTrigger:
                 "key": key,
                 "callback": callback,
                 "name": name or key_combo,
+                "_in_flight": threading.Event(),
             }
         return trigger_id
 
@@ -119,9 +118,7 @@ class HotkeyTrigger:
     def start(self) -> None:
         if self._listener is not None:
             return
-        self._listener = keyboard.Listener(
-            on_press=self._on_press, on_release=self._on_release
-        )
+        self._listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release)
         self._listener.daemon = True
         self._listener.start()
 
@@ -136,15 +133,26 @@ class HotkeyTrigger:
         with self._lock:
             for info in self._triggers.values():
                 if info["key"] == key and info["modifiers"].issubset(self._pressed):
-                    self._fire(info["callback"])
+                    self._fire(info)
 
     def _on_release(self, key: Any) -> None:
         self._pressed.discard(key)
 
-    def _fire(self, callback: Callable[..., object]) -> None:
-        if inspect.iscoroutinefunction(callback):
-            threading.Thread(
-                target=lambda: asyncio.run(callback()), daemon=True
-            ).start()
-        else:
-            threading.Thread(target=callback, daemon=True).start()
+    def _fire(self, info: dict[str, Any]) -> None:
+        flag: threading.Event = info["_in_flight"]
+        if flag.is_set():
+            return
+        flag.set()
+
+        callback = info["callback"]
+
+        def _run() -> None:
+            try:
+                if inspect.iscoroutinefunction(callback):
+                    asyncio.run(callback())
+                else:
+                    callback()
+            finally:
+                flag.clear()
+
+        threading.Thread(target=_run, daemon=True).start()

@@ -119,8 +119,10 @@ class TestHotkeyTrigger:
         mock_keyboard.KeyCode.from_char.return_value = "m_key"
 
         mod_attrs = {
-            "cmd": "cmd_key", "ctrl": "ctrl_key",
-            "alt": "alt_key", "shift": "shift_key",
+            "cmd": "cmd_key",
+            "ctrl": "ctrl_key",
+            "alt": "alt_key",
+            "shift": "shift_key",
         }
         with (
             patch("hive.triggers.hotkey._HAS_PYNPUT", True),
@@ -142,8 +144,10 @@ class TestHotkeyTrigger:
         mock_keyboard.KeyCode.from_char.return_value = "x_key"
 
         mod_attrs = {
-            "cmd": "cmd_key", "ctrl": "ctrl_key",
-            "alt": "alt_key", "shift": "shift_key",
+            "cmd": "cmd_key",
+            "ctrl": "ctrl_key",
+            "alt": "alt_key",
+            "shift": "shift_key",
         }
         with (
             patch("hive.triggers.hotkey._HAS_PYNPUT", True),

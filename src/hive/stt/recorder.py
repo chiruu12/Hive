@@ -32,8 +32,14 @@ def _write_wav(path: Path, data: bytes, sample_rate: int, channels: int) -> None
         f.write(b"WAVE")
         f.write(b"fmt ")
         fmt = struct.pack(
-            "<IHHIIHH", 16, 1, channels, sample_rate,
-            byte_rate, block_align, bits_per_sample,
+            "<IHHIIHH",
+            16,
+            1,
+            channels,
+            sample_rate,
+            byte_rate,
+            block_align,
+            bits_per_sample,
         )
         f.write(fmt)
         f.write(b"data")
@@ -108,15 +114,16 @@ class AudioRecorder:
     def stop_and_save(self, path: Path | None = None) -> Path:
         audio_bytes = self.stop()
         if path is None:
+            import os
             import tempfile
 
-            path = Path(tempfile.mktemp(suffix=".wav"))
+            fd, name = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            path = Path(name)
         _write_wav(path, audio_bytes, self._sample_rate, self._channels)
         return path
 
-    def _callback(
-        self, indata: Any, frames: int, time_info: Any, status: Any
-    ) -> None:
+    def _callback(self, indata: Any, frames: int, time_info: Any, status: Any) -> None:
         if status:
             logger.warning("Audio callback status: %s", status)
         with self._lock:

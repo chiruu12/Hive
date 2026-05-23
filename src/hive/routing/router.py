@@ -47,9 +47,7 @@ class IntentRouter:
         self._model = model
         self._intents = intents
         self._fallback = fallback or next(iter(intents))
-        self._intent_block = "\n".join(
-            f"- {name}: {desc}" for name, desc in intents.items()
-        )
+        self._intent_block = "\n".join(f"- {name}: {desc}" for name, desc in intents.items())
 
     async def classify(self, text: str) -> IntentResult:
         try:
@@ -76,9 +74,7 @@ class IntentRouter:
 
         intent = classification.intent
         if intent not in self._intents:
-            return IntentResult(
-                intent=self._fallback, confidence=0.0, raw_text=text
-            )
+            return IntentResult(intent=self._fallback, confidence=0.0, raw_text=text)
 
         return IntentResult(
             intent=intent,

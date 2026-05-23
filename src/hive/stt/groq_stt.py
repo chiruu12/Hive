@@ -73,10 +73,13 @@ class GroqSTT:
                     )
 
                 if resp.status_code in _RETRYABLE and attempt < self._max_retries:
-                    delay = _BASE_DELAY * (2 ** attempt)
+                    delay = _BASE_DELAY * (2**attempt)
                     logger.warning(
                         "Groq STT %d (attempt %d/%d, retry in %.1fs)",
-                        resp.status_code, attempt + 1, self._max_retries + 1, delay,
+                        resp.status_code,
+                        attempt + 1,
+                        self._max_retries + 1,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -92,7 +95,7 @@ class GroqSTT:
             except httpx.RequestError as e:
                 last_error = e
                 if attempt < self._max_retries:
-                    delay = _BASE_DELAY * (2 ** attempt)
+                    delay = _BASE_DELAY * (2**attempt)
                     logger.warning("Groq STT network error (attempt %d): %s", attempt + 1, e)
                     await asyncio.sleep(delay)
                     continue
@@ -100,12 +103,13 @@ class GroqSTT:
 
         raise last_error or RuntimeError("Groq STT retry exhausted")
 
-    async def transcribe_bytes(
-        self, audio: bytes, sample_rate: int = 16000
-    ) -> TranscriptionResult:
+    async def transcribe_bytes(self, audio: bytes, sample_rate: int = 16000) -> TranscriptionResult:
+        from hive.stt.recorder import _write_wav
+
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = Path(f.name)
-            f.write(audio)
+
+        _write_wav(tmp_path, audio, sample_rate=sample_rate, channels=1)
 
         try:
             return await self.transcribe(tmp_path)

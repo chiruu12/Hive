@@ -77,13 +77,13 @@ class LinkToolkit(Toolkit):
         title = ""
         summary = ""
         try:
-            resp = httpx.get(
-                url,
-                timeout=_REQUEST_TIMEOUT,
-                follow_redirects=True,
-                headers={"User-Agent": "HiveAgent/1.0"},
-            )
-            resp.raise_for_status()
+            async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
+                resp = await client.get(
+                    url,
+                    follow_redirects=True,
+                    headers={"User-Agent": "HiveAgent/1.0"},
+                )
+                resp.raise_for_status()
             content_type = resp.headers.get("content-type", "")
             if "html" in content_type:
                 soup = BeautifulSoup(resp.text, "html.parser")
@@ -158,20 +158,20 @@ class LinkToolkit(Toolkit):
         return "\n".join(lines)
 
     @tool()
-    def scrape_link(self, url: str) -> str:
+    async def scrape_link(self, url: str) -> str:
         """Fetch and return the full content of a URL as markdown.
 
         Args:
             url: The URL to scrape.
         """
         try:
-            resp = httpx.get(
-                url,
-                timeout=_REQUEST_TIMEOUT,
-                follow_redirects=True,
-                headers={"User-Agent": "HiveAgent/1.0"},
-            )
-            resp.raise_for_status()
+            async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
+                resp = await client.get(
+                    url,
+                    follow_redirects=True,
+                    headers={"User-Agent": "HiveAgent/1.0"},
+                )
+                resp.raise_for_status()
             content_type = resp.headers.get("content-type", "")
             if "html" in content_type:
                 return _html_to_markdown(resp.text)

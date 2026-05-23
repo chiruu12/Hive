@@ -78,10 +78,39 @@ class DeepgramSTT:
             audio_data = f.read()
         return await self._transcribe_raw(audio_data)
 
-    async def transcribe_bytes(
-        self, audio: bytes, sample_rate: int = 16000
-    ) -> TranscriptionResult:
-        return await self._transcribe_raw(audio)
+    async def transcribe_bytes(self, audio: bytes, sample_rate: int = 16000) -> TranscriptionResult:
+        import io
+        import struct
+
+        # Wrap raw PCM in WAV headers so the API can decode it
+        bits_per_sample = 16
+        channels = 1
+        byte_rate = sample_rate * channels * bits_per_sample // 8
+        block_align = channels * bits_per_sample // 8
+        data_size = len(audio)
+
+        buf = io.BytesIO()
+        buf.write(b"RIFF")
+        buf.write(struct.pack("<I", 36 + data_size))
+        buf.write(b"WAVE")
+        buf.write(b"fmt ")
+        buf.write(
+            struct.pack(
+                "<IHHIIHH",
+                16,
+                1,
+                channels,
+                sample_rate,
+                byte_rate,
+                block_align,
+                bits_per_sample,
+            )
+        )
+        buf.write(b"data")
+        buf.write(struct.pack("<I", data_size))
+        buf.write(audio)
+
+        return await self._transcribe_raw(buf.getvalue())
 
     async def _transcribe_raw(self, audio_data: bytes) -> TranscriptionResult:
         client = await self._get_client()
@@ -100,10 +129,13 @@ class DeepgramSTT:
                 )
 
                 if resp.status_code in _RETRYABLE and attempt < self._max_retries:
-                    delay = _BASE_DELAY * (2 ** attempt)
+                    delay = _BASE_DELAY * (2**attempt)
                     logger.warning(
                         "Deepgram STT %d (attempt %d/%d, retry in %.1fs)",
-                        resp.status_code, attempt + 1, self._max_retries + 1, delay,
+                        resp.status_code,
+                        attempt + 1,
+                        self._max_retries + 1,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -122,7 +154,7 @@ class DeepgramSTT:
             except httpx.RequestError as e:
                 last_error = e
                 if attempt < self._max_retries:
-                    delay = _BASE_DELAY * (2 ** attempt)
+                    delay = _BASE_DELAY * (2**attempt)
                     logger.warning("Deepgram STT network error (attempt %d): %s", attempt + 1, e)
                     await asyncio.sleep(delay)
                     continue

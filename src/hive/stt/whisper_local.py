@@ -64,9 +64,7 @@ class WhisperLocal:
             return
 
         if self._backend == "mlx":
-            repo = _MLX_MODEL_MAP.get(
-                self._model_size, f"mlx-community/whisper-{self._model_size}"
-            )
+            repo = _MLX_MODEL_MAP.get(self._model_size, f"mlx-community/whisper-{self._model_size}")
             self._model = repo
         elif self._backend == "faster" and _faster_whisper_mod is not None:
             self._model = _faster_whisper_mod.WhisperModel(
@@ -100,12 +98,13 @@ class WhisperLocal:
             provider="faster-whisper",
         )
 
-    async def transcribe_bytes(
-        self, audio: bytes, sample_rate: int = 16000
-    ) -> TranscriptionResult:
+    async def transcribe_bytes(self, audio: bytes, sample_rate: int = 16000) -> TranscriptionResult:
+        from hive.stt.recorder import _write_wav
+
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = Path(f.name)
-            f.write(audio)
+
+        _write_wav(tmp_path, audio, sample_rate=sample_rate, channels=1)
 
         try:
             return await self.transcribe(tmp_path)

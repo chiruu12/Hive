@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from hive.memory.semantic import SemanticMemory
@@ -23,6 +24,14 @@ def toolkit(memory: SemanticMemory) -> LinkToolkit:
     return tk
 
 
+def _mock_async_client(mock_resp: MagicMock) -> AsyncMock:
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_resp
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
+
+
 class TestLinkToolkit:
     def test_requires_memory_or_dir(self) -> None:
         with pytest.raises(ValueError, match="requires either"):
@@ -35,13 +44,16 @@ class TestLinkToolkit:
 
     @pytest.mark.asyncio
     async def test_save_link(self, toolkit: LinkToolkit) -> None:
-        html = '<html><head><title>Test Page</title></head><body><p>Content here</p></body></html>'
+        html = "<html><head><title>Test Page</title></head><body><p>Content here</p></body></html>"
         mock_resp = MagicMock()
         mock_resp.text = html
         mock_resp.headers = {"content-type": "text/html"}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("hive.tools.links.toolkit.httpx.get", return_value=mock_resp):
+        with patch(
+            "hive.tools.links.toolkit.httpx.AsyncClient",
+            return_value=_mock_async_client(mock_resp),
+        ):
             result = await toolkit.save_link("https://example.com", tags="test", notes="my note")
 
         assert "Saved link" in result
@@ -49,12 +61,12 @@ class TestLinkToolkit:
 
     @pytest.mark.asyncio
     async def test_save_link_fetch_failure(self, toolkit: LinkToolkit) -> None:
-        import httpx
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.RequestError("timeout")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "hive.tools.links.toolkit.httpx.get",
-            side_effect=httpx.RequestError("timeout"),
-        ):
+        with patch("hive.tools.links.toolkit.httpx.AsyncClient", return_value=mock_client):
             result = await toolkit.save_link("https://example.com/broken")
 
         assert "Saved link" in result
@@ -62,8 +74,10 @@ class TestLinkToolkit:
     @pytest.mark.asyncio
     async def test_search_links(self, toolkit: LinkToolkit, memory: SemanticMemory) -> None:
         meta = {
-            "type": "link", "url": "https://example.com",
-            "title": "Example", "tags": "test",
+            "type": "link",
+            "url": "https://example.com",
+            "title": "Example",
+            "tags": "test",
         }
         await memory.store("Example site content", meta)
         await memory.store("Just a regular note", {"type": "note"})
@@ -90,26 +104,31 @@ class TestLinkToolkit:
         result = await toolkit.list_links()
         assert "No saved links" in result
 
-    def test_scrape_link(self, toolkit: LinkToolkit) -> None:
-        html = '<html><body><p>Scraped content here.</p></body></html>'
+    @pytest.mark.asyncio
+    async def test_scrape_link(self, toolkit: LinkToolkit) -> None:
+        html = "<html><body><p>Scraped content here.</p></body></html>"
         mock_resp = MagicMock()
         mock_resp.text = html
         mock_resp.headers = {"content-type": "text/html"}
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("hive.tools.links.toolkit.httpx.get", return_value=mock_resp):
-            result = toolkit.scrape_link("https://example.com")
+        with patch(
+            "hive.tools.links.toolkit.httpx.AsyncClient",
+            return_value=_mock_async_client(mock_resp),
+        ):
+            result = await toolkit.scrape_link("https://example.com")
 
         assert "Scraped content here" in result
 
-    def test_scrape_link_error(self, toolkit: LinkToolkit) -> None:
-        import httpx
+    @pytest.mark.asyncio
+    async def test_scrape_link_error(self, toolkit: LinkToolkit) -> None:
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.RequestError("fail")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "hive.tools.links.toolkit.httpx.get",
-            side_effect=httpx.RequestError("fail"),
-        ):
-            result = toolkit.scrape_link("https://example.com/broken")
+        with patch("hive.tools.links.toolkit.httpx.AsyncClient", return_value=mock_client):
+            result = await toolkit.scrape_link("https://example.com/broken")
 
         assert "Request failed" in result
 
@@ -117,4 +136,5 @@ class TestLinkToolkit:
         tk = LinkToolkit(memory_dir="/tmp/test")
         with pytest.raises(RuntimeError, match="not bound"):
             import asyncio
+
             asyncio.run(tk.save_link("https://x.com"))
