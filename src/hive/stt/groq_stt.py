@@ -7,11 +7,18 @@ import tempfile
 from pathlib import Path
 
 import httpx
+from pydantic import BaseModel
 
 from hive.stt.base import TranscriptionResult
 
 _API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 _MODEL = "whisper-large-v3-turbo"
+
+
+class _GroqResponse(BaseModel):
+    text: str = ""
+    language: str = ""
+    duration: float = 0.0
 
 
 class GroqSTT:
@@ -36,11 +43,11 @@ class GroqSTT:
                 )
                 resp.raise_for_status()
 
-        data = resp.json()
+        parsed = _GroqResponse.model_validate(resp.json())
         return TranscriptionResult(
-            text=data.get("text", "").strip(),
-            language=data.get("language", ""),
-            duration_ms=int(data.get("duration", 0) * 1000),
+            text=parsed.text.strip(),
+            language=parsed.language,
+            duration_ms=int(parsed.duration * 1000),
             provider="groq",
         )
 

@@ -6,11 +6,34 @@ import os
 from pathlib import Path
 
 import httpx
+from pydantic import BaseModel
 
 from hive.stt.base import TranscriptionResult
 
 _API_URL = "https://api.deepgram.com/v1/listen"
 _MODEL = "nova-2"
+
+
+class _Alternative(BaseModel):
+    transcript: str = ""
+
+
+class _Channel(BaseModel):
+    alternatives: list[_Alternative] = []
+    detected_language: str = ""
+
+
+class _Metadata(BaseModel):
+    duration: float = 0.0
+
+
+class _DeepgramResult(BaseModel):
+    channels: list[_Channel] = []
+    metadata: _Metadata = _Metadata()
+
+
+class _DeepgramResponse(BaseModel):
+    results: _DeepgramResult = _DeepgramResult()
 
 
 class DeepgramSTT:
@@ -47,15 +70,13 @@ class DeepgramSTT:
             )
             resp.raise_for_status()
 
-        data = resp.json()
-        result = data.get("results", {})
-        channels = result.get("channels", [{}])
-        alt = channels[0].get("alternatives", [{}])[0] if channels else {}
-        metadata = result.get("metadata", {})
+        parsed = _DeepgramResponse.model_validate(resp.json())
+        channel = parsed.results.channels[0] if parsed.results.channels else _Channel()
+        alt = channel.alternatives[0] if channel.alternatives else _Alternative()
 
         return TranscriptionResult(
-            text=alt.get("transcript", "").strip(),
-            language=channels[0].get("detected_language", "") if channels else "",
-            duration_ms=int(metadata.get("duration", 0) * 1000),
+            text=alt.transcript.strip(),
+            language=channel.detected_language,
+            duration_ms=int(parsed.results.metadata.duration * 1000),
             provider="deepgram",
         )

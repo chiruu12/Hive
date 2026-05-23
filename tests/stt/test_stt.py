@@ -28,6 +28,19 @@ class TestTranscriptionResult:
         assert r.language == "en"
         assert r.duration_ms == 1500
 
+    def test_pydantic_serialization(self) -> None:
+        r = TranscriptionResult(text="test", language="en", duration_ms=500, provider="groq")
+        d = r.model_dump()
+        assert d == {"text": "test", "language": "en", "duration_ms": 500, "provider": "groq"}
+        r2 = TranscriptionResult.model_validate(d)
+        assert r2.text == "test"
+
+    def test_rejects_negative_duration(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            TranscriptionResult(text="hi", duration_ms=-1)
+
 
 class TestWhisperLocal:
     def test_available_without_backends(self) -> None:

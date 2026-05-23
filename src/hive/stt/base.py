@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from pydantic import BaseModel, Field
 
-@dataclass
-class TranscriptionResult:
+
+class TranscriptionResult(BaseModel):
     text: str
     language: str = ""
-    duration_ms: int = 0
+    duration_ms: int = Field(default=0, ge=0)
     provider: str = ""
 
 

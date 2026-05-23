@@ -1,5 +1,5 @@
 """Intent routing."""
 
-from hive.routing.router import IntentResult, IntentRouter
+from hive.routing.router import IntentClassification, IntentResult, IntentRouter
 
-__all__ = ["IntentResult", "IntentRouter"]
+__all__ = ["IntentClassification", "IntentResult", "IntentRouter"]

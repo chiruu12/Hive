@@ -33,7 +33,7 @@ from hive.orchestrator import (
     OrchestratorToolkit,
     SessionManager,
 )
-from hive.routing import IntentResult, IntentRouter
+from hive.routing import IntentClassification, IntentResult, IntentRouter
 from hive.runtime import (
     Agent,
     ConversationMemory,
@@ -158,6 +158,7 @@ __all__ = [
     "STTProvider",
     "TranscriptionResult",
     "WhisperLocal",
+    "IntentClassification",
     "IntentResult",
     "IntentRouter",
     "HotkeyTrigger",
