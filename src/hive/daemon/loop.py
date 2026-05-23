@@ -34,6 +34,7 @@ from hive.tools.delegation import DaemonDelegationToolkit
 from hive.tools.file import FileToolkit
 from hive.tools.git import GitToolkit
 from hive.tools.knowledge import KnowledgeToolkit
+from hive.tools.links import LinkToolkit
 from hive.tools.memory import MemoryToolkit
 from hive.tools.notepad import NotepadManager, NotepadToolkit
 from hive.tools.schedule import ScheduleToolkit
@@ -150,6 +151,7 @@ class HiveDaemon:
             TaskToolkit(self._store),
             AlarmToolkit(self._store),
             KnowledgeToolkit(self._get_memory(agent_id)),
+            LinkToolkit(self._get_memory(agent_id)),
         ]
         if self._economy_enabled and self._ctx.world is not None:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
