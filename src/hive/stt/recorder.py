@@ -79,7 +79,9 @@ class AudioRecorder:
         self._stream = None
         self._recording = False
         with self._lock:
-            return b"".join(self._frames)
+            data = b"".join(self._frames)
+            self._frames = []
+            return data
 
     def stop_and_save(self, path: Path | None = None) -> Path:
         audio_bytes = self.stop()
