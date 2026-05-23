@@ -1,6 +1,6 @@
 # Built-in Toolkits
 
-Hive ships with 14 toolkits. Agents can use any combination. All toolkits follow the same pattern: instantiate and pass to `Agent(toolkits=[...])`.
+Hive ships with 15 toolkits. Agents can use any combination. All toolkits follow the same pattern: instantiate and pass to `Agent(toolkits=[...])`.
 
 ## FileToolkit
 
@@ -254,6 +254,30 @@ async with await MCPToolkit.from_stdio("npx", ["-y", "@modelcontextprotocol/serv
 | `from_config(config)` | Connect from config dict |
 | `get_tools()` | Get Hive Tool objects from MCP server |
 | `close()` | Close connection |
+
+## LinkToolkit
+
+Save, search, and scrape web links. Uses SemanticMemory for storage with metadata filtering.
+
+```python
+from hive.tools.links import LinkToolkit
+
+# Daemon mode (shared memory):
+tk = LinkToolkit(memory=semantic_memory)
+
+# Standalone mode:
+tk = LinkToolkit(memory_dir=".hive")
+tk.bind("my-agent")
+```
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `save_link` | `url`, `tags=""`, `notes=""` | Save a URL -- auto-scrapes title and summary |
+| `search_links` | `query`, `limit=5` | Search saved links by content or tags |
+| `list_links` | `limit=10` | List recently saved links |
+| `scrape_link` | `url` | Fetch and return page content as markdown (4000 char limit) |
+
+Links are stored in SemanticMemory with `metadata.type = "link"`, so they coexist with knowledge notes without interference.
 
 ## Using Multiple Toolkits
 

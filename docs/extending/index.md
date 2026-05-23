@@ -322,7 +322,124 @@ def test_profile_loads():
     assert "file_read" in profile.tools
 ```
 
-## 8. Plugin System
+## 8. Custom STT Provider
+
+Implement the `STTProvider` protocol to add a new speech-to-text backend.
+
+```python
+from pathlib import Path
+from hive.stt.base import STTProvider, TranscriptionResult
+
+class MySTTProvider:
+    """Custom speech-to-text provider."""
+
+    @property
+    def available(self) -> bool:
+        return True  # Check if your backend is configured
+
+    async def transcribe(self, audio_path: Path) -> TranscriptionResult:
+        text = await my_backend_transcribe(str(audio_path))
+        return TranscriptionResult(
+            text=text,
+            language="en",
+            duration_ms=0,
+            provider="my-provider",
+        )
+
+    async def transcribe_bytes(
+        self, audio: bytes, sample_rate: int = 16000
+    ) -> TranscriptionResult:
+        text = await my_backend_transcribe_bytes(audio)
+        return TranscriptionResult(text=text, provider="my-provider")
+```
+
+```python
+# Test
+import pytest
+from hive.stt.base import STTProvider
+
+def test_custom_stt():
+    provider = MySTTProvider()
+    assert isinstance(provider, STTProvider)
+    assert provider.available
+```
+
+Built-in providers: `WhisperLocal` (mlx-whisper / faster-whisper), `GroqSTT`, `DeepgramSTT`. Use `create_stt_provider()` for auto-detection.
+
+## 9. Custom Intent Router
+
+Use `IntentRouter` for LLM-based text classification with user-defined intents.
+
+```python
+from hive.routing import IntentRouter
+from hive.models.groq import Groq
+
+router = IntentRouter(
+    model=Groq.lite(),
+    intents={
+        "task": "user wants to create a todo item",
+        "note": "user wants to save information",
+        "query": "user is asking a question",
+    },
+    fallback="query",  # default if classification fails
+)
+
+result = await router.classify("remind me to buy milk")
+print(result.intent, result.confidence)  # "task", 0.95
+```
+
+```python
+# Test
+from unittest.mock import AsyncMock, MagicMock
+from hive.routing import IntentRouter
+from hive.runtime.types import Message
+
+def test_intent_router():
+    provider = MagicMock()
+    provider.generate = AsyncMock(
+        return_value=Message.assistant('{"intent": "task", "confidence": 0.9}')
+    )
+    router = IntentRouter(model=provider, intents={"task": "todos", "note": "notes"})
+    # router.classify() returns IntentResult with intent, confidence, raw_text
+```
+
+## 10. Custom Trigger
+
+Register callbacks that fire on external events -- hotkeys or HTTP webhooks.
+
+```python
+from hive.triggers import HotkeyTrigger, WebhookTrigger
+
+# Hotkey (requires: pip install hive-agent[hotkeys])
+hotkey = HotkeyTrigger()
+hotkey.register("cmd+shift+m", my_callback, name="mic-toggle")
+hotkey.start()  # listens in background thread
+
+# Webhook (stdlib asyncio, no extra deps)
+webhook = WebhookTrigger(host="127.0.0.1", port=8421)
+webhook.register("/trigger/process", my_handler, method="POST")
+await webhook.start()
+```
+
+```python
+# Test
+import pytest
+from hive.triggers import WebhookTrigger
+
+@pytest.mark.asyncio
+async def test_webhook():
+    received = []
+    wh = WebhookTrigger(port=0)  # ephemeral port
+    wh.register("/test", lambda body: received.append(body))
+    await wh.start()
+    # ... send HTTP request ...
+    await wh.stop()
+    assert len(received) == 1
+```
+
+Implement the `Trigger` protocol for custom trigger types.
+
+## 11. Plugin System
 
 Drop a Python file containing a `Toolkit` subclass in `.hive/plugins/`. It's auto-discovered and loaded every 10 daemon cycles.
 

@@ -103,6 +103,9 @@ src/hive/
 | Daemon hooks | `daemon.hooks.on("event", callback)` | `src/hive/daemon/hooks.py` |
 | Agent profile | YAML in `profiles/` | `src/hive/agents/profile.py` |
 | Plugin toolkit | Drop in `.hive/plugins/` | `src/hive/runtime/plugin_loader.py` |
+| Custom STT provider | Implement `STTProvider` protocol | `src/hive/stt/base.py` |
+| Custom trigger | Implement `Trigger` protocol | `src/hive/triggers/base.py` |
+| Intent routing | `IntentRouter(model, intents)` | `src/hive/routing/router.py` |
 
 See `EXTENDING.md` for copy-paste code examples for each extension point.
 
