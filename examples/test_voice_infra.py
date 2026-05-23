@@ -367,6 +367,7 @@ except Exception as e:
 
 section("4. IntentRouter")
 
+from hive.routing.router import IntentClassification
 from hive.runtime.types import Message
 
 INTENTS = {
@@ -378,59 +379,86 @@ INTENTS = {
 }
 
 
-def _mock_provider(text: str) -> MagicMock:
+def _mock_structured(intent: str, confidence: float) -> MagicMock:
+    """Mock provider that returns structured output."""
     p = MagicMock()
+    p.generate_structured = AsyncMock(
+        return_value=IntentClassification(intent=intent, confidence=confidence)
+    )
+    p.generate = AsyncMock(return_value=Message.assistant(intent))
+    return p
+
+
+def _mock_text_only(text: str) -> MagicMock:
+    """Mock provider that fails structured, falls back to text."""
+    p = MagicMock()
+    p.generate_structured = AsyncMock(side_effect=Exception("not supported"))
     p.generate = AsyncMock(return_value=Message.assistant(text))
     return p
 
 
 async def _test_router() -> None:
-    # Clean JSON
-    r = IntentRouter(model=_mock_provider('{"intent":"task","confidence":0.95}'), intents=INTENTS)
+    # Structured output path
+    r = IntentRouter(model=_mock_structured("task", 0.95), intents=INTENTS)
     res = await r.classify("add a todo for tomorrow")
     assert res.intent == "task" and res.confidence == 0.95
-    ok(f"JSON classification: intent={res.intent}, conf={res.confidence}")
+    ok(f"Structured classification: intent={res.intent}, conf={res.confidence}")
 
-    # Embedded JSON
-    r2 = IntentRouter(model=_mock_provider('Sure: {"intent":"query","confidence":0.8}'), intents=INTENTS)
+    r2 = IntentRouter(model=_mock_structured("query", 0.8), intents=INTENTS)
     res2 = await r2.classify("what is python?")
-    assert res2.intent == "query"
-    ok("JSON extraction from surrounding text")
+    assert res2.intent == "query" and res2.confidence == 0.8
+    ok("Structured output query classification")
 
-    # Fallback on garbage
-    r3 = IntentRouter(model=_mock_provider("???"), intents=INTENTS, fallback="query")
-    res3 = await r3.classify("asdkfj")
-    assert res3.intent == "query" and res3.confidence == 0.0
-    ok("Fallback on unparseable response")
+    # Unknown intent in structured output falls back
+    r3 = IntentRouter(model=_mock_structured("dance", 0.9), intents=INTENTS)
+    res3 = await r3.classify("let's dance")
+    assert res3.intent == "task" and res3.confidence == 0.0
+    ok("Unknown intent in structured output triggers fallback")
+
+    # Text fallback — structured fails, name match works
+    r4 = IntentRouter(model=_mock_text_only("user wants a note"), intents=INTENTS)
+    res4 = await r4.classify("remember this")
+    assert res4.intent == "note" and res4.confidence == 0.5
+    ok("Text fallback: fuzzy name matching")
+
+    # Text fallback — garbage response
+    r5 = IntentRouter(model=_mock_text_only("???"), intents=INTENTS, fallback="query")
+    res5 = await r5.classify("asdkfj")
+    assert res5.intent == "query" and res5.confidence == 0.0
+    ok("Text fallback: garbage → configured fallback")
 
     # Default fallback = first intent
-    r4 = IntentRouter(model=_mock_provider("gibberish"), intents=INTENTS)
-    res4 = await r4.classify("xyz")
-    assert res4.intent == "task"
+    r6 = IntentRouter(model=_mock_text_only("gibberish"), intents=INTENTS)
+    res6 = await r6.classify("xyz")
+    assert res6.intent == "task"
     ok("Default fallback = first intent in dict")
 
-    # Fuzzy name match
-    r5 = IntentRouter(model=_mock_provider("user wants a note"), intents=INTENTS)
-    res5 = await r5.classify("remember this")
-    assert res5.intent == "note" and res5.confidence == 0.5
-    ok("Fuzzy name matching in response text")
+    # Pydantic validation
+    ic = IntentClassification(intent="task", confidence=0.9)
+    assert ic.intent == "task"
+    d = ic.model_dump()
+    assert d["confidence"] == 0.9
+    ok("IntentClassification Pydantic model works")
 
-    # Confidence clamping
-    r6 = IntentRouter(model=_mock_provider('{"intent":"agent","confidence":5.0}'), intents=INTENTS)
-    res6 = await r6.classify("help")
-    assert res6.confidence == 1.0
-    ok("Confidence clamped to [0.0, 1.0]")
+    from pydantic import ValidationError
+    try:
+        IntentClassification(intent="task", confidence=1.5)
+        fail("Should reject confidence > 1.0")
+    except ValidationError:
+        ok("IntentClassification rejects confidence > 1.0")
 
-    # Unknown intent falls back
-    r7 = IntentRouter(model=_mock_provider('{"intent":"dance","confidence":0.9}'), intents=INTENTS)
-    res7 = await r7.classify("dance")
-    assert res7.intent == "task" and res7.confidence == 0.0
-    ok("Unknown intent in JSON triggers fallback")
+    try:
+        IntentClassification(intent="task", confidence=-0.1)
+        fail("Should reject confidence < 0.0")
+    except ValidationError:
+        ok("IntentClassification rejects confidence < 0.0")
 
-    # IntentResult fields
+    # IntentResult Pydantic model
     ir = IntentResult(intent="link", confidence=0.7, raw_text="save this url")
     assert ir.intent == "link" and ir.raw_text == "save this url"
-    ok("IntentResult dataclass fields")
+    d2 = ir.model_dump()
+    assert d2["confidence"] == 0.7
+    ok("IntentResult Pydantic model works")
 
 
 asyncio.run(_test_router())
@@ -680,7 +708,7 @@ async def _test_agent_integration() -> None:
     tmp = Path(tempfile.mkdtemp())
     agent = Agent(
         name="test-agent",
-        model=_mock_provider("I saved the link for you."),
+        model=_mock_text_only("I saved the link for you."),
         instructions="You are a test assistant.",
         toolkits=[
             LinkToolkit(memory_dir=tmp),
