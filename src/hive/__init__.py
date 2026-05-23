@@ -1,6 +1,6 @@
 """Hive - Autonomous agent OS."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.2"
 
 from hive.agents.existence import ExistenceLoop
 from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
@@ -33,6 +33,7 @@ from hive.orchestrator import (
     OrchestratorToolkit,
     SessionManager,
 )
+from hive.routing import IntentResult, IntentRouter
 from hive.runtime import (
     Agent,
     ConversationMemory,
@@ -60,13 +61,24 @@ from hive.runtime import (
     make_tool,
     tool,
 )
+from hive.stt import (
+    AudioRecorder,
+    DeepgramSTT,
+    GroqSTT,
+    STTProvider,
+    TranscriptionResult,
+    WhisperLocal,
+    create_stt_provider,
+)
 from hive.tools.alarms import AlarmChecker, AlarmToolkit
 from hive.tools.comms import CommsToolkit
 from hive.tools.knowledge import KnowledgeToolkit
+from hive.tools.links import LinkToolkit
 from hive.tools.mcp import MCPToolkit
 from hive.tools.memory import MemoryToolkit
 from hive.tools.tasks import TaskToolkit
 from hive.tools.world import WorldToolkit
+from hive.triggers import HotkeyTrigger, Trigger, WebhookTrigger
 from hive.world.state import WorldState
 
 __all__ = [
@@ -103,6 +115,7 @@ __all__ = [
     "HiveEvent",
     "HiveStore",
     "KnowledgeToolkit",
+    "LinkToolkit",
     "LMStudio",
     "make_tool",
     "MCPToolkit",
@@ -137,7 +150,19 @@ __all__ = [
     "Workflow",
     "WorldState",
     "WorldToolkit",
+    "AudioRecorder",
     "create_runtime_provider",
+    "create_stt_provider",
+    "DeepgramSTT",
+    "GroqSTT",
+    "STTProvider",
+    "TranscriptionResult",
+    "WhisperLocal",
+    "IntentResult",
+    "IntentRouter",
+    "HotkeyTrigger",
+    "Trigger",
+    "WebhookTrigger",
     "initialize_hive",
     "load_config",
     "tool",
