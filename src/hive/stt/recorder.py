@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import struct
 import threading
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 try:
     import sounddevice as sd
@@ -38,6 +41,17 @@ def _write_wav(path: Path, data: bytes, sample_rate: int, channels: int) -> None
         f.write(data)
 
 
+def _max_input_channels() -> int:
+    """Query the default input device for max supported channels."""
+    if not _HAS_SOUNDDEVICE:
+        return 0
+    try:
+        info: dict[str, Any] = sd.query_devices(kind="input")  # type: ignore[assignment]
+        return int(info.get("max_input_channels", 1))
+    except Exception:
+        return 1
+
+
 class AudioRecorder:
     """Record audio from the default microphone."""
 
@@ -47,6 +61,14 @@ class AudioRecorder:
                 "sounddevice is required for audio recording. "
                 "Install it with: pip install hive-agent[audio]"
             )
+
+        max_ch = _max_input_channels()
+        if channels > max_ch:
+            raise ValueError(
+                f"Requested {channels} channels but device supports max {max_ch}. "
+                f"Use channels={max_ch} or fewer."
+            )
+
         self._sample_rate = sample_rate
         self._channels = channels
         self._frames: list[bytes] = []
@@ -95,5 +117,7 @@ class AudioRecorder:
     def _callback(
         self, indata: Any, frames: int, time_info: Any, status: Any
     ) -> None:
+        if status:
+            logger.warning("Audio callback status: %s", status)
         with self._lock:
             self._frames.append(bytes(indata))

@@ -125,17 +125,17 @@ class TestGroqSTT:
         response_data = {"text": " hello ", "language": "en", "duration": 1.5}
 
         mock_resp = MagicMock(spec=httpx.Response)
+        mock_resp.status_code = 200
         mock_resp.json.return_value = response_data
         mock_resp.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_resp
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.is_closed = False
 
-        with patch("hive.stt.groq_stt.httpx.AsyncClient", return_value=mock_client):
-            g = GroqSTT(api_key="test-key")
-            result = await g.transcribe(audio_file)
+        g = GroqSTT(api_key="test-key")
+        g._client = mock_client
+        result = await g.transcribe(audio_file)
 
         assert result.text == "hello"
         assert result.language == "en"
@@ -147,17 +147,17 @@ class TestGroqSTT:
         response_data = {"text": "from bytes", "language": "fr", "duration": 0.8}
 
         mock_resp = MagicMock(spec=httpx.Response)
+        mock_resp.status_code = 200
         mock_resp.json.return_value = response_data
         mock_resp.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_resp
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.is_closed = False
 
-        with patch("hive.stt.groq_stt.httpx.AsyncClient", return_value=mock_client):
-            g = GroqSTT(api_key="test-key")
-            result = await g.transcribe_bytes(b"raw-audio")
+        g = GroqSTT(api_key="test-key")
+        g._client = mock_client
+        result = await g.transcribe_bytes(b"raw-audio")
 
         assert result.text == "from bytes"
         assert result.provider == "groq"
@@ -191,17 +191,17 @@ class TestDeepgramSTT:
         }
 
         mock_resp = MagicMock(spec=httpx.Response)
+        mock_resp.status_code = 200
         mock_resp.json.return_value = response_data
         mock_resp.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_resp
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.is_closed = False
 
-        with patch("hive.stt.deepgram_stt.httpx.AsyncClient", return_value=mock_client):
-            d = DeepgramSTT(api_key="test-key")
-            result = await d.transcribe(audio_file)
+        d = DeepgramSTT(api_key="test-key")
+        d._client = mock_client
+        result = await d.transcribe(audio_file)
 
         assert result.text == "hello deepgram"
         assert result.language == "en"
