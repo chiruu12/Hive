@@ -233,7 +233,7 @@ class Agent:
 
             tool_t0 = time.time()
             try:
-                result_text = await tool.call(**tc.arguments)
+                result_text = await tool.call(**(tc.arguments or {}))
                 conversation.add(Message.tool_result(tc.id, result_text, name=tc.name))
                 self._log_tool(
                     tc.name,
@@ -483,7 +483,7 @@ class Agent:
                 tool = tool_map.get(tc.name)
                 if tool:
                     try:
-                        output = await tool.call(**tc.arguments)
+                        output = await tool.call(**(tc.arguments or {}))
                     except Exception as e:
                         output = f"Error: {e}"
                 else:
