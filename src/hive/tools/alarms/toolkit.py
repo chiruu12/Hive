@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def fire_notification(description: str) -> bool:
+async def fire_notification(description: str, title: str = "Hive Alarm") -> bool:
     """Fire a macOS notification. No-op on other platforms."""
     if platform.system() != "Darwin":
         logger.info("Alarm (non-macOS): %s", description)
@@ -27,7 +27,8 @@ async def fire_notification(description: str) -> bool:
     escaped = (
         description.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ")
     )
-    script = f'display notification "{escaped}" with title "Hive Alarm" sound name "Glass"'
+    escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
+    script = f'display notification "{escaped}" with title "{escaped_title}" sound name "Glass"'
     try:
         proc = await asyncio.create_subprocess_exec(
             "osascript",
