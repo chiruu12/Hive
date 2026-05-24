@@ -33,6 +33,7 @@ from hive.tools.comms import CommsToolkit
 from hive.tools.delegation import DaemonDelegationToolkit
 from hive.tools.file import FileToolkit
 from hive.tools.git import GitToolkit
+from hive.tools.clipboard import ClipboardToolkit
 from hive.tools.knowledge import KnowledgeToolkit
 from hive.tools.links import LinkToolkit
 from hive.tools.memory import MemoryToolkit
@@ -152,6 +153,7 @@ class HiveDaemon:
             AlarmToolkit(self._store),
             KnowledgeToolkit(self._get_memory(agent_id)),
             LinkToolkit(self._get_memory(agent_id)),
+            ClipboardToolkit(store=self._store, memory=self._get_memory(agent_id)),
         ]
         if self._economy_enabled and self._ctx.world is not None:
             toolkits.insert(0, WorldToolkit(self._ctx.world, agent_id))
