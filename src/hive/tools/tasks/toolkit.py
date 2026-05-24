@@ -51,6 +51,24 @@ class TaskToolkit(Toolkit):
             "tasks, mark tasks as done, or delete them."
         )
 
+    async def query_tasks(self, status: str = "pending") -> list[dict[str, str]]:
+        """Query tasks for the bound agent. For host application use, not an agent tool."""
+        await self._ensure_init()
+        return await self._store.list_tasks(self._agent_id, status)
+
+    async def query_all_tasks(self, status: str = "pending") -> list[dict[str, str]]:
+        """Query tasks across all agents. For host application use, not an agent tool."""
+        await self._ensure_init()
+        import aiosqlite
+
+        async with aiosqlite.connect(self._store._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC",
+                (status,),
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
     @tool()
     async def create_task(self, description: str, priority: str = "medium", due: str = "") -> str:
         """Create a new task.

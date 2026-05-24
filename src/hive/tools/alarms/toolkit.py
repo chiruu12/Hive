@@ -82,6 +82,23 @@ class AlarmToolkit(Toolkit):
             "Specify hours, minutes, and/or seconds from now."
         )
 
+    async def query_pending_alarms(self) -> list[dict[str, str]]:
+        """Query pending alarms for the bound agent. For host application use."""
+        await self._ensure_init()
+        return await self._store.list_pending_alarms(self._agent_id)
+
+    async def query_all_pending_alarms(self) -> list[dict[str, str]]:
+        """Query pending alarms across all agents. For host application use."""
+        await self._ensure_init()
+        import aiosqlite
+
+        async with aiosqlite.connect(self._store._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM alarms WHERE status = 'pending' ORDER BY fire_at",
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
     @tool()
     async def set_alarm(
         self,

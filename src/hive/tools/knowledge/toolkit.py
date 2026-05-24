@@ -50,6 +50,21 @@ class KnowledgeToolkit(Toolkit):
 
             self._memory = SemanticMemory(self._memory_dir, agent_id)
 
+    def query_recent(self, limit: int = 20) -> list[dict[str, object]]:
+        """Query recent notes as dicts. For host application use, not an agent tool."""
+        if self._memory is None:
+            raise RuntimeError("KnowledgeToolkit is not bound to an agent yet.")
+        records = self._memory.recent(limit)
+        return [
+            {
+                "id": r.memory_id,
+                "content": r.thought,
+                "created_at": r.ts.isoformat(),
+                "tags": r.metadata.get("tags", ""),
+            }
+            for r in records
+        ]
+
     @property
     def instructions(self) -> str:
         return (
