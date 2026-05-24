@@ -7,7 +7,7 @@ import logging
 import platform
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from hive.tools.base import Toolkit, tool
@@ -83,12 +83,14 @@ class AlarmToolkit(Toolkit):
             "Specify hours, minutes, and/or seconds from now."
         )
 
-    async def query_pending_alarms(self) -> list[dict[str, str]]:
+    async def query_pending_alarms(self) -> list[dict[str, Any]]:
         """Query pending alarms for the bound agent. For host application use."""
+        if not self._agent_id:
+            raise RuntimeError("AlarmToolkit is not bound to an agent yet.")
         await self._ensure_init()
         return await self._store.list_pending_alarms(self._agent_id)
 
-    async def query_all_pending_alarms(self) -> list[dict[str, str]]:
+    async def query_all_pending_alarms(self) -> list[dict[str, Any]]:
         """Query pending alarms across all agents. For host application use."""
         await self._ensure_init()
         import aiosqlite
