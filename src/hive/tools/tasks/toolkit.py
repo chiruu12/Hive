@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from hive.tools.base import Toolkit, tool
@@ -50,6 +50,18 @@ class TaskToolkit(Toolkit):
             "You can manage tasks: create new tasks, list pending or completed "
             "tasks, mark tasks as done, or delete them."
         )
+
+    async def query_tasks(self, status: str = "pending") -> list[dict[str, Any]]:
+        """Query tasks for the bound agent. For host application use, not an agent tool."""
+        if not self._agent_id:
+            raise RuntimeError("TaskToolkit is not bound to an agent yet.")
+        await self._ensure_init()
+        return await self._store.list_tasks(self._agent_id, status)
+
+    async def query_all_tasks(self, status: str = "pending") -> list[dict[str, Any]]:
+        """Query tasks across all agents. For host application use, not an agent tool."""
+        await self._ensure_init()
+        return await self._store.list_all_tasks(status)
 
     @tool()
     async def create_task(self, description: str, priority: str = "medium", due: str = "") -> str:

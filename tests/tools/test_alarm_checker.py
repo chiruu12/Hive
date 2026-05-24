@@ -41,7 +41,7 @@ class TestAlarmChecker:
         fired = await checker.check_once()
 
         assert fired == ["a1"]
-        mock_notify.assert_called_once_with("Past alarm")
+        mock_notify.assert_called_once_with("Past alarm", title="Hive Alarm")
 
     @pytest.mark.asyncio
     @patch("hive.tools.alarms.checker.fire_notification", new_callable=AsyncMock)

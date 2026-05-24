@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import platform
 import sys
 import tempfile
@@ -34,11 +35,11 @@ if not _HAS_MLX_WHISPER:
 
 _MLX_MODEL_MAP = {
     "tiny": "mlx-community/whisper-tiny",
-    "base": "mlx-community/whisper-base",
-    "small": "mlx-community/whisper-small",
-    "medium": "mlx-community/whisper-medium",
+    "base": "mlx-community/whisper-base-mlx",
+    "small": "mlx-community/whisper-small-mlx",
+    "medium": "mlx-community/whisper-medium-mlx",
     "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
-    "large-v3": "mlx-community/whisper-large-v3",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
 }
 
 
@@ -79,6 +80,10 @@ class WhisperLocal:
 
     async def transcribe(self, audio_path: Path) -> TranscriptionResult:
         self._ensure_model()
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._transcribe_sync, audio_path)
+
+    def _transcribe_sync(self, audio_path: Path) -> TranscriptionResult:
         path_str = str(audio_path)
 
         if self._backend == "mlx" and _mlx_whisper_mod is not None:

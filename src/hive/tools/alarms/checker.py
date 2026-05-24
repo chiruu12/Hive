@@ -29,9 +29,15 @@ class AlarmChecker:
             await checker.stop()
     """
 
-    def __init__(self, db_path: str | Path, check_interval: int = 15):
+    def __init__(
+        self,
+        db_path: str | Path,
+        check_interval: int = 15,
+        notification_title: str = "Hive Alarm",
+    ):
         self._store = HiveStore(Path(db_path))
         self._interval = check_interval
+        self._notification_title = notification_title
         self._running = False
         self._initialized = False
         self._task: asyncio.Task[None] | None = None
@@ -59,7 +65,7 @@ class AlarmChecker:
         due = await self._store.get_due_alarms()
         fired_ids = []
         for alarm in due:
-            ok = await fire_notification(alarm["description"])
+            ok = await fire_notification(alarm["description"], title=self._notification_title)
             if not ok:
                 logger.warning(
                     "Alarm %s notification failed, marking fired anyway",

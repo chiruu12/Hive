@@ -61,12 +61,12 @@ class TFIDFBackend:
         if not query_tokens:
             return []
 
-        idf = _compute_idf([_tokenize(r.thought) for r in self._records.values()])
+        idf = _compute_idf([_tokenize(_record_text(r)) for r in self._records.values()])
         query_vec = _tfidf_vector(query_tokens, idf)
 
         scored = []
         for rec in self._records.values():
-            doc_vec = _tfidf_vector(_tokenize(rec.thought), idf)
+            doc_vec = _tfidf_vector(_tokenize(_record_text(rec)), idf)
             sim = _cosine_similarity(query_vec, doc_vec)
             if sim > 0.05:
                 scored.append((sim, rec))
@@ -218,6 +218,15 @@ _STOP_WORDS = {
 def _tokenize(text: str) -> list[str]:
     words = re.findall(r"[a-z0-9]+", text.lower())
     return [w for w in words if w not in _STOP_WORDS and len(w) > 1]
+
+
+def _record_text(rec: MemoryRecord) -> str:
+    """Extract searchable text from a record: thought + metadata string values."""
+    parts = [rec.thought]
+    for v in rec.metadata.values():
+        if isinstance(v, str) and v:
+            parts.append(v)
+    return " ".join(parts)
 
 
 def _compute_idf(docs: list[list[str]]) -> dict[str, float]:

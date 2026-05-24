@@ -95,6 +95,8 @@ class Agent:
         for tk in self._toolkits:
             if not tk.is_bound:
                 tk.bind(self._agent_id)
+            elif tk._agent_id != self._agent_id:
+                tk.rebind(self._agent_id)
 
         toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
 
@@ -233,7 +235,7 @@ class Agent:
 
             tool_t0 = time.time()
             try:
-                result_text = await tool.call(**tc.arguments)
+                result_text = await tool.call(**(tc.arguments or {}))
                 conversation.add(Message.tool_result(tc.id, result_text, name=tc.name))
                 self._log_tool(
                     tc.name,
@@ -483,7 +485,7 @@ class Agent:
                 tool = tool_map.get(tc.name)
                 if tool:
                     try:
-                        output = await tool.call(**tc.arguments)
+                        output = await tool.call(**(tc.arguments or {}))
                     except Exception as e:
                         output = f"Error: {e}"
                 else:
