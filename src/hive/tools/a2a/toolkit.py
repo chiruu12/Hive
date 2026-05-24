@@ -34,7 +34,9 @@ class A2AToolkit(Toolkit):
         self._spec = specialization
 
     @tool()
-    async def send_request(self, to_agent: str, subject: str, body: str, priority: str = "4") -> str:
+    async def send_request(
+        self, to_agent: str, subject: str, body: str, priority: str = "4"
+    ) -> str:
         """Send a request to another agent expecting a response."""
         msg = A2AMessage(
             type=A2AMessageType.REQUEST,

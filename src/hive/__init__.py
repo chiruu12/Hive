@@ -1,6 +1,6 @@
 """Hive - Autonomous agent OS."""
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 
 from hive.agents.existence import ExistenceLoop
 from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
