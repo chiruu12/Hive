@@ -86,9 +86,9 @@ class AlarmToolkit(Toolkit):
     async def set_alarm(
         self,
         description: str,
-        hours: int = 0,
-        minutes: int = 0,
-        seconds: int = 0,
+        hours: str = "0",
+        minutes: str = "0",
+        seconds: str = "0",
     ) -> str:
         """Set an alarm that fires after a delay.
 
@@ -99,7 +99,10 @@ class AlarmToolkit(Toolkit):
             seconds: Seconds from now.
         """
         await self._ensure_init()
-        total = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+        h = int(float(hours))
+        m = int(float(minutes))
+        s = int(float(seconds))
+        total = timedelta(hours=h, minutes=m, seconds=s)
         if total.total_seconds() <= 0:
             return "Alarm must be at least 1 second in the future."
 
@@ -108,12 +111,12 @@ class AlarmToolkit(Toolkit):
         await self._store.save_alarm(alarm_id, self._agent_id, description, fire_at.isoformat())
 
         parts = []
-        if hours:
-            parts.append(f"{hours}h")
-        if minutes:
-            parts.append(f"{minutes}m")
-        if seconds:
-            parts.append(f"{seconds}s")
+        if h:
+            parts.append(f"{h}h")
+        if m:
+            parts.append(f"{m}m")
+        if s:
+            parts.append(f"{s}s")
         label = " ".join(parts) or "now"
 
         return f"Alarm {alarm_id} set for {label} from now: {description}"

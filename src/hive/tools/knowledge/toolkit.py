@@ -72,7 +72,7 @@ class KnowledgeToolkit(Toolkit):
         return f"Saved note {mid}: {content[:80]}"
 
     @tool()
-    async def search_notes(self, query: str, limit: int = 5) -> str:
+    async def search_notes(self, query: str, limit: str = "5") -> str:
         """Search the knowledge base by topic or keywords.
 
         Args:
@@ -80,7 +80,7 @@ class KnowledgeToolkit(Toolkit):
             limit: Maximum number of results.
         """
         assert self._memory is not None
-        results = await self._memory.search(query, top_k=limit)
+        results = await self._memory.search(query, top_k=int(float(limit)))
         if not results:
             return "No matching notes found."
         lines = []
@@ -91,14 +91,14 @@ class KnowledgeToolkit(Toolkit):
         return "\n".join(lines)
 
     @tool()
-    async def list_recent_notes(self, limit: int = 10) -> str:
+    async def list_recent_notes(self, limit: str = "10") -> str:
         """List the most recent notes.
 
         Args:
             limit: How many notes to show.
         """
         assert self._memory is not None
-        notes = self._memory.recent(limit)
+        notes = self._memory.recent(int(float(limit)))
         if not notes:
             return "No notes yet."
         lines = []

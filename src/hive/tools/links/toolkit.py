@@ -108,7 +108,7 @@ class LinkToolkit(Toolkit):
         return f"Saved link {mid}: {display}"
 
     @tool()
-    async def search_links(self, query: str, limit: int = 5) -> str:
+    async def search_links(self, query: str, limit: str = "5") -> str:
         """Search saved links by content or tags.
 
         Args:
@@ -118,8 +118,9 @@ class LinkToolkit(Toolkit):
         if self._memory is None:
             raise RuntimeError("LinkToolkit is not bound to an agent yet.")
 
-        results = await self._memory.search(query, top_k=limit * 2)
-        links = [r for r in results if r.metadata.get("type") == _LINK_TYPE][:limit]
+        n = int(float(limit))
+        results = await self._memory.search(query, top_k=n * 2)
+        links = [r for r in results if r.metadata.get("type") == _LINK_TYPE][:n]
         if not links:
             return "No matching links found."
 
@@ -134,7 +135,7 @@ class LinkToolkit(Toolkit):
         return "\n".join(lines)
 
     @tool()
-    async def list_links(self, limit: int = 10) -> str:
+    async def list_links(self, limit: str = "10") -> str:
         """List recently saved links.
 
         Args:
@@ -143,8 +144,9 @@ class LinkToolkit(Toolkit):
         if self._memory is None:
             raise RuntimeError("LinkToolkit is not bound to an agent yet.")
 
-        recent = self._memory.recent(limit * 2)
-        links = [r for r in recent if r.metadata.get("type") == _LINK_TYPE][:limit]
+        n = int(float(limit))
+        recent = self._memory.recent(n * 2)
+        links = [r for r in recent if r.metadata.get("type") == _LINK_TYPE][:n]
         if not links:
             return "No saved links yet."
 
