@@ -29,11 +29,11 @@ from hive.runtime import Agent, DaemonAgentAdapter, Message
 from hive.runtime.persona import Persona
 from hive.tools.a2a import A2AToolkit
 from hive.tools.alarms import AlarmToolkit, fire_notification
+from hive.tools.clipboard import ClipboardToolkit
 from hive.tools.comms import CommsToolkit
 from hive.tools.delegation import DaemonDelegationToolkit
 from hive.tools.file import FileToolkit
 from hive.tools.git import GitToolkit
-from hive.tools.clipboard import ClipboardToolkit
 from hive.tools.knowledge import KnowledgeToolkit
 from hive.tools.links import LinkToolkit
 from hive.tools.memory import MemoryToolkit

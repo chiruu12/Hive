@@ -56,9 +56,7 @@ class TestClipboardToolkit:
         assert "Failed" in result
 
     @pytest.mark.asyncio
-    async def test_copy_note(
-        self, toolkit: ClipboardToolkit, memory: SemanticMemory
-    ) -> None:
+    async def test_copy_note(self, toolkit: ClipboardToolkit, memory: SemanticMemory) -> None:
         mid = await memory.store("Important meeting notes", {"tags": "work"})
         with patch(
             "hive.tools.clipboard.toolkit._copy_to_system_clipboard",
@@ -82,9 +80,7 @@ class TestClipboardToolkit:
         assert "No knowledge base" in result
 
     @pytest.mark.asyncio
-    async def test_copy_link(
-        self, toolkit: ClipboardToolkit, memory: SemanticMemory
-    ) -> None:
+    async def test_copy_link(self, toolkit: ClipboardToolkit, memory: SemanticMemory) -> None:
         await memory.store(
             "Python docs",
             {"type": "link", "url": "https://python.org", "title": "Python"},
