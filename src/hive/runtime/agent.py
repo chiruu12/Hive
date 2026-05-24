@@ -92,11 +92,20 @@ class Agent:
         self._response_model = response_model
         self._conversation_log_dir = Path(conversation_log_dir) if conversation_log_dir else None
 
+        import copy
+
+        rebound: list[Toolkit] = []
         for tk in self._toolkits:
             if not tk.is_bound:
                 tk.bind(self._agent_id)
+                rebound.append(tk)
             elif tk._agent_id != self._agent_id:
-                tk.rebind(self._agent_id)
+                clone = copy.copy(tk)
+                clone.rebind(self._agent_id)
+                rebound.append(clone)
+            else:
+                rebound.append(tk)
+        self._toolkits = rebound
 
         toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
 

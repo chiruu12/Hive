@@ -521,12 +521,16 @@ class TestAgentWithPersona:
         p = Persona(instructions=["Goal A", "Goal B"])
         assert p.goals == ["Goal A", "Goal B"]
 
-    def test_agent_rebinds_prebound_toolkits(self) -> None:
+    def test_agent_clones_prebound_toolkits(self) -> None:
         provider = MagicMock()
         tk = _MockToolkit()
         tk.bind("coder-abc12345")
-        Agent(name="coder", model=provider, toolkits=[tk])
-        assert tk._agent_id == "coder"
+        agent = Agent(name="coder", model=provider, toolkits=[tk])
+        # Original toolkit is NOT mutated (clone-on-rebind)
+        assert tk._agent_id == "coder-abc12345"
+        # Agent's internal copy has the new agent_id
+        assert agent._toolkits[0]._agent_id == "coder"
+        assert agent._toolkits[0] is not tk
 
     def test_agent_binds_unbound_toolkits(self) -> None:
         provider = MagicMock()
