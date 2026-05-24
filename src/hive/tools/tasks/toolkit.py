@@ -61,15 +61,7 @@ class TaskToolkit(Toolkit):
     async def query_all_tasks(self, status: str = "pending") -> list[dict[str, Any]]:
         """Query tasks across all agents. For host application use, not an agent tool."""
         await self._ensure_init()
-        import aiosqlite
-
-        async with aiosqlite.connect(self._store._db_path) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC",
-                (status,),
-            ) as cursor:
-                return [dict(row) for row in await cursor.fetchall()]
+        return await self._store.list_all_tasks(status)
 
     @tool()
     async def create_task(self, description: str, priority: str = "medium", due: str = "") -> str:

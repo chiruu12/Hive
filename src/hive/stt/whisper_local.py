@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import platform
 import sys
 import tempfile
@@ -79,6 +80,10 @@ class WhisperLocal:
 
     async def transcribe(self, audio_path: Path) -> TranscriptionResult:
         self._ensure_model()
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._transcribe_sync, audio_path)
+
+    def _transcribe_sync(self, audio_path: Path) -> TranscriptionResult:
         path_str = str(audio_path)
 
         if self._backend == "mlx" and _mlx_whisper_mod is not None:
