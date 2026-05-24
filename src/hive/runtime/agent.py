@@ -95,6 +95,8 @@ class Agent:
         for tk in self._toolkits:
             if not tk.is_bound:
                 tk.bind(self._agent_id)
+            elif tk._agent_id != self._agent_id:
+                tk.rebind(self._agent_id)
 
         toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
 
