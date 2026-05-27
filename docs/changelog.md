@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.4.2] -- 2026-05-28
+
+### Added
+- **TaskToolkit**: `uncomplete_task` -- reopen completed tasks, `update_task` -- modify description/priority/due date, priority filtering on `list_tasks`
+- **KnowledgeToolkit**: `delete_note` -- delete notes by ID, `update_note` -- edit content/tags in-place preserving ID and timestamp
+- **AlarmToolkit**: `set_alarm_at` -- absolute time alarms ("3pm", "15:00", "tomorrow 9am") via python-dateutil, local timezone support
+- **SemanticMemory/TFIDFBackend**: `update()` method for in-place record editing
+- New dependency: `python-dateutil>=2.8`
+
+### Fixed
+- Groq provider test leaked `OPENAI_API_KEY` from `.env` -- now patches both provider references
+
+## [0.4.1] -- 2026-05-26
+
+### Fixed
+- **Race condition** with shared toolkits -- clone-on-rebind prevents concurrent agent requests from corrupting toolkit state
+
+## [0.4.0] -- 2026-05-24
+
+### Added
+- **ClipboardToolkit** -- `copy_to_clipboard`, `copy_note`, `copy_task`, `copy_link` (pbcopy/xclip)
+- **Public query methods** on TaskToolkit, AlarmToolkit, KnowledgeToolkit for host applications
+- **Configurable notification title** in AlarmChecker
+- **Agent auto-rebinds toolkits** bound to a different agent
+- **Metadata search in TFIDF** -- tags, URLs, and metadata indexed alongside content
+
+### Fixed
+- `tc.arguments` None crash when LLM calls tools with no required params
+- Integer params break Groq -- all LLM-facing numeric params changed to `str`
+- WhisperLocal blocking inference -- now runs in `run_in_executor()`
+- MLX whisper model map -- correct HuggingFace repo names
+
 ## [0.3.0] -- 2026-05-18
 
 ### Added
