@@ -105,6 +105,16 @@ class TestAlarmToolkit:
         assert "Could not parse" in result
 
     @pytest.mark.asyncio
+    async def test_set_alarm_at_tomorrow(self, toolkit):
+        result = await toolkit.set_alarm_at("Morning alarm", time="tomorrow 9am")
+        assert "alarm-" in result
+        assert "Morning alarm" in result
+        from datetime import datetime, timedelta
+
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        assert tomorrow in result
+
+    @pytest.mark.asyncio
     async def test_set_alarm_at_past(self, toolkit):
         result = await toolkit.set_alarm_at("Past alarm", time="2020-01-01 10:00")
         assert "past" in result.lower()

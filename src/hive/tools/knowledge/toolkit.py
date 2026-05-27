@@ -152,5 +152,10 @@ class KnowledgeToolkit(Toolkit):
         meta = {"tags": tags} if tags else None
         if text is None and meta is None:
             return "Nothing to update — provide content or tags."
+        existing = await self._memory.recall(note_id)
+        if existing is None:
+            return f"Note {note_id} not found."
         ok = await self._memory.update(note_id, text, meta)
-        return f"Note {note_id} updated." if ok else f"Note {note_id} not found."
+        if not ok:
+            return f"Note {note_id} could not be updated (backend may not support updates)."
+        return f"Note {note_id} updated."

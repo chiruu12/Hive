@@ -548,7 +548,7 @@ class HiveStore:
             values.append(priority)
         if due_date is not None:
             fields.append("due_date = ?")
-            values.append(due_date if due_date else None)
+            values.append(due_date)
         if not fields:
             return False
         values.append(task_id)

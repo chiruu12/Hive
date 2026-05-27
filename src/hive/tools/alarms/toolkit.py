@@ -146,12 +146,24 @@ class AlarmToolkit(Toolkit):
         await self._ensure_init()
         from dateutil import parser as dtparser
 
+        day_offset = 0
+        cleaned = time.strip()
+        lower = cleaned.lower()
+        if lower.startswith("tomorrow"):
+            day_offset = 1
+            cleaned = cleaned[len("tomorrow") :].strip()
+            if not cleaned:
+                return "Please include a time, e.g. 'tomorrow 9am'."
+
         try:
-            target = dtparser.parse(time, fuzzy=True)
+            target = dtparser.parse(cleaned, fuzzy=True)
         except (ValueError, OverflowError):
             return (
                 f"Could not parse time: {time!r}. Try formats like '3pm', '15:00', 'tomorrow 9am'."
             )
+
+        if day_offset:
+            target += timedelta(days=day_offset)
 
         if target.tzinfo is None:
             target = target.replace(tzinfo=datetime.now().astimezone().tzinfo)
@@ -159,7 +171,8 @@ class AlarmToolkit(Toolkit):
 
         now = datetime.now(UTC)
         if target <= now:
-            target += timedelta(days=1)
+            if not day_offset:
+                target += timedelta(days=1)
             if target <= now:
                 return "That time is in the past."
 
