@@ -92,10 +92,11 @@ class TestAlarmToolkit:
 
     @pytest.mark.asyncio
     async def test_set_alarm_at_future(self, toolkit):
-        from datetime import UTC, datetime, timedelta
+        from datetime import datetime, timedelta
 
-        future = (datetime.now(UTC) + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
-        result = await toolkit.set_alarm_at("Future alarm", time=future)
+        future_local = datetime.now() + timedelta(hours=2)
+        future_str = future_local.strftime("%Y-%m-%d %H:%M")
+        result = await toolkit.set_alarm_at("Future alarm", time=future_str)
         assert "alarm-" in result
         assert "Future alarm" in result
 
@@ -106,13 +107,18 @@ class TestAlarmToolkit:
 
     @pytest.mark.asyncio
     async def test_set_alarm_at_tomorrow(self, toolkit):
+        from datetime import UTC, datetime, timedelta
+
         result = await toolkit.set_alarm_at("Morning alarm", time="tomorrow 9am")
         assert "alarm-" in result
         assert "Morning alarm" in result
-        from datetime import datetime, timedelta
-
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-        assert tomorrow in result
+        local_tz = datetime.now().astimezone().tzinfo
+        tomorrow_9am_utc = (
+            (datetime.now().replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1))
+            .replace(tzinfo=local_tz)
+            .astimezone(UTC)
+        )
+        assert tomorrow_9am_utc.strftime("%Y-%m-%d") in result
 
     @pytest.mark.asyncio
     async def test_set_alarm_at_past(self, toolkit):

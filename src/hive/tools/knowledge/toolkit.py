@@ -132,11 +132,11 @@ class KnowledgeToolkit(Toolkit):
             note_id: The note ID to delete.
         """
         assert self._memory is not None
-        existing = await self._memory.recall(note_id)
-        if existing is None:
-            return f"Note {note_id} not found."
+        count_before = self._memory.count()
         await self._memory.forget(note_id)
-        return f"Note {note_id} deleted."
+        if self._memory.count() < count_before:
+            return f"Note {note_id} deleted."
+        return f"Note {note_id} not found."
 
     @tool()
     async def update_note(self, note_id: str, content: str = "", tags: str = "") -> str:
