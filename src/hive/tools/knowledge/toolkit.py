@@ -69,7 +69,7 @@ class KnowledgeToolkit(Toolkit):
     def instructions(self) -> str:
         return (
             "You can save notes to a knowledge base, search them by topic, "
-            "and browse recent entries."
+            "browse recent entries, delete notes, and update existing notes."
         )
 
     @tool()
@@ -123,3 +123,34 @@ class KnowledgeToolkit(Toolkit):
             tag_str = f" [{tags}]" if tags else ""
             lines.append(f"- {n.memory_id} ({ts}): {n.thought[:80]}{tag_str}")
         return "\n".join(lines)
+
+    @tool()
+    async def delete_note(self, note_id: str) -> str:
+        """Delete a note from the knowledge base.
+
+        Args:
+            note_id: The note ID to delete.
+        """
+        assert self._memory is not None
+        existing = await self._memory.recall(note_id)
+        if existing is None:
+            return f"Note {note_id} not found."
+        await self._memory.forget(note_id)
+        return f"Note {note_id} deleted."
+
+    @tool()
+    async def update_note(self, note_id: str, content: str = "", tags: str = "") -> str:
+        """Update an existing note's content or tags.
+
+        Args:
+            note_id: The note ID to update.
+            content: New content (leave empty to keep current).
+            tags: New comma-separated tags (leave empty to keep current).
+        """
+        assert self._memory is not None
+        text = content or None
+        meta = {"tags": tags} if tags else None
+        if text is None and meta is None:
+            return "Nothing to update — provide content or tags."
+        ok = await self._memory.update(note_id, text, meta)
+        return f"Note {note_id} updated." if ok else f"Note {note_id} not found."

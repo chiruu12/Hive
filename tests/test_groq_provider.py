@@ -30,7 +30,10 @@ class TestGroqProviderRouting:
         assert p.available
 
     def test_groq_unavailable_without_key(self) -> None:
-        with patch("hive.models.groq.get_env", return_value=""):
+        with (
+            patch("hive.models.groq.get_env", return_value=""),
+            patch("hive.models.openai.get_env", return_value=""),
+        ):
             p = create_runtime_provider("groq:llama-3.1-8b-instant")
         assert not p.available
 

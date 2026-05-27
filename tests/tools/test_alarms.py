@@ -91,10 +91,29 @@ class TestAlarmToolkit:
         assert len(due) == 0
 
     @pytest.mark.asyncio
+    async def test_set_alarm_at_future(self, toolkit):
+        from datetime import UTC, datetime, timedelta
+
+        future = (datetime.now(UTC) + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+        result = await toolkit.set_alarm_at("Future alarm", time=future)
+        assert "alarm-" in result
+        assert "Future alarm" in result
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_unparseable(self, toolkit):
+        result = await toolkit.set_alarm_at("Bad alarm", time="not-a-time-xyz")
+        assert "Could not parse" in result
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_past(self, toolkit):
+        result = await toolkit.set_alarm_at("Past alarm", time="2020-01-01 10:00")
+        assert "past" in result.lower()
+
+    @pytest.mark.asyncio
     async def test_tool_discovery(self, toolkit):
         tools = toolkit.get_tools()
         names = {t.name for t in tools}
-        assert names == {"set_alarm", "list_alarms", "cancel_alarm"}
+        assert names == {"set_alarm", "set_alarm_at", "list_alarms", "cancel_alarm"}
 
 
 class TestFireNotification:

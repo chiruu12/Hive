@@ -487,9 +487,18 @@ class HiveStore:
             )
             await db.commit()
 
-    async def list_tasks(self, agent_id: str, status: str = "pending") -> list[dict[str, Any]]:
+    async def list_tasks(
+        self, agent_id: str, status: str = "pending", priority: str | None = None
+    ) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
+            if priority:
+                async with db.execute(
+                    "SELECT * FROM tasks WHERE agent_id = ? AND status = ? AND priority = ? "
+                    "ORDER BY created_at DESC",
+                    (agent_id, status, priority),
+                ) as cursor:
+                    return [dict(row) for row in await cursor.fetchall()]
             async with db.execute(
                 "SELECT * FROM tasks WHERE agent_id = ? AND status = ? ORDER BY created_at DESC",
                 (agent_id, status),
@@ -506,15 +515,63 @@ class HiveStore:
             await db.commit()
             return cursor.rowcount > 0
 
+    async def uncomplete_task(self, task_id: str) -> bool:
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                """UPDATE tasks SET status = 'pending', completed_at = NULL
+                   WHERE task_id = ? AND status = 'done'""",
+                (task_id,),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
     async def delete_task(self, task_id: str) -> bool:
         async with aiosqlite.connect(self._db_path) as db:
             cursor = await db.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
             await db.commit()
             return cursor.rowcount > 0
 
-    async def list_all_tasks(self, status: str = "pending") -> list[dict[str, Any]]:
+    async def update_task(
+        self,
+        task_id: str,
+        description: str | None = None,
+        priority: str | None = None,
+        due_date: str | None = None,
+    ) -> bool:
+        fields: list[str] = []
+        values: list[Any] = []
+        if description is not None:
+            fields.append("description = ?")
+            values.append(description)
+        if priority is not None:
+            fields.append("priority = ?")
+            values.append(priority)
+        if due_date is not None:
+            fields.append("due_date = ?")
+            values.append(due_date if due_date else None)
+        if not fields:
+            return False
+        values.append(task_id)
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                f"UPDATE tasks SET {', '.join(fields)} WHERE task_id = ?",
+                tuple(values),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def list_all_tasks(
+        self, status: str = "pending", priority: str | None = None
+    ) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
+            if priority:
+                async with db.execute(
+                    "SELECT * FROM tasks WHERE status = ? AND priority = ? "
+                    "ORDER BY created_at DESC",
+                    (status, priority),
+                ) as cursor:
+                    return [dict(row) for row in await cursor.fetchall()]
             async with db.execute(
                 "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC",
                 (status,),

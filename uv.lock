@@ -977,7 +977,7 @@ wheels = [
 
 [[package]]
 name = "hive-agent"
-version = "0.3.2"
+version = "0.4.2"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -987,6 +987,7 @@ dependencies = [
     { name = "mcp" },
     { name = "openai" },
     { name = "pydantic" },
+    { name = "python-dateutil" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "rich" },
@@ -1049,6 +1050,7 @@ requires-dist = [
     { name = "pynput", marker = "extra == 'hotkeys'", specifier = ">=1.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "python-dateutil", specifier = ">=2.8" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.0" },

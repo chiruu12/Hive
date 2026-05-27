@@ -32,3 +32,9 @@ class MemoryBackend(Protocol):
     def count(self) -> int:
         """Return total number of stored memories."""
         ...
+
+    # Optional methods (checked via hasattr at runtime):
+    # async def recall(memory_id: str) -> MemoryRecord | None
+    # async def consolidate(max_age_days: int, min_access: int) -> int
+    # async def update(memory_id: str, text: str | None, metadata: dict | None) -> bool
+    # def recent_sync(limit: int) -> list[MemoryRecord]

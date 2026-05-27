@@ -48,20 +48,25 @@ class TaskToolkit(Toolkit):
     def instructions(self) -> str:
         return (
             "You can manage tasks: create new tasks, list pending or completed "
-            "tasks, mark tasks as done, or delete them."
+            "tasks, mark tasks as done, reopen completed tasks, update task "
+            "details, or delete them."
         )
 
-    async def query_tasks(self, status: str = "pending") -> list[dict[str, Any]]:
+    async def query_tasks(
+        self, status: str = "pending", priority: str | None = None
+    ) -> list[dict[str, Any]]:
         """Query tasks for the bound agent. For host application use, not an agent tool."""
         if not self._agent_id:
             raise RuntimeError("TaskToolkit is not bound to an agent yet.")
         await self._ensure_init()
-        return await self._store.list_tasks(self._agent_id, status)
+        return await self._store.list_tasks(self._agent_id, status, priority)
 
-    async def query_all_tasks(self, status: str = "pending") -> list[dict[str, Any]]:
+    async def query_all_tasks(
+        self, status: str = "pending", priority: str | None = None
+    ) -> list[dict[str, Any]]:
         """Query tasks across all agents. For host application use, not an agent tool."""
         await self._ensure_init()
-        return await self._store.list_all_tasks(status)
+        return await self._store.list_all_tasks(status, priority)
 
     @tool()
     async def create_task(self, description: str, priority: str = "medium", due: str = "") -> str:
@@ -86,16 +91,21 @@ class TaskToolkit(Toolkit):
         return f"Created task {task_id}: {description} (priority={priority})"
 
     @tool()
-    async def list_tasks(self, status: str = "pending") -> str:
-        """List tasks filtered by status.
+    async def list_tasks(self, status: str = "pending", priority: str = "") -> str:
+        """List tasks filtered by status and optionally by priority.
 
         Args:
             status: Filter by status — pending or done.
+            priority: Optional priority filter — high, medium, or low.
         """
         await self._ensure_init()
-        tasks = await self._store.list_tasks(self._agent_id, status)
+        prio = priority or None
+        if prio and prio not in ("high", "medium", "low"):
+            return "Priority must be high, medium, or low."
+        tasks = await self._store.list_tasks(self._agent_id, status, prio)
         if not tasks:
-            return f"No {status} tasks."
+            filt = f" {priority}" if priority else ""
+            return f"No{filt} {status} tasks."
         lines = []
         for t in tasks:
             due = f" due={t['due_date']}" if t["due_date"] else ""
@@ -114,6 +124,17 @@ class TaskToolkit(Toolkit):
         return f"Task {task_id} completed." if ok else f"Task {task_id} not found or already done."
 
     @tool()
+    async def uncomplete_task(self, task_id: str) -> str:
+        """Reopen a completed task, setting it back to pending.
+
+        Args:
+            task_id: The task ID to uncomplete.
+        """
+        await self._ensure_init()
+        ok = await self._store.uncomplete_task(task_id)
+        return f"Task {task_id} reopened." if ok else f"Task {task_id} not found or not completed."
+
+    @tool()
     async def delete_task(self, task_id: str) -> str:
         """Delete a task.
 
@@ -123,3 +144,26 @@ class TaskToolkit(Toolkit):
         await self._ensure_init()
         ok = await self._store.delete_task(task_id)
         return f"Task {task_id} deleted." if ok else f"Task {task_id} not found."
+
+    @tool()
+    async def update_task(
+        self, task_id: str, description: str = "", priority: str = "", due: str = ""
+    ) -> str:
+        """Update a task's description, priority, or due date.
+
+        Args:
+            task_id: The task ID to update.
+            description: New description (leave empty to keep current).
+            priority: New priority — high, medium, or low (leave empty to keep current).
+            due: New due date (leave empty to keep current).
+        """
+        await self._ensure_init()
+        desc = description or None
+        prio = priority or None
+        due_date = due or None
+        if prio and prio not in ("high", "medium", "low"):
+            return "Priority must be high, medium, or low."
+        if not any([desc, prio, due_date]):
+            return "Nothing to update — provide at least one field."
+        ok = await self._store.update_task(task_id, desc, prio, due_date)
+        return f"Task {task_id} updated." if ok else f"Task {task_id} not found."

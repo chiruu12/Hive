@@ -68,10 +68,55 @@ class TestKnowledgeToolkit:
         assert "devops" in result
 
     @pytest.mark.asyncio
+    async def test_delete_note(self, toolkit):
+        result = await toolkit.save_note("Temporary note")
+        note_id = result.split()[2].rstrip(":")
+        delete_result = await toolkit.delete_note(note_id)
+        assert "deleted" in delete_result
+
+        listing = await toolkit.list_recent_notes()
+        assert "Temporary note" not in listing
+
+    @pytest.mark.asyncio
+    async def test_delete_nonexistent_note(self, toolkit):
+        result = await toolkit.delete_note("mem-nonexistent")
+        assert "not found" in result
+
+    @pytest.mark.asyncio
+    async def test_update_note_content(self, toolkit):
+        result = await toolkit.save_note("Original content")
+        note_id = result.split()[2].rstrip(":")
+        update = await toolkit.update_note(note_id, content="Updated content")
+        assert "updated" in update
+
+        search = await toolkit.search_notes("Updated content")
+        assert "Updated" in search
+
+    @pytest.mark.asyncio
+    async def test_update_note_tags(self, toolkit):
+        result = await toolkit.save_note("Tagged note", tags="old-tag")
+        note_id = result.split()[2].rstrip(":")
+        await toolkit.update_note(note_id, tags="new-tag")
+
+        listing = await toolkit.list_recent_notes()
+        assert "new-tag" in listing
+
+    @pytest.mark.asyncio
+    async def test_update_nonexistent_note(self, toolkit):
+        result = await toolkit.update_note("mem-nonexistent", content="nope")
+        assert "not found" in result
+
+    @pytest.mark.asyncio
     async def test_tool_discovery(self, toolkit):
         tools = toolkit.get_tools()
         names = {t.name for t in tools}
-        assert names == {"save_note", "search_notes", "list_recent_notes"}
+        assert names == {
+            "save_note",
+            "search_notes",
+            "list_recent_notes",
+            "delete_note",
+            "update_note",
+        }
 
     @pytest.mark.asyncio
     async def test_rebind_creates_new_memory(self, tmp_path):

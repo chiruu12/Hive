@@ -86,7 +86,96 @@ class TestTaskToolkit:
         assert "not found" in result
 
     @pytest.mark.asyncio
+    async def test_uncomplete_task(self, toolkit):
+        result = await toolkit.create_task("Reopen me")
+        task_id = result.split()[2].rstrip(":")
+        await toolkit.complete_task(task_id)
+        reopen = await toolkit.uncomplete_task(task_id)
+        assert "reopened" in reopen
+
+        pending = await toolkit.list_tasks()
+        assert "Reopen me" in pending
+
+    @pytest.mark.asyncio
+    async def test_uncomplete_already_pending(self, toolkit):
+        result = await toolkit.create_task("Still pending")
+        task_id = result.split()[2].rstrip(":")
+        reopen = await toolkit.uncomplete_task(task_id)
+        assert "not found or not completed" in reopen
+
+    @pytest.mark.asyncio
+    async def test_uncomplete_nonexistent(self, toolkit):
+        result = await toolkit.uncomplete_task("task-nonexistent")
+        assert "not found" in result
+
+    @pytest.mark.asyncio
+    async def test_update_task_description(self, toolkit):
+        result = await toolkit.create_task("Old description")
+        task_id = result.split()[2].rstrip(":")
+        update = await toolkit.update_task(task_id, description="New description")
+        assert "updated" in update
+
+        listing = await toolkit.list_tasks()
+        assert "New description" in listing
+
+    @pytest.mark.asyncio
+    async def test_update_task_priority(self, toolkit):
+        result = await toolkit.create_task("Bump priority", priority="low")
+        task_id = result.split()[2].rstrip(":")
+        await toolkit.update_task(task_id, priority="high")
+
+        listing = await toolkit.list_tasks()
+        assert "high" in listing
+
+    @pytest.mark.asyncio
+    async def test_update_task_combined(self, toolkit):
+        result = await toolkit.create_task("Original", priority="low")
+        task_id = result.split()[2].rstrip(":")
+        update = await toolkit.update_task(
+            task_id, description="Updated", priority="high", due="Monday"
+        )
+        assert "updated" in update
+
+        listing = await toolkit.list_tasks()
+        assert "Updated" in listing
+        assert "high" in listing
+        assert "Monday" in listing
+
+    @pytest.mark.asyncio
+    async def test_update_task_nonexistent(self, toolkit):
+        result = await toolkit.update_task("task-nonexistent", description="nope")
+        assert "not found" in result
+
+    @pytest.mark.asyncio
+    async def test_update_task_invalid_priority(self, toolkit):
+        result = await toolkit.create_task("Test")
+        task_id = result.split()[2].rstrip(":")
+        update = await toolkit.update_task(task_id, priority="urgent")
+        assert "must be" in update
+
+    @pytest.mark.asyncio
+    async def test_list_tasks_filter_by_priority(self, toolkit):
+        await toolkit.create_task("High one", priority="high")
+        await toolkit.create_task("Low one", priority="low")
+        result = await toolkit.list_tasks(priority="high")
+        assert "High one" in result
+        assert "Low one" not in result
+
+    @pytest.mark.asyncio
+    async def test_list_tasks_filter_no_match(self, toolkit):
+        await toolkit.create_task("Low one", priority="low")
+        result = await toolkit.list_tasks(priority="high")
+        assert "No high pending tasks" in result
+
+    @pytest.mark.asyncio
     async def test_tool_discovery(self, toolkit):
         tools = toolkit.get_tools()
         names = {t.name for t in tools}
-        assert names == {"create_task", "list_tasks", "complete_task", "delete_task"}
+        assert names == {
+            "create_task",
+            "list_tasks",
+            "complete_task",
+            "uncomplete_task",
+            "delete_task",
+            "update_task",
+        }
