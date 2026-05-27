@@ -126,8 +126,16 @@ class TestAlarmToolkit:
         assert "include a time" in result
 
     @pytest.mark.asyncio
-    async def test_set_alarm_at_past(self, toolkit):
+    async def test_set_alarm_at_explicit_past_date(self, toolkit):
         result = await toolkit.set_alarm_at("Past alarm", time="2020-01-01 10:00")
+        assert "past" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_yesterday_not_rolled(self, toolkit):
+        from datetime import datetime, timedelta
+
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d 14:30")
+        result = await toolkit.set_alarm_at("Should reject", time=yesterday)
         assert "past" in result.lower()
 
     @pytest.mark.asyncio

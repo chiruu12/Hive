@@ -171,7 +171,10 @@ class AlarmToolkit(Toolkit):
 
         now = datetime.now(UTC)
         if target <= now:
-            if not day_offset:
+            today = datetime.now().date()
+            parsed_date = target.astimezone(datetime.now().astimezone().tzinfo).date()
+            explicit_date = parsed_date != today or day_offset
+            if not explicit_date:
                 target += timedelta(days=1)
             if target <= now:
                 return "That time is in the past."
