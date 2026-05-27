@@ -58,6 +58,17 @@ class SemanticMemory:
     async def forget(self, memory_id: str) -> None:
         await self._backend.delete(memory_id)
 
+    async def update(
+        self,
+        memory_id: str,
+        thought: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        if hasattr(self._backend, "update"):
+            result: bool = await self._backend.update(memory_id, thought, metadata)
+            return result
+        return False
+
     async def consolidate(self, max_age_days: int = 30, min_access: int = 2) -> int:
         if hasattr(self._backend, "consolidate"):
             result: int = await self._backend.consolidate(max_age_days, min_access)

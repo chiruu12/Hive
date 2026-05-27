@@ -80,7 +80,8 @@ class AlarmToolkit(Toolkit):
     def instructions(self) -> str:
         return (
             "You can set timed alarms that fire macOS notifications. "
-            "Specify hours, minutes, and/or seconds from now."
+            "Specify hours, minutes, and/or seconds from now, or set alarms "
+            "for specific times like '3pm' or 'tomorrow 9am'."
         )
 
     async def query_pending_alarms(self) -> list[dict[str, Any]]:
@@ -133,6 +134,54 @@ class AlarmToolkit(Toolkit):
         label = " ".join(parts) or "now"
 
         return f"Alarm {alarm_id} set for {label} from now: {description}"
+
+    @tool()
+    async def set_alarm_at(self, description: str, time: str) -> str:
+        """Set an alarm for a specific time.
+
+        Args:
+            description: What this alarm is for.
+            time: When to fire — e.g. '3pm', '15:00', 'tomorrow 9am', '2025-06-01 14:30'.
+        """
+        await self._ensure_init()
+        from dateutil import parser as dtparser
+
+        day_offset = 0
+        cleaned = time.strip()
+        lower = cleaned.lower()
+        if lower.startswith("tomorrow"):
+            day_offset = 1
+            cleaned = cleaned[len("tomorrow") :].strip()
+            if not cleaned:
+                return "Please include a time, e.g. 'tomorrow 9am'."
+
+        try:
+            target = dtparser.parse(cleaned, fuzzy=True)
+        except (ValueError, OverflowError):
+            return (
+                f"Could not parse time: {time!r}. Try formats like '3pm', '15:00', 'tomorrow 9am'."
+            )
+
+        if day_offset:
+            target += timedelta(days=day_offset)
+
+        if target.tzinfo is None:
+            target = target.replace(tzinfo=datetime.now().astimezone().tzinfo)
+        target = target.astimezone(UTC)
+
+        now = datetime.now(UTC)
+        if target <= now:
+            today = datetime.now().date()
+            parsed_date = target.astimezone(datetime.now().astimezone().tzinfo).date()
+            explicit_date = parsed_date != today or day_offset
+            if not explicit_date:
+                target += timedelta(days=1)
+            if target <= now:
+                return "That time is in the past."
+
+        alarm_id = f"alarm-{uuid4().hex[:8]}"
+        await self._store.save_alarm(alarm_id, self._agent_id, description, target.isoformat())
+        return f"Alarm {alarm_id} set for {target.strftime('%Y-%m-%d %H:%M %Z')}: {description}"
 
     @tool()
     async def list_alarms(self) -> str:

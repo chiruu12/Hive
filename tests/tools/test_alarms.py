@@ -91,10 +91,58 @@ class TestAlarmToolkit:
         assert len(due) == 0
 
     @pytest.mark.asyncio
+    async def test_set_alarm_at_future(self, toolkit):
+        from datetime import datetime, timedelta
+
+        future_local = datetime.now() + timedelta(hours=2)
+        future_str = future_local.strftime("%Y-%m-%d %H:%M")
+        result = await toolkit.set_alarm_at("Future alarm", time=future_str)
+        assert "alarm-" in result
+        assert "Future alarm" in result
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_unparseable(self, toolkit):
+        result = await toolkit.set_alarm_at("Bad alarm", time="not-a-time-xyz")
+        assert "Could not parse" in result
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_tomorrow(self, toolkit):
+        from datetime import UTC, datetime, timedelta
+
+        result = await toolkit.set_alarm_at("Morning alarm", time="tomorrow 9am")
+        assert "alarm-" in result
+        assert "Morning alarm" in result
+        local_tz = datetime.now().astimezone().tzinfo
+        tomorrow_9am_utc = (
+            (datetime.now().replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1))
+            .replace(tzinfo=local_tz)
+            .astimezone(UTC)
+        )
+        assert tomorrow_9am_utc.strftime("%Y-%m-%d") in result
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_tomorrow_no_time(self, toolkit):
+        result = await toolkit.set_alarm_at("Bad alarm", time="tomorrow")
+        assert "include a time" in result
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_explicit_past_date(self, toolkit):
+        result = await toolkit.set_alarm_at("Past alarm", time="2020-01-01 10:00")
+        assert "past" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_set_alarm_at_yesterday_not_rolled(self, toolkit):
+        from datetime import datetime, timedelta
+
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d 14:30")
+        result = await toolkit.set_alarm_at("Should reject", time=yesterday)
+        assert "past" in result.lower()
+
+    @pytest.mark.asyncio
     async def test_tool_discovery(self, toolkit):
         tools = toolkit.get_tools()
         names = {t.name for t in tools}
-        assert names == {"set_alarm", "list_alarms", "cancel_alarm"}
+        assert names == {"set_alarm", "set_alarm_at", "list_alarms", "cancel_alarm"}
 
 
 class TestFireNotification:

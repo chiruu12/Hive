@@ -108,6 +108,26 @@ class TFIDFBackend:
             self._save()
         return rec
 
+    async def update(
+        self,
+        memory_id: str,
+        text: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        rec = self._records.get(memory_id)
+        if rec is None:
+            return False
+        changed = False
+        if text is not None:
+            rec.thought = text
+            changed = True
+        if metadata is not None:
+            rec.metadata = metadata
+            changed = True
+        if changed:
+            self._save()
+        return True
+
     async def consolidate(self, max_age_days: int = 30, min_access: int = 2) -> int:
         now = datetime.now(UTC)
         to_remove = []
