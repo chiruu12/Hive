@@ -1,6 +1,6 @@
 # Built-in Toolkits
 
-Hive ships with 15 toolkits. Agents can use any combination. All toolkits follow the same pattern: instantiate and pass to `Agent(toolkits=[...])`.
+Hive ships with 18 toolkits. Agents can use any combination. All toolkits follow the same pattern: instantiate and pass to `Agent(toolkits=[...])`.
 
 ## FileToolkit
 
@@ -278,6 +278,81 @@ tk.bind("my-agent")
 | `scrape_link` | `url` | Fetch and return page content as markdown (4000 char limit) |
 
 Links are stored in SemanticMemory with `metadata.type = "link"`, so they coexist with knowledge notes without interference.
+
+## TaskToolkit
+
+Create, list, complete, reopen, update, and delete tasks. Persisted in SQLite via HiveStore.
+
+```python
+from hive.tools.tasks import TaskToolkit
+
+# Daemon mode (shared store):
+tk = TaskToolkit(store=hive_store)
+
+# Standalone mode:
+tk = TaskToolkit(db_path="app.db")
+tk.bind("my-agent")
+```
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `create_task` | `description`, `priority="medium"`, `due=""` | Create a task (priority: high/medium/low) |
+| `list_tasks` | `status="pending"`, `priority=""` | List tasks filtered by status and optionally priority |
+| `complete_task` | `task_id` | Mark a task as done |
+| `uncomplete_task` | `task_id` | Reopen a completed task, setting it back to pending |
+| `update_task` | `task_id`, `description=""`, `priority=""`, `due=""` | Update one or more fields on an existing task |
+| `delete_task` | `task_id` | Delete a task |
+
+Host applications can also call `query_tasks(status, priority)` and `query_all_tasks(status, priority)` for programmatic access without going through the agent tool layer.
+
+## KnowledgeToolkit
+
+Save, search, update, and delete notes in a semantic knowledge base. Uses TF-IDF similarity search by default, with an optional ChromaDB vector backend.
+
+```python
+from hive.tools.knowledge import KnowledgeToolkit
+
+# Daemon mode (shared memory):
+tk = KnowledgeToolkit(memory=semantic_memory)
+
+# Standalone mode:
+tk = KnowledgeToolkit(memory_dir=".hive")
+tk.bind("my-agent")
+```
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `save_note` | `content`, `tags=""` | Save a note with optional comma-separated tags |
+| `search_notes` | `query`, `limit="5"` | Search notes by topic or keywords |
+| `list_recent_notes` | `limit="10"` | List most recent notes chronologically |
+| `delete_note` | `note_id` | Delete a note by ID |
+| `update_note` | `note_id`, `content=""`, `tags=""` | Update a note's content or tags in-place, preserving its ID and timestamp |
+
+Notes are agent-isolated -- each agent has its own memory directory. Host applications can call `query_recent(limit)` for programmatic access.
+
+## AlarmToolkit
+
+Set timed alarms that fire macOS notifications. Supports both relative delays and absolute times.
+
+```python
+from hive.tools.alarms import AlarmToolkit
+
+# Daemon mode (shared store):
+tk = AlarmToolkit(store=hive_store)
+
+# Standalone mode:
+tk = AlarmToolkit(db_path="app.db")
+tk.bind("my-agent")
+```
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `set_alarm` | `description`, `hours="0"`, `minutes="0"`, `seconds="0"` | Set an alarm that fires after a relative delay |
+| `set_alarm_at` | `description`, `time` | Set an alarm for an absolute time -- accepts "3pm", "15:00", "tomorrow 9am", "2026-06-01 14:30" |
+| `list_alarms` | | List all pending alarms |
+| `cancel_alarm` | `alarm_id` | Cancel a pending alarm |
+
+Use `AlarmChecker` to poll for due alarms and fire notifications in a background loop. The `set_alarm_at` tool uses `python-dateutil` for time parsing, interprets naive times as local timezone, and auto-rolls time-only inputs to tomorrow if the time has already passed today.
 
 ## Using Multiple Toolkits
 
