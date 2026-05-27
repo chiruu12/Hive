@@ -117,11 +117,15 @@ class TFIDFBackend:
         rec = self._records.get(memory_id)
         if rec is None:
             return False
+        changed = False
         if text is not None:
             rec.thought = text
+            changed = True
         if metadata is not None:
             rec.metadata = metadata
-        self._save()
+            changed = True
+        if changed:
+            self._save()
         return True
 
     async def consolidate(self, max_age_days: int = 30, min_access: int = 2) -> int:

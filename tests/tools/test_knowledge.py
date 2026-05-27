@@ -107,6 +107,22 @@ class TestKnowledgeToolkit:
         assert "not found" in result
 
     @pytest.mark.asyncio
+    async def test_update_note_nothing_to_update(self, toolkit):
+        result = await toolkit.save_note("Stable note")
+        note_id = result.split()[2].rstrip(":")
+        update = await toolkit.update_note(note_id)
+        assert "Nothing to update" in update
+
+    @pytest.mark.asyncio
+    async def test_delete_note_twice(self, toolkit):
+        result = await toolkit.save_note("Delete me")
+        note_id = result.split()[2].rstrip(":")
+        first = await toolkit.delete_note(note_id)
+        assert "deleted" in first
+        second = await toolkit.delete_note(note_id)
+        assert "not found" in second
+
+    @pytest.mark.asyncio
     async def test_tool_discovery(self, toolkit):
         tools = toolkit.get_tools()
         names = {t.name for t in tools}

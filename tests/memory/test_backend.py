@@ -87,6 +87,48 @@ class TestTFIDFBackend:
     def test_count_empty(self, backend):
         assert backend.count() == 0
 
+    @pytest.mark.asyncio
+    async def test_update_text(self, backend):
+        mid = await backend.store("Original text")
+        ok = await backend.update(mid, text="Updated text")
+        assert ok is True
+        rec = await backend.recall(mid)
+        assert rec is not None
+        assert rec.thought == "Updated text"
+
+    @pytest.mark.asyncio
+    async def test_update_metadata(self, backend):
+        mid = await backend.store("Note", {"tags": "old"})
+        ok = await backend.update(mid, metadata={"tags": "new"})
+        assert ok is True
+        rec = await backend.recall(mid)
+        assert rec is not None
+        assert rec.metadata["tags"] == "new"
+
+    @pytest.mark.asyncio
+    async def test_update_preserves_timestamp(self, backend):
+        mid = await backend.store("Note")
+        rec_before = await backend.recall(mid)
+        assert rec_before is not None
+        await backend.update(mid, text="Changed")
+        rec_after = await backend.recall(mid)
+        assert rec_after is not None
+        assert rec_after.ts == rec_before.ts
+
+    @pytest.mark.asyncio
+    async def test_update_nonexistent(self, backend):
+        ok = await backend.update("mem-nonexistent", text="nope")
+        assert ok is False
+
+    @pytest.mark.asyncio
+    async def test_update_no_fields(self, backend):
+        mid = await backend.store("Untouched")
+        ok = await backend.update(mid)
+        assert ok is True
+        rec = await backend.recall(mid)
+        assert rec is not None
+        assert rec.thought == "Untouched"
+
 
 class TestSemanticMemoryWithBackend:
     @pytest.mark.asyncio

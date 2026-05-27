@@ -121,6 +121,11 @@ class TestAlarmToolkit:
         assert tomorrow_9am_utc.strftime("%Y-%m-%d") in result
 
     @pytest.mark.asyncio
+    async def test_set_alarm_at_tomorrow_no_time(self, toolkit):
+        result = await toolkit.set_alarm_at("Bad alarm", time="tomorrow")
+        assert "include a time" in result
+
+    @pytest.mark.asyncio
     async def test_set_alarm_at_past(self, toolkit):
         result = await toolkit.set_alarm_at("Past alarm", time="2020-01-01 10:00")
         assert "past" in result.lower()

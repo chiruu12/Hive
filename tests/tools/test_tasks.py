@@ -168,6 +168,29 @@ class TestTaskToolkit:
         assert "No high pending tasks" in result
 
     @pytest.mark.asyncio
+    async def test_update_task_nothing_to_update(self, toolkit):
+        result = await toolkit.create_task("Stable")
+        task_id = result.split()[2].rstrip(":")
+        update = await toolkit.update_task(task_id)
+        assert "Nothing to update" in update
+
+    @pytest.mark.asyncio
+    async def test_complete_task_twice(self, toolkit):
+        result = await toolkit.create_task("Once only")
+        task_id = result.split()[2].rstrip(":")
+        await toolkit.complete_task(task_id)
+        second = await toolkit.complete_task(task_id)
+        assert "not found or already done" in second
+
+    @pytest.mark.asyncio
+    async def test_delete_then_complete(self, toolkit):
+        result = await toolkit.create_task("Ghost task")
+        task_id = result.split()[2].rstrip(":")
+        await toolkit.delete_task(task_id)
+        complete = await toolkit.complete_task(task_id)
+        assert "not found" in complete
+
+    @pytest.mark.asyncio
     async def test_tool_discovery(self, toolkit):
         tools = toolkit.get_tools()
         names = {t.name for t in tools}
