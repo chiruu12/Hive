@@ -221,6 +221,9 @@ __marimo__/
 tmp/
 .hive/
 
+# Agent collaboration scratch -- plans, audits, transcripts (keep local only)
+.context/
+
 # Experiments and logs (keep locally, not in repo)
 experiments/
 logs/
