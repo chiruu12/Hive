@@ -1,5 +1,6 @@
 """SQLite persistence for hive state."""
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -106,6 +107,57 @@ CREATE TABLE IF NOT EXISTS alarms (
 );
 """
 
+# Indexes on hot lookup columns (composites mirror the WHERE/ORDER BY patterns
+# in the query methods below). All IF NOT EXISTS so the script is idempotent.
+# Created *after* migrations run -- some indexed columns (e.g. goals.parent_goal_id)
+# are added by a migration on legacy databases, so the column must exist first.
+_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_agents_spawned_at ON agents(spawned_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
+CREATE INDEX IF NOT EXISTS idx_goals_agent_status ON goals(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_goals_agent_created ON goals(agent_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_goals_parent ON goals(parent_goal_id);
+CREATE INDEX IF NOT EXISTS idx_nudges_agent_delivered ON nudges(agent_id, delivered);
+CREATE INDEX IF NOT EXISTS idx_schedules_agent_enabled ON schedules(agent_id, enabled);
+CREATE INDEX IF NOT EXISTS idx_sub_agents_parent ON sub_agents(parent_agent_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_agent_status ON tasks(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_alarms_agent_status ON alarms(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_alarms_status_fire ON alarms(status, fire_at);
+"""
+
+# Latest schema version. Bump and append a step to _MIGRATIONS for each change.
+LATEST_SCHEMA_VERSION = 1
+
+
+async def _migration_1(db: aiosqlite.Connection) -> None:
+    """Columns added after the initial schema.
+
+    Written defensively: databases created before versioned migrations existed had
+    these columns applied via an ad-hoc path while still reporting user_version 0,
+    so each ALTER is guarded by a column-existence check to avoid duplicate-column
+    errors when upgrading them.
+    """
+    cursor = await db.execute("PRAGMA table_info(goals)")
+    goal_cols = {row[1] for row in await cursor.fetchall()}
+    if "parent_goal_id" not in goal_cols:
+        await db.execute("ALTER TABLE goals ADD COLUMN parent_goal_id TEXT")
+
+    cursor = await db.execute("PRAGMA table_info(agents)")
+    agent_cols = {row[1] for row in await cursor.fetchall()}
+    if "spawned_by" not in agent_cols:
+        await db.execute("ALTER TABLE agents ADD COLUMN spawned_by TEXT")
+    if "max_cycles" not in agent_cols:
+        await db.execute("ALTER TABLE agents ADD COLUMN max_cycles INTEGER")
+    if "cycles_lived" not in agent_cols:
+        await db.execute("ALTER TABLE agents ADD COLUMN cycles_lived INTEGER DEFAULT 0")
+
+
+# Ordered (target_version, migration) steps applied when a DB is below target.
+_MIGRATIONS: list[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]]] = [
+    (1, _migration_1),
+]
+
 
 class HiveStore:
     """Async SQLite store for hive agent and session state."""
@@ -116,20 +168,24 @@ class HiveStore:
     async def initialize(self) -> None:
         async with aiosqlite.connect(self._db_path) as db:
             await db.executescript(_SCHEMA)
-            cursor = await db.execute("PRAGMA table_info(goals)")
-            columns = {row[1] for row in await cursor.fetchall()}
-            if "parent_goal_id" not in columns:
-                await db.execute(
-                    "ALTER TABLE goals ADD COLUMN parent_goal_id TEXT",
-                )
-            cursor = await db.execute("PRAGMA table_info(agents)")
-            agent_cols = {row[1] for row in await cursor.fetchall()}
-            if "spawned_by" not in agent_cols:
-                await db.execute("ALTER TABLE agents ADD COLUMN spawned_by TEXT")
-            if "max_cycles" not in agent_cols:
-                await db.execute("ALTER TABLE agents ADD COLUMN max_cycles INTEGER")
-            if "cycles_lived" not in agent_cols:
-                await db.execute("ALTER TABLE agents ADD COLUMN cycles_lived INTEGER DEFAULT 0")
+
+            cursor = await db.execute("PRAGMA user_version")
+            row = await cursor.fetchone()
+            current_version = int(row[0]) if row else 0
+
+            # Apply pending migrations and bump user_version. Everything is
+            # committed together at the end, so a failing migration leaves the
+            # connection uncommitted and rolls back on close (no version bump).
+            for version, migrate in _MIGRATIONS:
+                if version > current_version:
+                    await migrate(db)
+                    # PRAGMA cannot be parameterized; version is a trusted int.
+                    await db.execute(f"PRAGMA user_version = {version}")
+
+            # Indexes are created after migrations so columns added to legacy
+            # databases (e.g. goals.parent_goal_id) exist before being indexed.
+            await db.executescript(_INDEXES)
+
             await db.commit()
 
     async def save_agent(self, state: AgentState) -> None:

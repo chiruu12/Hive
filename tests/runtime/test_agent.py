@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 import pytest
@@ -245,6 +247,151 @@ class TestReActLoop:
         result = await agent.run(Task(instruction="Try failing"))
         assert result.status == TaskStatus.COMPLETED
         assert result.tool_calls_made == 1
+
+
+class ConcurrencyToolkit(Toolkit):
+    """Tool whose calls record peak concurrency and completion order."""
+
+    def __init__(self) -> None:
+        self.active = 0
+        self.peak = 0
+        self.completed: list[str] = []
+
+    @tool()
+    async def slow(self, label: str, delay: float) -> str:
+        """Sleep for ``delay`` seconds then return the label.
+
+        Args:
+            label: Identifier echoed back in the result.
+            delay: Seconds to sleep before returning.
+        """
+        self.active += 1
+        self.peak = max(self.peak, self.active)
+        try:
+            await asyncio.sleep(delay)
+        finally:
+            self.active -= 1
+        self.completed.append(label)
+        return f"done:{label}"
+
+
+class MixedToolkit(Toolkit):
+    """One succeeding and one raising tool, for error-isolation tests."""
+
+    @tool()
+    def ok(self) -> str:
+        """Always succeeds."""
+        return "ok-result"
+
+    @tool()
+    def boom(self) -> str:
+        """Always raises."""
+        raise RuntimeError("kaboom")
+
+
+class TestParallelToolExecution:
+    """A1: multiple tool calls in one turn run concurrently, results stay ordered."""
+
+    @pytest.mark.asyncio
+    async def test_tools_run_concurrently(self):
+        """Two tool calls in one turn overlap; wall-time ~ slowest, not the sum."""
+        toolkit = ConcurrencyToolkit()
+        provider = MockProvider(
+            [
+                Message.assistant(
+                    "Running both.",
+                    [
+                        ToolCall(
+                            id="tc-1", name="slow", arguments={"label": "first", "delay": 0.15}
+                        ),
+                        ToolCall(
+                            id="tc-2", name="slow", arguments={"label": "second", "delay": 0.05}
+                        ),
+                    ],
+                ),
+                Message.assistant("Both done."),
+            ]
+        )
+        agent = Agent(name="calc", model=provider, toolkits=[toolkit])
+
+        t0 = time.perf_counter()
+        result = await agent.run(Task(instruction="Run both tools"))
+        elapsed = time.perf_counter() - t0
+
+        assert result.status == TaskStatus.COMPLETED
+        assert result.tool_calls_made == 2
+        # Both tools were in-flight at the same time.
+        assert toolkit.peak == 2
+        # Shorter-delay tool finished first -> truly concurrent, not sequential.
+        assert toolkit.completed == ["second", "first"]
+        # Concurrent: close to the slowest (0.15s), well under the sum (0.20s).
+        assert elapsed < 0.18
+
+    @pytest.mark.asyncio
+    async def test_results_appended_in_call_order(self):
+        """Results are appended in the original tool_calls order, not completion order."""
+        toolkit = ConcurrencyToolkit()
+        provider = MockProvider(
+            [
+                Message.assistant(
+                    "Running both.",
+                    [
+                        ToolCall(
+                            id="tc-1", name="slow", arguments={"label": "first", "delay": 0.15}
+                        ),
+                        ToolCall(
+                            id="tc-2", name="slow", arguments={"label": "second", "delay": 0.05}
+                        ),
+                    ],
+                ),
+                Message.assistant("Both done."),
+            ]
+        )
+        agent = Agent(name="calc", model=provider, toolkits=[toolkit])
+
+        await agent.run(Task(instruction="Run both tools"))
+
+        tool_msgs = [m for m in provider.calls[1]["messages"] if m.role == Role.TOOL]
+        assert [m.tool_call_id for m in tool_msgs] == ["tc-1", "tc-2"]
+        assert tool_msgs[0].content == "done:first"
+        assert tool_msgs[1].content == "done:second"
+
+    @pytest.mark.asyncio
+    async def test_error_isolation_across_calls(self):
+        """A raising tool and an unknown tool don't affect a sibling that succeeds."""
+        provider = MockProvider(
+            [
+                Message.assistant(
+                    "",
+                    [
+                        ToolCall(id="tc-1", name="ok", arguments={}),
+                        ToolCall(id="tc-2", name="boom", arguments={}),
+                        ToolCall(id="tc-3", name="missing", arguments={}),
+                    ],
+                ),
+                Message.assistant("Handled."),
+            ]
+        )
+        agent = Agent(name="test", model=provider, toolkits=[MixedToolkit()])
+
+        result = await agent.run(Task(instruction="Mixed outcomes"))
+        assert result.status == TaskStatus.COMPLETED
+        assert result.tool_calls_made == 3
+
+        tool_msgs = {
+            m.tool_call_id: m for m in provider.calls[1]["messages"] if m.role == Role.TOOL
+        }
+        assert [m.tool_call_id for m in provider.calls[1]["messages"] if m.role == Role.TOOL] == [
+            "tc-1",
+            "tc-2",
+            "tc-3",
+        ]
+        assert tool_msgs["tc-1"].is_error is False
+        assert tool_msgs["tc-1"].content == "ok-result"
+        assert tool_msgs["tc-2"].is_error is True
+        assert "kaboom" in tool_msgs["tc-2"].content
+        assert tool_msgs["tc-3"].is_error is True
+        assert "unknown tool" in tool_msgs["tc-3"].content.lower()
 
 
 class TestProviderMetadata:

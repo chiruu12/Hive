@@ -306,6 +306,7 @@ class Toolkit:
     """Base class for grouping related tools. Subclass and decorate methods with @tool."""
 
     _agent_id: str = ""
+    _cached_tools: list[Tool] | None = None
 
     @property
     def instructions(self) -> str:
@@ -325,6 +326,8 @@ class Toolkit:
                 f"Use rebind() to switch agents or create a new instance."
             )
         self._agent_id = agent_id
+        if self._cached_tools is None:
+            self._cached_tools = self._discover_tools()
 
     def rebind(self, agent_id: str) -> None:
         """Rebind to a different agent. Use for server/API patterns with shared toolkits."""
@@ -338,6 +341,18 @@ class Toolkit:
         self._agent_id = agent_id
 
     def get_tools(self) -> list[Tool]:
+        """Return this toolkit's tools, discovered once and cached.
+
+        The tool set is defined by the class, so it is computed lazily on first
+        access (or at ``bind()``) and reused. ``rebind()`` only changes the agent
+        id, which bound methods resolve at call time, so the cache stays valid.
+        Adding ``@tool`` methods to an instance after first use is not supported.
+        """
+        if self._cached_tools is None:
+            self._cached_tools = self._discover_tools()
+        return self._cached_tools
+
+    def _discover_tools(self) -> list[Tool]:
         """Auto-discover all @tool-decorated methods on this instance."""
         tools: list[Tool] = []
         for attr_name in dir(self):

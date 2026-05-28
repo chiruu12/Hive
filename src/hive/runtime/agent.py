@@ -217,10 +217,17 @@ class Agent:
         tool_map: dict[str, Tool],
         conversation: ConversationMemory,
     ) -> int:
-        """Execute tool calls and add results to conversation. Returns count."""
-        count = 0
-        for tc in tool_calls:
-            count += 1
+        """Execute tool calls concurrently, then add results in order. Returns count.
+
+        Tool calls within a single model turn run concurrently (``asyncio.gather``),
+        so total wall-time is the slowest tool rather than the sum. Each call is
+        isolated -- an unknown tool or a raised exception produces an error
+        ``tool_result`` and log entry without affecting the others. Results are
+        appended to the conversation in the original ``tool_calls`` order so
+        transcripts and logs stay deterministic.
+        """
+
+        async def _run_one(tc: Any) -> dict[str, Any]:
             tool = tool_map.get(tc.name)
 
             if tool is None:
@@ -231,29 +238,26 @@ class Agent:
                     tc.name,
                     available,
                 )
-                conversation.add(
-                    Message.tool_result(
-                        tc.id,
-                        f"Error: unknown tool '{tc.name}'. Available: {available}",
-                        is_error=True,
-                        name=tc.name,
-                    )
-                )
-                self._log_tool(tc.name, tc.arguments, False, "", "unknown tool", 0)
-                continue
+                return {
+                    "tc": tc,
+                    "ok": False,
+                    "result_text": f"Error: unknown tool '{tc.name}'. Available: {available}",
+                    "log_result": "",
+                    "error": "unknown tool",
+                    "duration_ms": 0,
+                }
 
             tool_t0 = time.time()
             try:
                 result_text = await tool.call(**(tc.arguments or {}))
-                conversation.add(Message.tool_result(tc.id, result_text, name=tc.name))
-                self._log_tool(
-                    tc.name,
-                    tc.arguments,
-                    True,
-                    result_text[:500],
-                    None,
-                    int((time.time() - tool_t0) * 1000),
-                )
+                return {
+                    "tc": tc,
+                    "ok": True,
+                    "result_text": result_text,
+                    "log_result": result_text[:500],
+                    "error": None,
+                    "duration_ms": int((time.time() - tool_t0) * 1000),
+                }
             except Exception as e:
                 logger.warning(
                     "Agent %r: tool %r failed with args %s: %s",
@@ -263,23 +267,37 @@ class Agent:
                     e,
                     exc_info=True,
                 )
-                conversation.add(
-                    Message.tool_result(
-                        tc.id,
-                        f"Error: {e}",
-                        is_error=True,
-                        name=tc.name,
-                    )
+                return {
+                    "tc": tc,
+                    "ok": False,
+                    "result_text": f"Error: {e}",
+                    "log_result": "",
+                    "error": str(e),
+                    "duration_ms": int((time.time() - tool_t0) * 1000),
+                }
+
+        outcomes = await asyncio.gather(*(_run_one(tc) for tc in tool_calls))
+
+        for outcome in outcomes:
+            tc = outcome["tc"]
+            conversation.add(
+                Message.tool_result(
+                    tc.id,
+                    outcome["result_text"],
+                    is_error=not outcome["ok"],
+                    name=tc.name,
                 )
-                self._log_tool(
-                    tc.name,
-                    tc.arguments,
-                    False,
-                    "",
-                    str(e),
-                    int((time.time() - tool_t0) * 1000),
-                )
-        return count
+            )
+            self._log_tool(
+                tc.name,
+                tc.arguments,
+                outcome["ok"],
+                outcome["log_result"],
+                outcome["error"],
+                outcome["duration_ms"],
+            )
+
+        return len(tool_calls)
 
     async def run(self, task: Task) -> TaskResult:
         """Execute a task using the ReAct loop."""

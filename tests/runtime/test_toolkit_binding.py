@@ -103,6 +103,49 @@ def test_rebind_then_bind_same_agent() -> None:
     assert tk._agent_id == "agent-b"
 
 
+def test_get_tools_is_cached() -> None:
+    """get_tools() returns the same cached list across calls (A7a)."""
+    tk = _DummyToolkit()
+    first = tk.get_tools()
+    second = tk.get_tools()
+    assert first is second
+
+
+def test_discover_tools_runs_once(monkeypatch) -> None:
+    """_discover_tools is invoked only once even across many get_tools() calls."""
+    tk = _DummyToolkit()
+    calls = {"n": 0}
+    real_discover = tk._discover_tools
+
+    def counting_discover() -> list:
+        calls["n"] += 1
+        return real_discover()
+
+    monkeypatch.setattr(tk, "_discover_tools", counting_discover)
+    tk.get_tools()
+    tk.get_tools()
+    tk.get_tools()
+    assert calls["n"] == 1
+
+
+def test_bind_populates_cache() -> None:
+    """bind() discovers tools eagerly so get_tools() reuses the cache."""
+    tk = _DummyToolkit()
+    assert tk._cached_tools is None
+    tk.bind("agent-a")
+    assert tk._cached_tools is not None
+    assert tk.get_tools() is tk._cached_tools
+
+
+def test_rebind_preserves_cache() -> None:
+    """rebind() only swaps the agent id; the discovered tool list is unchanged."""
+    tk = _DummyToolkit()
+    tk.bind("agent-a")
+    cached = tk.get_tools()
+    tk.rebind("agent-b")
+    assert tk.get_tools() is cached
+
+
 @pytest.mark.asyncio
 async def test_rebound_toolkit_tools_use_new_agent_id() -> None:
     """Tool calls reflect the rebound agent_id."""

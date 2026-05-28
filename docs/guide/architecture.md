@@ -93,6 +93,23 @@ src/hive/
 | `HiveStore` | `memory/store.py` | SQLite persistence | `save_goal()`, `complete_goal()`, `list_agents()` |
 | `EventLog` | `memory/events.py` | JSONL event stream | `append()` |
 
+## Performance and Persistence Notes
+
+- **Concurrent tool execution.** When a model turn emits several tool calls, the
+  `Agent` runs them concurrently (`asyncio.gather`) rather than one at a time, so a
+  turn's wall-time tracks the slowest tool instead of their sum. Each call is isolated
+  -- a raised exception or unknown tool name becomes an error result for that call
+  without affecting its siblings -- and results are appended to the conversation in the
+  original call order so transcripts stay deterministic.
+- **Tool discovery is cached.** A `Toolkit` discovers its `@tool` methods once (at
+  `bind()` or first `get_tools()`) and reuses the result; `rebind()` swaps the agent id
+  without rebuilding the cache.
+- **Indexed, versioned SQLite.** `HiveStore` indexes hot lookup columns
+  (`agent_id`, `status`, `fire_at`, `parent_goal_id`, ...) and tracks its schema with
+  SQLite's `PRAGMA user_version`. Schema changes are ordered migration steps applied in
+  a single transaction on `initialize()`, so an older database upgrades in place without
+  data loss.
+
 ## Extension Points
 
 | What | How | File | Example |
