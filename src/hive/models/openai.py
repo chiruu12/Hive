@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from hive.config import get_env
-from hive.models.base import BaseProvider
+from hive.models.base import Availability, BaseProvider
 from hive.models.registry import estimate_cost
 from hive.runtime.structured import (
     StructuredGenerateResult,
@@ -81,6 +81,12 @@ class OpenAI(BaseProvider):
             self._health_cache_time = now
             return result
         return self._has_key
+
+    def availability(self) -> Availability:
+        # Local servers fail by being unreachable; remote APIs fail on a missing key.
+        if self._is_local:
+            return Availability.AVAILABLE if self.available else Availability.UNREACHABLE
+        return Availability.AVAILABLE if self._has_key else Availability.NO_API_KEY
 
     def _check_local_health(self) -> bool:
         """Check if a local model server is reachable."""

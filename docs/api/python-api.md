@@ -130,6 +130,32 @@ All providers implement:
 | `await generate_with_metadata(messages, tools, temperature, max_tokens)` | `GenerateResult` | Generate with full metadata |
 | `await generate_structured(messages, output_type, temperature, max_tokens)` | `T` | Generate as Pydantic model |
 | `available` (property) | `bool` | Whether the provider can be used |
+| `supports(capability)` | `bool` | Whether an optional `Capability` is supported |
+| `availability()` | `Availability` | Why the provider is or isn't usable |
+
+### Capabilities and Availability
+
+Branch on what a provider can do with `supports()` rather than special-casing
+provider classes, and use `availability()` to tell *why* a provider is unusable --
+a missing API key reads differently from an unreachable local server.
+
+```python
+from hive.models.anthropic import Anthropic
+from hive.models.base import Availability, Capability
+
+model = Anthropic.standard()
+
+model.supports(Capability.TOOLS)              # True
+model.supports(Capability.STRUCTURED_OUTPUT)  # True
+model.supports(Capability.STREAMING)          # False (until streaming lands)
+
+status = model.availability()
+if status is not Availability.AVAILABLE:
+    print(f"unusable: {status.value}")  # e.g. "no_api_key" or "unreachable"
+```
+
+`Capability` members: `TOOLS`, `STRUCTURED_OUTPUT`, `STREAMING`.
+`Availability` members: `AVAILABLE`, `NO_API_KEY`, `UNREACHABLE`, `UNKNOWN`.
 
 ### Factory
 

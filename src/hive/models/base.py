@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, TypeVar
+from enum import StrEnum
+from typing import Any, ClassVar, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -22,6 +23,27 @@ MAX_RETRIES = 3
 BASE_DELAY = 1.0
 
 
+class Capability(StrEnum):
+    """Optional features a provider may support.
+
+    Use with ``BaseProvider.supports()`` to branch on what a provider can do
+    rather than special-casing provider classes.
+    """
+
+    TOOLS = "tools"
+    STRUCTURED_OUTPUT = "structured_output"
+    STREAMING = "streaming"
+
+
+class Availability(StrEnum):
+    """Why a provider is or isn't usable -- richer than a bare ``available`` bool."""
+
+    AVAILABLE = "available"
+    NO_API_KEY = "no_api_key"
+    UNREACHABLE = "unreachable"
+    UNKNOWN = "unknown"
+
+
 class BaseProvider(ABC):
     """Abstract base class for all LLM providers.
 
@@ -29,7 +51,16 @@ class BaseProvider(ABC):
     - available (property)
     - generate_with_metadata()
     - generate_structured()
+
+    Subclasses may override ``CAPABILITIES`` (or ``supports()``) to advertise
+    optional features, and ``availability()`` to distinguish a missing API key
+    from an unreachable endpoint.
     """
+
+    #: Optional features this provider supports. Subclasses extend as features land.
+    CAPABILITIES: ClassVar[frozenset[Capability]] = frozenset(
+        {Capability.TOOLS, Capability.STRUCTURED_OUTPUT}
+    )
 
     def __init__(self, model: str, api_key: str | None = None):
         self._model = model
@@ -42,6 +73,18 @@ class BaseProvider(ABC):
     @property
     @abstractmethod
     def available(self) -> bool: ...
+
+    def supports(self, capability: Capability) -> bool:
+        """Whether this provider supports a given optional capability."""
+        return capability in self.CAPABILITIES
+
+    def availability(self) -> Availability:
+        """Why the provider is or isn't usable.
+
+        The default derives from the boolean ``available``; providers override
+        this to distinguish a missing API key from an unreachable endpoint.
+        """
+        return Availability.AVAILABLE if self.available else Availability.UNKNOWN
 
     async def generate(
         self,

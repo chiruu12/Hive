@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from hive.config import get_env
-from hive.models.base import BaseProvider
+from hive.models.base import Availability, BaseProvider
 from hive.models.registry import estimate_cost
 from hive.runtime.structured import StructuredGenerateResult, pydantic_to_json_schema
 from hive.runtime.types import GenerateResult, Message, Role, ToolCall
@@ -49,6 +49,9 @@ class Anthropic(BaseProvider):
     @property
     def available(self) -> bool:
         return self._has_key
+
+    def availability(self) -> Availability:
+        return Availability.AVAILABLE if self._has_key else Availability.NO_API_KEY
 
     async def generate_with_metadata(
         self,
