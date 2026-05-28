@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any
 
 import pytest
@@ -294,7 +293,7 @@ class TestParallelToolExecution:
 
     @pytest.mark.asyncio
     async def test_tools_run_concurrently(self):
-        """Two tool calls in one turn overlap; wall-time ~ slowest, not the sum."""
+        """Two tool calls in one turn overlap (peak concurrency 2), not sequential."""
         toolkit = ConcurrencyToolkit()
         provider = MockProvider(
             [
@@ -314,18 +313,15 @@ class TestParallelToolExecution:
         )
         agent = Agent(name="calc", model=provider, toolkits=[toolkit])
 
-        t0 = time.perf_counter()
         result = await agent.run(Task(instruction="Run both tools"))
-        elapsed = time.perf_counter() - t0
 
         assert result.status == TaskStatus.COMPLETED
         assert result.tool_calls_made == 2
-        # Both tools were in-flight at the same time.
+        # Both tools were in-flight at the same time -- deterministic proof of
+        # concurrency without relying on a load-sensitive wall-clock threshold.
         assert toolkit.peak == 2
         # Shorter-delay tool finished first -> truly concurrent, not sequential.
         assert toolkit.completed == ["second", "first"]
-        # Concurrent: close to the slowest (0.15s), well under the sum (0.20s).
-        assert elapsed < 0.18
 
     @pytest.mark.asyncio
     async def test_results_appended_in_call_order(self):

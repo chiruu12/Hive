@@ -173,9 +173,13 @@ class HiveStore:
             row = await cursor.fetchone()
             current_version = int(row[0]) if row else 0
 
-            # Apply pending migrations and bump user_version. Everything is
-            # committed together at the end, so a failing migration leaves the
-            # connection uncommitted and rolls back on close (no version bump).
+            # Apply pending migrations and bump user_version. Recovery relies on
+            # idempotency, not transactional rollback: every step is safe to
+            # re-run (ALTERs are guarded by a column-existence check; indexes use
+            # IF NOT EXISTS), and executescript() below issues an implicit COMMIT,
+            # so the steps are not one atomic unit. A partial failure is recovered
+            # by simply calling initialize() again. Any future non-idempotent
+            # migration must manage its own transaction explicitly.
             for version, migrate in _MIGRATIONS:
                 if version > current_version:
                     await migrate(db)
