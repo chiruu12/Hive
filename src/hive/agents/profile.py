@@ -6,6 +6,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
+from hive.errors import ProfileNotFoundError
+
 
 def default_profiles_dir() -> Path:
     """Find bundled profiles: check CWD first, then package data."""
@@ -78,7 +80,7 @@ class AgentProfile(BaseModel):
         """Load a preset agent profile by name."""
         path = profiles_dir / f"{preset_name}.yaml"
         if not path.exists():
-            raise FileNotFoundError(f"No preset found: {preset_name}")
+            raise ProfileNotFoundError(f"No preset found: {preset_name}")
         return cls.from_yaml(path)
 
     def resolve_workspace(self) -> str:

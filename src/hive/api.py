@@ -12,6 +12,7 @@ from hive.agents.profile import AgentProfile, default_profiles_dir
 from hive.agents.state import AgentState, AgentStatus
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
+from hive.errors import AgentNotFoundError
 from hive.memory.store import HiveStore
 
 logger = logging.getLogger(__name__)
@@ -104,33 +105,7 @@ class Hive:
             fresh=fresh,
         )
 
-        if cycles is not None:
-            daemon = self._daemon
-
-            async def _bounded_run() -> None:
-                daemon._plugin_toolkits.extend(daemon._plugin_loader.discover())
-                count = 0
-                while daemon._running and count < cycles:
-                    daemon._cycle_count += 1
-                    count += 1
-                    agents = await daemon._store.list_agents()
-                    alive = [a for a in agents if a.is_alive()]
-                    for a in alive:
-                        try:
-                            await daemon._run_agent_cycle(a)
-                        except Exception as e:
-                            logger.error(
-                                "Cycle failed for %s: %s",
-                                a.agent_id,
-                                e,
-                            )
-                    if count < cycles:
-                        await asyncio.sleep(daemon._heartbeat)
-                daemon._running = False
-
-            daemon._run = _bounded_run  # type: ignore[method-assign]
-
-        asyncio.run(self._daemon.start())
+        asyncio.run(self._daemon.start(max_cycles=cycles))
 
     def stop(self) -> None:
         """Signal the daemon to stop."""
@@ -189,4 +164,4 @@ class Hive:
         for a in agents:
             if a.agent_id.startswith(name_or_id):
                 return a.agent_id
-        raise ValueError(f"Agent not found: {name_or_id}")
+        raise AgentNotFoundError(f"Agent not found: {name_or_id}")

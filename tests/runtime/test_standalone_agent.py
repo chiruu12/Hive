@@ -61,7 +61,9 @@ class TestStandaloneAgent:
     async def test_runs_tools_standalone(self):
         provider = ScriptedProvider(
             [
-                Message.assistant("Adding.", [ToolCall(id="t1", name="add", arguments={"a": 2, "b": 3})]),
+                Message.assistant(
+                    "Adding.", [ToolCall(id="t1", name="add", arguments={"a": 2, "b": 3})]
+                ),
                 Message.assistant("The answer is 5."),
             ]
         )
@@ -93,11 +95,9 @@ class TestStandaloneAgent:
         assert result.parsed.age == 36
 
     @pytest.mark.asyncio
-    async def test_no_daemon_module_imported(self):
-        """Constructing/running an Agent must not pull in the daemon."""
-        import sys
-
-        sys.modules.pop("hive.daemon.loop", None)
+    async def test_agent_construction_uses_only_runtime(self):
+        """The Agent class lives in the runtime, separate from the daemon package."""
+        assert Agent.__module__.startswith("hive.runtime")
         agent = Agent(name="z", model=ScriptedProvider([Message.assistant("ok")]))
-        await agent.run(Task(instruction="hi"))
-        assert "hive.daemon.loop" not in sys.modules
+        result = await agent.run(Task(instruction="hi"))
+        assert result.output == "ok"

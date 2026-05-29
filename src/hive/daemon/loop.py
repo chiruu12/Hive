@@ -202,8 +202,12 @@ class HiveDaemon:
                 lines.append(f"- {t.name}({params}): {t.description}")
         return "\n".join(lines)
 
-    async def start(self) -> None:
-        """Initialize store, start heartbeat."""
+    async def start(self, max_cycles: int | None = None) -> None:
+        """Initialize store, start heartbeat.
+
+        Args:
+            max_cycles: Stop after this many cycles. ``None`` runs until stopped.
+        """
         await self._store.initialize()
 
         if not self._fresh:
@@ -229,7 +233,7 @@ class HiveDaemon:
         self._running = True
         self._pending_shutdown = False
         self._alarm_task = asyncio.create_task(self._alarm_check_loop())
-        await self._run()
+        await self._run(max_cycles)
         await self._shutdown()
 
     async def _alarm_check_loop(self) -> None:
@@ -249,9 +253,10 @@ class HiveDaemon:
                 logger.warning("Alarm check failed: %s", e)
             await asyncio.sleep(15)
 
-    async def _run(self) -> None:
+    async def _run(self, max_cycles: int | None = None) -> None:
         goals_completed = 0
         goals_abandoned = 0
+        cycles_run = 0
 
         new_plugins = self._plugin_loader.discover()
         self._plugin_toolkits.extend(new_plugins)
@@ -260,6 +265,7 @@ class HiveDaemon:
 
         while self._running:
             self._cycle_count += 1
+            cycles_run += 1
 
             if self._cycle_count % 10 == 0:
                 new = self._plugin_loader.discover()
@@ -343,6 +349,9 @@ class HiveDaemon:
             )
             goals_completed = 0
             goals_abandoned = 0
+
+            if max_cycles is not None and cycles_run >= max_cycles:
+                break
 
             await asyncio.sleep(self._heartbeat)
 

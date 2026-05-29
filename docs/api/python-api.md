@@ -210,3 +210,26 @@ model = create_runtime_provider("anthropic:lite")
 model = create_runtime_provider("openai:standard")
 model = create_runtime_provider("ollama:standard")
 ```
+
+## Errors
+
+Hive raises a small typed hierarchy rooted at `HiveError`, so you can catch the whole
+family at once:
+
+```python
+from hive import AgentNotFoundError, HiveError, ProfileNotFoundError
+
+try:
+    hive.kill("ghost")
+except HiveError as e:
+    print(f"hive failed: {e}")
+```
+
+| Error | Raised when | Also subclasses |
+|-------|-------------|-----------------|
+| `HiveError` | base for all Hive errors | `Exception` |
+| `AgentNotFoundError` | an agent id/name/prefix can't be resolved | `ValueError` |
+| `ProfileNotFoundError` | a preset/profile file is missing | `FileNotFoundError` |
+
+Each subclasses the builtin it replaced, so existing `except ValueError` /
+`except FileNotFoundError` handlers keep working.

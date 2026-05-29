@@ -13,6 +13,7 @@ from hive.context import ExecutionContext
 from hive.daemon.hooks import HookRegistry
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
+from hive.errors import AgentNotFoundError, HiveError, ProfileNotFoundError
 from hive.interactions.registry import PatternRegistry
 from hive.memory.backend import MemoryBackend
 from hive.memory.events import EventLog, EventType, HiveEvent
@@ -84,6 +85,7 @@ from hive.world.state import WorldState
 
 __all__ = [
     "Agent",
+    "AgentNotFoundError",
     "AgentProfile",
     "AlarmChecker",
     "AlarmToolkit",
@@ -113,9 +115,11 @@ __all__ = [
     "Instructions",
     "HiveConfig",
     "HiveDaemon",
+    "HiveError",
     "HookRegistry",
     "HiveEvent",
     "HiveStore",
+    "ProfileNotFoundError",
     "KnowledgeToolkit",
     "LinkToolkit",
     "LMStudio",
