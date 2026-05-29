@@ -105,7 +105,9 @@ src/hive/
   with bounded concurrency (`max_concurrent_agents`, a semaphore). Every cycle is
   isolated -- its own timeout and error handling -- so one slow, timed-out, or failing
   agent never blocks or breaks the others that heartbeat. Set `max_concurrent_agents: 1`
-  for fully sequential behavior.
+  for fully sequential behavior. Each agent's provider and profile are cached across
+  cycles (rebuilt only when the model changes or the profile YAML's mtime changes),
+  alongside the existing per-agent memory and persona caches.
 - **Tool discovery is cached.** A `Toolkit` discovers its `@tool` methods once (at
   `bind()` or first `get_tools()`) and reuses the result; `rebind()` swaps the agent id
   without rebuilding the cache (a copy resets the cache so a clone binds to itself).

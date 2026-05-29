@@ -24,6 +24,7 @@ from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
+from hive.models.base import BaseProvider
 from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent, DaemonAgentAdapter, Message
 from hive.runtime.persona import Persona
@@ -109,6 +110,10 @@ class HiveDaemon:
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._personas: dict[str, Persona] = {}
+        # Per-agent caches reused across cycles (B3). Provider invalidates when the
+        # agent's model changes; profile when its YAML file's mtime changes.
+        self._provider_cache: dict[str, tuple[str, BaseProvider]] = {}
+        self._profile_cache: dict[str, tuple[float | None, AgentProfile]] = {}
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
@@ -408,7 +413,7 @@ class HiveDaemon:
         else:
             self._crisis_counts[agent.agent_id] = 0
 
-        runtime_provider = create_runtime_provider(agent.model)
+        runtime_provider = self._get_provider(agent)
         profile = self._load_profile(agent.name)
         session_id = f"sess-{agent.agent_id}"
         identity = self._identity.load_or_create(agent.agent_id, profile)
@@ -782,15 +787,34 @@ class HiveDaemon:
             await self._store.abandon_goal(parent_id)
             logger.info("Parent goal %s abandoned (subtask failed)", parent_id)
 
+    def _get_provider(self, agent: AgentState) -> BaseProvider:
+        """Return a cached provider for the agent, rebuilding only if its model changed."""
+        cached = self._provider_cache.get(agent.agent_id)
+        if cached is None or cached[0] != agent.model:
+            provider = create_runtime_provider(agent.model)
+            self._provider_cache[agent.agent_id] = (agent.model, provider)
+            return provider
+        return cached[1]
+
     def _load_profile(self, name: str) -> AgentProfile:
+        """Load the agent's profile, cached and invalidated on the YAML's mtime."""
         from hive.agents.profile import default_profiles_dir
 
         cfg = get_config()
         profiles_dir = Path(cfg.profiles_dir) if cfg.profiles_dir else default_profiles_dir()
+        path = profiles_dir / f"{name}.yaml"
+        mtime = path.stat().st_mtime if path.exists() else None
+
+        cached = self._profile_cache.get(name)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
         try:
-            return AgentProfile.from_preset(name, profiles_dir)
+            profile = AgentProfile.from_preset(name, profiles_dir)
         except FileNotFoundError:
-            return AgentProfile(name=name, role="general agent")
+            profile = AgentProfile(name=name, role="general agent")
+        self._profile_cache[name] = (mtime, profile)
+        return profile
 
     async def _get_peer_summaries(self, exclude_id: str) -> list[str]:
         agents = await self._store.list_agents()
