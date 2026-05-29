@@ -10,6 +10,11 @@ from typing import Any
 
 from hive.config import get_env
 from hive.models.base import Availability, BaseProvider, Capability
+from hive.models.conversion import (
+    messages_to_openai,
+    openai_response_to_message,
+    tools_to_openai,
+)
 from hive.models.registry import estimate_cost
 from hive.runtime.structured import (
     StructuredGenerateResult,
@@ -19,7 +24,6 @@ from hive.runtime.structured import (
 from hive.runtime.types import (
     GenerateResult,
     Message,
-    Role,
     StreamEvent,
     StreamEventType,
     ToolCall,
@@ -125,7 +129,7 @@ class OpenAI(BaseProvider):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> GenerateResult:
-        api_messages = self._messages_to_openai(messages)
+        api_messages = messages_to_openai(messages)
         t0 = time.time()
 
         kwargs: dict[str, Any] = {
@@ -135,7 +139,7 @@ class OpenAI(BaseProvider):
             "temperature": temperature,
         }
         if tools:
-            kwargs["tools"] = self._tools_to_openai(tools)
+            kwargs["tools"] = tools_to_openai(tools)
 
         response = await self._retry_with_backoff(self._client.chat.completions.create, **kwargs)
         duration_ms = int((time.time() - t0) * 1000)
@@ -149,7 +153,7 @@ class OpenAI(BaseProvider):
         cost = estimate_cost(self._model, input_tokens, output_tokens)
 
         return GenerateResult(
-            message=self._response_to_message(response),
+            message=openai_response_to_message(response),
             model=self._model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -169,7 +173,7 @@ class OpenAI(BaseProvider):
         Opens a single streaming request without the retry wrapper used by the
         non-streaming path, since partial output cannot be safely replayed.
         """
-        api_messages = self._messages_to_openai(messages)
+        api_messages = messages_to_openai(messages)
         t0 = time.time()
 
         kwargs: dict[str, Any] = {
@@ -181,7 +185,7 @@ class OpenAI(BaseProvider):
             "stream_options": {"include_usage": True},
         }
         if tools:
-            kwargs["tools"] = self._tools_to_openai(tools)
+            kwargs["tools"] = tools_to_openai(tools)
 
         stream = await self._client.chat.completions.create(**kwargs)
 
@@ -248,7 +252,7 @@ class OpenAI(BaseProvider):
                 self, messages, output_type, temperature, max_tokens
             )
 
-        api_messages = self._messages_to_openai(messages)
+        api_messages = messages_to_openai(messages)
         t0 = time.time()
 
         kwargs: dict[str, Any] = {
@@ -295,75 +299,6 @@ class OpenAI(BaseProvider):
             duration_ms=duration_ms,
         )
         return StructuredGenerateResult(result=gen_result, parsed=parsed)
-
-    # --- Internal helpers ---
-
-    def _messages_to_openai(self, messages: list[Message]) -> list[dict[str, Any]]:
-        api_messages: list[dict[str, Any]] = []
-
-        for msg in messages:
-            if msg.role == Role.SYSTEM:
-                api_messages.append({"role": "system", "content": msg.content})
-            elif msg.role == Role.USER:
-                api_messages.append({"role": "user", "content": msg.content})
-            elif msg.role == Role.ASSISTANT:
-                entry: dict[str, Any] = {"role": "assistant"}
-                if msg.content:
-                    entry["content"] = msg.content
-                if msg.tool_calls:
-                    entry["tool_calls"] = [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.name,
-                                "arguments": json.dumps(tc.arguments),
-                            },
-                        }
-                        for tc in msg.tool_calls
-                    ]
-                if not msg.content and not msg.tool_calls:
-                    entry["content"] = ""
-                api_messages.append(entry)
-            elif msg.role == Role.TOOL:
-                api_messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": msg.tool_call_id,
-                        "content": msg.content,
-                    }
-                )
-
-        return api_messages
-
-    def _tools_to_openai(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": t["name"],
-                    "description": t["description"],
-                    "parameters": t["input_schema"],
-                },
-            }
-            for t in tools
-        ]
-
-    def _response_to_message(self, response: Any) -> Message:
-        choice = response.choices[0]
-        msg = choice.message
-        content = msg.content or ""
-
-        tool_calls: list[ToolCall] = []
-        if msg.tool_calls:
-            for tc in msg.tool_calls:
-                try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
-                tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=args))
-
-        return Message.assistant(content, tool_calls or None)
 
     def __repr__(self) -> str:
         base = f"{self.__class__.__name__}(model={self._model!r}"

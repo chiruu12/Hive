@@ -10,15 +10,14 @@ from typing import Any
 
 from hive.config import get_env
 from hive.models.base import Availability, BaseProvider, Capability
+from hive.models.conversion import anthropic_response_to_message, messages_to_anthropic
 from hive.models.registry import estimate_cost
 from hive.runtime.structured import StructuredGenerateResult, pydantic_to_json_schema
 from hive.runtime.types import (
     GenerateResult,
     Message,
-    Role,
     StreamEvent,
     StreamEventType,
-    ToolCall,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,7 +70,7 @@ class Anthropic(BaseProvider):
         max_tokens: int,
     ) -> dict[str, Any]:
         """Assemble the messages.create kwargs shared by streaming and non-streaming."""
-        system, api_messages = self._messages_to_anthropic(messages)
+        system, api_messages = messages_to_anthropic(messages)
         kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": api_messages,
@@ -109,7 +108,7 @@ class Anthropic(BaseProvider):
         cost = estimate_cost(self._model, input_tokens, output_tokens)
 
         return GenerateResult(
-            message=self._response_to_message(response),
+            message=anthropic_response_to_message(response),
             model=self._model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -146,7 +145,7 @@ class Anthropic(BaseProvider):
         yield StreamEvent(
             type=StreamEventType.DONE,
             result=GenerateResult(
-                message=self._response_to_message(final),
+                message=anthropic_response_to_message(final),
                 model=self._model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -163,7 +162,7 @@ class Anthropic(BaseProvider):
         max_tokens: int = 4096,
     ) -> Any:
         schema = pydantic_to_json_schema(output_type)
-        system, api_messages = self._messages_to_anthropic(messages)
+        system, api_messages = messages_to_anthropic(messages)
         t0 = time.time()
 
         kwargs: dict[str, Any] = {
@@ -208,72 +207,3 @@ class Anthropic(BaseProvider):
         )
         return StructuredGenerateResult(result=gen_result, parsed=parsed)
 
-    # --- Internal helpers ---
-
-    def _messages_to_anthropic(self, messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
-        system = ""
-        api_messages: list[dict[str, Any]] = []
-        pending_tool_results: list[dict[str, Any]] = []
-
-        for msg in messages:
-            if msg.role == Role.SYSTEM:
-                system = (system + "\n" + msg.content).strip()
-                continue
-
-            if msg.role == Role.USER:
-                if pending_tool_results:
-                    api_messages.append({"role": "user", "content": pending_tool_results})
-                    pending_tool_results = []
-                api_messages.append({"role": "user", "content": msg.content})
-
-            elif msg.role == Role.ASSISTANT:
-                if pending_tool_results:
-                    api_messages.append({"role": "user", "content": pending_tool_results})
-                    pending_tool_results = []
-
-                content: list[dict[str, Any]] = []
-                if msg.content:
-                    content.append({"type": "text", "text": msg.content})
-                for tc in msg.tool_calls:
-                    content.append(
-                        {
-                            "type": "tool_use",
-                            "id": tc.id,
-                            "name": tc.name,
-                            "input": tc.arguments,
-                        }
-                    )
-                api_messages.append({"role": "assistant", "content": content or msg.content})
-
-            elif msg.role == Role.TOOL:
-                tool_result: dict[str, Any] = {
-                    "type": "tool_result",
-                    "tool_use_id": msg.tool_call_id,
-                    "content": msg.content,
-                }
-                if msg.is_error:
-                    tool_result["is_error"] = True
-                pending_tool_results.append(tool_result)
-
-        if pending_tool_results:
-            api_messages.append({"role": "user", "content": pending_tool_results})
-
-        return system, api_messages
-
-    def _response_to_message(self, response: Any) -> Message:
-        text_parts: list[str] = []
-        tool_calls: list[ToolCall] = []
-
-        for block in response.content:
-            if block.type == "text":
-                text_parts.append(block.text)
-            elif block.type == "tool_use":
-                tool_calls.append(
-                    ToolCall(
-                        id=block.id,
-                        name=block.name,
-                        arguments=block.input,
-                    )
-                )
-
-        return Message.assistant("\n".join(text_parts), tool_calls or None)

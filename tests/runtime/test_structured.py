@@ -169,6 +169,32 @@ class MockStructuredProvider(BaseProvider):
         )
 
 
+class _BareProvider(BaseProvider):
+    """Provider that implements only generate_with_metadata (no structured override)."""
+
+    def __init__(self, content: str) -> None:
+        super().__init__("bare")
+        self._content = content
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def generate_with_metadata(self, *args: Any, **kwargs: Any) -> GenerateResult:
+        return GenerateResult(message=Message.assistant(self._content), model="bare")
+
+
+class TestBaseGenerateStructuredDefault:
+    @pytest.mark.asyncio
+    async def test_provider_without_override_uses_fallback(self) -> None:
+        """A4: generate_structured works out of the box via the base fallback."""
+        provider = _BareProvider('{"name": "Zoe", "age": 9, "active": false}')
+        result = await provider.generate_structured([Message.user("hi")], SimpleModel)
+        assert isinstance(result, StructuredGenerateResult)
+        assert result.parsed.name == "Zoe"
+        assert result.parsed.age == 9
+
+
 class TestGenerateStructuredFallback:
     @pytest.mark.asyncio
     async def test_fallback_parses_response(self) -> None:

@@ -15,7 +15,7 @@ from hive.models.base import BaseProvider
 from hive.runtime.instructions import InstructionLike, Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.persona import Persona
-from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
+from hive.runtime.structured import StructuredGenerateResult
 from hive.runtime.types import (
     GenerateResult,
     Message,
@@ -434,21 +434,12 @@ class Agent:
             messages.append(Message.user(task.instruction))
 
         try:
-            if hasattr(self._model, "generate_structured"):
-                structured: StructuredGenerateResult[Any] = await self._model.generate_structured(
-                    messages,
-                    output_type=output_type,
-                    temperature=self._temperature,
-                    max_tokens=self._gen_max_tokens,
-                )
-            else:
-                structured = await generate_structured_fallback(
-                    self._model,
-                    messages,
-                    output_type,
-                    self._temperature,
-                    self._gen_max_tokens,
-                )
+            structured: StructuredGenerateResult[Any] = await self._model.generate_structured(
+                messages,
+                output_type=output_type,
+                temperature=self._temperature,
+                max_tokens=self._gen_max_tokens,
+            )
 
             return StructuredTaskResult(
                 task_id=task.id,
@@ -596,21 +587,12 @@ class Agent:
             messages.append(Message.system(context))
         messages.append(Message.user(message))
 
-        if hasattr(self._model, "generate_structured"):
-            result: StructuredGenerateResult[Any] = await self._model.generate_structured(
-                messages,
-                output_type=output_type,
-                temperature=self._temperature,
-                max_tokens=self._gen_max_tokens,
-            )
-        else:
-            result = await generate_structured_fallback(
-                self._model,
-                messages,
-                output_type,
-                self._temperature,
-                self._gen_max_tokens,
-            )
+        result: StructuredGenerateResult[Any] = await self._model.generate_structured(
+            messages,
+            output_type=output_type,
+            temperature=self._temperature,
+            max_tokens=self._gen_max_tokens,
+        )
         return result.parsed
 
     def run_once_structured_sync(

@@ -51,11 +51,11 @@ class BaseProvider(ABC):
     Subclasses must implement:
     - available (property)
     - generate_with_metadata()
-    - generate_structured()
 
-    Subclasses may override ``CAPABILITIES`` (or ``supports()``) to advertise
-    optional features, and ``availability()`` to distinguish a missing API key
-    from an unreachable endpoint.
+    Subclasses may override ``generate_structured()`` (a prompt-based fallback is
+    provided), ``generate_stream()`` (defaults to a single non-streaming chunk),
+    ``CAPABILITIES``/``supports()`` to advertise optional features, and
+    ``availability()`` to distinguish a missing API key from an unreachable endpoint.
     """
 
     #: Optional features this provider supports. Subclasses extend as features land.
@@ -107,14 +107,25 @@ class BaseProvider(ABC):
         max_tokens: int = 4096,
     ) -> GenerateResult: ...
 
-    @abstractmethod
     async def generate_structured(
         self,
         messages: list[Message],
         output_type: type[Any],
         temperature: float = 0.0,
         max_tokens: int = 4096,
-    ) -> Any: ...
+    ) -> Any:
+        """Generate a response validated against a Pydantic model.
+
+        The base implementation is provider-agnostic: it asks for JSON via the
+        prompt and parses the reply (``generate_structured_fallback``), so every
+        provider supports structured output out of the box. Providers with a
+        native mode (Anthropic tool_use, OpenAI ``response_format``) override this.
+        """
+        from hive.runtime.structured import generate_structured_fallback
+
+        return await generate_structured_fallback(
+            self, messages, output_type, temperature, max_tokens
+        )
 
     async def generate_stream(
         self,
