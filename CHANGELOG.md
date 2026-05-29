@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.5.0] — 2026-05-29
+
+Composable-core and daemon-scalability release. Most changes are additive; the
+public `Agent`, provider, and toolkit APIs stay backward compatible.
+
+### Added
+- **Streaming** — `BaseProvider.generate_stream()` + `StreamEvent`; native token streaming for Anthropic and OpenAI-compatible providers; `Agent(on_text=...)` streams assistant text during `run()`.
+- **Provider capability model** — `Capability` enum + `supports()`, and `Availability` enum + `availability()` (distinguishes "no API key" from "unreachable"); `hive models` shows the reason for unavailable local servers.
+- **Concurrent agent cycles** — the daemon runs agents' cycles concurrently with bounded concurrency (`daemon.max_concurrent_agents`, default 8); each cycle is isolated so one slow/failing agent never blocks the others.
+- **Typed error hierarchy** — `HiveError` base with `AgentNotFoundError` and `ProfileNotFoundError` (each subclasses the builtin it replaced).
+- **`ClipboardToolkit.read_clipboard`** — read the system clipboard (`pbpaste`/`xclip -o`), complementing the existing copy tools.
+- **`HiveDaemon.start(max_cycles=...)`** — bounded daemon runs via the public API.
+- **`InstructionLike` protocol** and a first-class, documented, tested standalone `Agent` path (+ example 23).
+
+### Changed
+- Tool calls within a single model turn now execute **concurrently** (`asyncio.gather`) with per-call error isolation and ordered results.
+- `BaseProvider.generate_structured` is now concrete with a prompt-based fallback, so every provider supports structured output; message/tool/response conversion extracted to shared, tested `models/conversion.py`.
+- Per-agent provider and profile are cached across daemon cycles (rebuilt on model/profile change).
+- SQLite store gained indexes on hot columns and versioned migrations (`PRAGMA user_version`).
+- `api.py` no longer reaches into daemon internals.
+
+### Fixed
+- `Toolkit.__copy__` resets the tool cache so a rebound clone's tools bind to the clone (not the original agent).
+
+## [0.4.2] — 2026-05-28
+
+### Added
+- **TaskToolkit**: `uncomplete_task` -- reopen completed tasks, `update_task` -- modify description/priority/due date, priority filtering on `list_tasks`
+- **KnowledgeToolkit**: `delete_note` -- delete notes by ID, `update_note` -- edit content/tags in-place preserving ID and timestamp
+- **AlarmToolkit**: `set_alarm_at` -- absolute time alarms ("3pm", "15:00", "tomorrow 9am") via python-dateutil, local timezone support
+- **SemanticMemory/TFIDFBackend**: `update()` method for in-place record editing
+- New dependency: `python-dateutil>=2.8`
+
+### Fixed
+- Groq provider test leaked `OPENAI_API_KEY` from `.env` -- now patches both provider references
+
+## [0.4.1] — 2026-05-26
+
+### Fixed
+- **Race condition** with shared toolkits -- clone-on-rebind prevents concurrent agent requests from corrupting toolkit state
+
+## [0.4.0] — 2026-05-24
+
+### Added
+- **ClipboardToolkit** -- `copy_to_clipboard`, `copy_note`, `copy_task`, `copy_link` (pbcopy/xclip)
+- **Public query methods** on TaskToolkit, AlarmToolkit, KnowledgeToolkit for host applications
+- **Configurable notification title** in AlarmChecker
+- **Agent auto-rebinds toolkits** bound to a different agent
+- **Metadata search in TFIDF** -- tags, URLs, and metadata indexed alongside content
+
+### Fixed
+- `tc.arguments` None crash when LLM calls tools with no required params
+- Integer params break Groq -- all LLM-facing numeric params changed to `str`
+- WhisperLocal blocking inference -- now runs in `run_in_executor()`
+- MLX whisper model map -- correct HuggingFace repo names
+
 ## [0.3.0] — 2026-05-18
 
 ### Added

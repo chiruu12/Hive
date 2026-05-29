@@ -1,46 +1,47 @@
-# Hive v0.3.0 Release Notes
+# Hive v0.5.0 Release Notes
 
-## Headline: Agents That Come Alive
+## Headline: A Composable Core That Scales
 
-Hive agents now have **Persona** — personality, values, fears, and behavioral
-parameters that change dynamically based on suffering. This isn't prompt text
-injection — suffering mechanically modifies runtime parameters (risk tolerance,
-concentration, social drive) that change how agents make decisions.
+This release hardens and decouples Hive's shared core. The runtime `Agent` is now
+a clean, standalone, streaming-capable building block, and the daemon runs many
+agents concurrently. Most changes are additive -- the public `Agent`, provider,
+and toolkit APIs stay backward compatible.
 
 ## What's New
 
-### Persona Class
-- Inherits from `Instructions` — drop-in replacement with superpowers
-- Static identity: personality traits, values, fears, purpose, long-term goals
-- Dynamic behavior: risk_tolerance, social_drive, concentration, autonomy_level, happiness
-- `apply_suffering_effects()` — suffering changes behavior, not just prompt text
-- `from_profile()` / `from_yaml()` — create from YAML profiles
+### Streaming
+- `BaseProvider.generate_stream()` + `StreamEvent` -- token streaming with a base
+  fallback so every provider works out of the box.
+- Native streaming for Anthropic and OpenAI-compatible providers (Groq, Fireworks,
+  Ollama, LM Studio, OpenRouter).
+- `Agent(on_text=...)` streams assistant text token-by-token during `run()`.
 
-### Suffering→Behavior Link
-- Futility increases risk tolerance (desperate swings)
-- Invisibility increases social drive (craving attention)
-- Purposelessness increases autonomy (going off-script)
-- High severity decreases concentration
-- Crisis mode: risk_tolerance=0.9, concentration=0.3
+### Provider capabilities & availability
+- `Capability` + `supports(...)` -- branch on what a provider can do, not its class.
+- `Availability` + `availability()` -- distinguishes "no API key" from "unreachable";
+  `hive models` now shows the reason for unavailable local servers.
 
-### Enhanced TUI
-- 4-panel layout: Agents, Activity Feed, Vitals, Drama
-- Suffering bars, happiness emoji, risk dice indicators
-- `--compact` flag for small terminals
+### Daemon scalability
+- Agent cycles run **concurrently** with bounded concurrency
+  (`daemon.max_concurrent_agents`, default 8). Each cycle is isolated, so one slow,
+  timed-out, or failing agent never blocks or breaks the others.
+- Per-agent provider and profile are cached across cycles.
 
-### Built-in Demos
-- `hive demo survival` — 3 agents, 30 cycles, economy on
-- `hive demo detective` — multi-model murder mystery
+### Framework polish
+- **Concurrent tool execution** -- multiple tool calls in one model turn run in
+  parallel, with per-call error isolation and ordered results.
+- **Typed errors** -- `HiveError`, `AgentNotFoundError`, `ProfileNotFoundError`.
+- **Standalone `Agent`** is first-class: 2-line usage, no daemon (see example 23).
+- **`InstructionLike` protocol** unifies `Instructions` / `Persona` / custom objects.
+- Structured output works on every provider (prompt-based fallback default).
 
-### 3 New Dramatic Profiles
-- **Gambler**: risk_tolerance=0.85, fears missing out
-- **Philosopher**: autonomy=0.9, fears shallow thinking
-- **Hustler**: social_drive=0.95, fears being idle
+### Persistence
+- SQLite store gained indexes on hot columns and versioned migrations
+  (`PRAGMA user_version`) that upgrade older databases in place.
 
-### OSS Scaffolding
-- CONTRIBUTING.md, CODE_OF_CONDUCT.md, issue/PR templates
-- Release workflow (PyPI publish on tag)
-- CHANGELOG.md with full version history
+### Tools
+- `ClipboardToolkit.read_clipboard` -- read the system clipboard, complementing the
+  existing copy tools.
 
 ## Upgrade
 
@@ -48,9 +49,10 @@ concentration, social drive) that change how agents make decisions.
 pip install --upgrade hive-agent
 ```
 
+No code changes required for existing agents. To stream, pass `on_text=...` to
+`Agent`; to bound daemon throughput, set `daemon.max_concurrent_agents`.
+
 ## Stats
 
-- 489 tests passing
-- 8 agent profiles
-- 6 LLM providers
-- ~12K LOC
+- Anthropic, OpenAI, Groq, Fireworks, Ollama, LM Studio, OpenRouter providers
+- Full test suite green on Python 3.11 / 3.12 / 3.13
