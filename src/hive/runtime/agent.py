@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
-from hive.runtime.instructions import Instructions
+from hive.runtime.instructions import InstructionLike, Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.persona import Persona
 from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
@@ -113,26 +113,16 @@ class Agent:
 
         toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
 
-        if persona is not None:
-            if response_model:
-                persona.response_model = response_model
-            self._instructions: Instructions | None = persona
-            self._system_prompt = persona.build_system_prompt(toolkit_instr)
-        elif isinstance(instructions, Persona):
-            if response_model:
-                instructions.response_model = response_model
-            self._instructions = instructions
-            self._system_prompt = instructions.build_system_prompt(toolkit_instr)
-        elif isinstance(instructions, Instructions):
-            instr_copy = Instructions(
-                persona=instructions.persona,
-                instructions=list(instructions.goals),
-                context=instructions.context,
-            )
-            if response_model:
-                instr_copy.response_model = response_model
-            self._instructions = instr_copy
-            self._system_prompt = instr_copy.build_system_prompt(toolkit_instr)
+        # One protocol path for any instruction-like object (Instructions, Persona,
+        # or a custom InstructionLike); the explicit persona arg takes precedence.
+        # response_model is passed per-call, so the caller's object is never mutated.
+        instruction_obj: InstructionLike | None = persona
+        if instruction_obj is None and isinstance(instructions, InstructionLike):
+            instruction_obj = instructions
+
+        self._instructions: InstructionLike | None = instruction_obj
+        if instruction_obj is not None:
+            self._system_prompt = instruction_obj.build_system_prompt(toolkit_instr, response_model)
         else:
             if instructions and system_prompt:
                 logger.warning(
@@ -140,7 +130,6 @@ class Agent:
                     "'instructions' takes precedence.",
                     name,
                 )
-            self._instructions = None
             base = str(instructions) if instructions else system_prompt
             self._system_prompt = self._assemble_prompt(base, toolkit_instr, response_model)
 

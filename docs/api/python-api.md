@@ -57,6 +57,11 @@ agent = Agent(
 )
 ```
 
+The `instructions` argument accepts a plain `str` or any **`InstructionLike`** object --
+anything implementing `build_system_prompt(toolkit_instructions=None, response_model=None)`.
+`Instructions` and `Persona` both satisfy it, and you can supply your own. The agent never
+mutates the object you pass (the response model is injected per call).
+
 ### Key Methods
 
 | Method | Returns | Description |

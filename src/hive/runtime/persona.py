@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -88,6 +87,7 @@ class Persona(Instructions):
     def build_system_prompt(
         self,
         toolkit_instructions: list[str] | None = None,
+        response_model: type[Any] | None = None,
     ) -> str:
         """Assemble system prompt with personality, values, fears, and behavioral state."""
         parts: list[str] = []
@@ -162,13 +162,9 @@ class Persona(Instructions):
                 if ti.strip():
                     parts.append(ti)
 
-        if self._response_model:
-            schema = self._response_model.model_json_schema()
-            schema.pop("title", None)
-            parts.append(
-                "Respond with a JSON object matching this schema:\n"
-                f"```json\n{json.dumps(schema, indent=2)}\n```"
-            )
+        block = self._response_schema_block(response_model)
+        if block:
+            parts.append(block)
 
         return "\n\n".join(parts)
 
