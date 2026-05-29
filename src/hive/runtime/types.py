@@ -94,6 +94,24 @@ class GenerateResult:
     duration_ms: int | None = None
 
 
+class StreamEventType(StrEnum):
+    TEXT = "text"
+    DONE = "done"
+
+
+@dataclass(frozen=True)
+class StreamEvent:
+    """One event from a streaming generation.
+
+    ``TEXT`` events carry an incremental ``text`` delta; the terminal ``DONE``
+    event carries the full aggregated ``result`` (message, tool calls, usage).
+    """
+
+    type: StreamEventType
+    text: str = ""
+    result: GenerateResult | None = None
+
+
 class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"

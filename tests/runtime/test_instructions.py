@@ -5,7 +5,8 @@ from unittest.mock import MagicMock
 from pydantic import BaseModel
 
 from hive.runtime.agent import Agent
-from hive.runtime.instructions import Instructions
+from hive.runtime.instructions import InstructionLike, Instructions
+from hive.runtime.persona import Persona
 from hive.tools import Toolkit, tool
 
 
@@ -224,3 +225,42 @@ class TestAgentWithInstructions:
         )
         assert "answer" in agent._system_prompt
         assert "JSON" in agent._system_prompt
+
+
+class _CustomInstructions:
+    """A duck-typed InstructionLike that is neither Instructions nor Persona."""
+
+    def build_system_prompt(self, toolkit_instructions=None, response_model=None) -> str:  # type: ignore[no-untyped-def]
+        extra = " ".join(toolkit_instructions or [])
+        return f"CUSTOM PROMPT {extra}".strip()
+
+
+class TestInstructionLikeProtocol:
+    def test_instructions_and_persona_satisfy_protocol(self):
+        assert isinstance(Instructions(persona="x"), InstructionLike)
+        assert isinstance(Persona(name="Ada"), InstructionLike)
+        assert isinstance(_CustomInstructions(), InstructionLike)
+
+    def test_plain_string_is_not_instruction_like(self):
+        assert not isinstance("just a string", InstructionLike)
+
+    def test_agent_accepts_custom_instruction_like(self):
+        provider = MagicMock()
+        agent = Agent(name="test", model=provider, instructions=_CustomInstructions())
+        assert "CUSTOM PROMPT" in agent._system_prompt
+
+    def test_build_system_prompt_response_model_arg_does_not_mutate(self):
+        class Out(BaseModel):
+            x: int
+
+        instr = Instructions(persona="Helper")
+        prompt = instr.build_system_prompt(response_model=Out)
+        assert "JSON" in prompt and "x" in prompt
+        # The per-call argument must not leak into the object's own state.
+        assert instr.response_model is None
+        assert "JSON" not in instr.build_system_prompt()
+
+    def test_persona_via_instructions_arg_takes_protocol_path(self):
+        provider = MagicMock()
+        agent = Agent(name="test", model=provider, instructions=Persona(name="Ada"))
+        assert "You are Ada." in agent._system_prompt

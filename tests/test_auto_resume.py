@@ -184,7 +184,7 @@ class TestResumeOnStart:
 
         daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs", fresh=False)
 
-        async def _no_run() -> None:
+        async def _no_run(max_cycles: int | None = None) -> None:
             daemon._running = False
 
         daemon._run = _no_run  # type: ignore[assignment]
@@ -221,7 +221,7 @@ class TestResumeOnStart:
 
         daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs", fresh=True)
 
-        async def _no_run() -> None:
+        async def _no_run(max_cycles: int | None = None) -> None:
             daemon._running = False
 
         daemon._run = _no_run  # type: ignore[assignment]
@@ -243,7 +243,7 @@ class TestResumeOnStart:
 
         daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs", fresh=False)
 
-        async def _no_run() -> None:
+        async def _no_run(max_cycles: int | None = None) -> None:
             daemon._running = False
 
         daemon._run = _no_run  # type: ignore[assignment]

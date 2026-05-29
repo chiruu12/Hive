@@ -537,7 +537,11 @@ def models() -> None:
     for provider, model_list in available.items():
         console.print(f"\n[bold]{provider}[/bold]:")
         for m in model_list:
-            s = "[green]available[/green]" if m.available else "[red]unavailable[/red]"
+            if m.available:
+                s = "[green]available[/green]"
+            else:
+                reason = f" ({m.detail.replace('_', ' ')})" if m.detail else ""
+                s = f"[red]unavailable[/red]{reason}"
             console.print(f"  {m.name}: {s}")
 
 

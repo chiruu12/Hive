@@ -121,12 +121,21 @@ class DaemonConfig(BaseModel):
     event_poll_interval: float = 0.3
     watch_refresh_rate: float = 0.5
     cycle_timeout: int = 300
+    # Max agents whose cycles run concurrently per heartbeat (1 = sequential).
+    max_concurrent_agents: int = 8
 
     @field_validator("heartbeat")
     @classmethod
     def _heartbeat_positive(cls, v: int) -> int:
         if v < 1:
             raise ValueError(f"heartbeat must be >= 1, got {v}")
+        return v
+
+    @field_validator("max_concurrent_agents")
+    @classmethod
+    def _concurrency_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"max_concurrent_agents must be >= 1, got {v}")
         return v
 
     @field_validator("cycle_timeout")

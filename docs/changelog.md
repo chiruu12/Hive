@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.0] -- 2026-05-29
+
+Composable-core and daemon-scalability release. Most changes are additive; the public `Agent`, provider, and toolkit APIs stay backward compatible.
+
+### Added
+- **Streaming**: `BaseProvider.generate_stream()` + `StreamEvent`; native token streaming for Anthropic and OpenAI-compatible providers; `Agent(on_text=...)` streams assistant text during `run()`
+- **Provider capabilities**: `Capability` + `supports()`, and `Availability` + `availability()` (distinguishes "no API key" from "unreachable"); `hive models` shows the reason for unavailable local servers
+- **Concurrent agent cycles**: the daemon runs cycles concurrently with bounded concurrency (`daemon.max_concurrent_agents`, default 8), each isolated so one slow/failing agent never blocks the others
+- **Typed errors**: `HiveError`, `AgentNotFoundError`, `ProfileNotFoundError` (each subclasses the builtin it replaced)
+- **ClipboardToolkit**: `read_clipboard` -- read the system clipboard (`pbpaste`/`xclip -o`)
+- **`HiveDaemon.start(max_cycles=...)`** for bounded runs; `InstructionLike` protocol; first-class standalone `Agent` (example 23)
+
+### Changed
+- Multiple tool calls in one model turn execute concurrently with per-call error isolation and ordered results
+- `BaseProvider.generate_structured` is now concrete with a prompt-based fallback; message conversion extracted to shared `models/conversion.py`
+- Per-agent provider/profile cached across daemon cycles; SQLite gained hot-column indexes and versioned migrations (`PRAGMA user_version`); `api.py` decoupled from daemon internals
+
+### Fixed
+- `Toolkit.__copy__` resets the tool cache so a rebound clone binds to itself
+
 ## [0.4.2] -- 2026-05-28
 
 ### Added

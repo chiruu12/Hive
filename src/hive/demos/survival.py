@@ -170,7 +170,8 @@ def _run_daemon(hive_dir: Path, tmp_dir: Path, quiet: bool = False) -> None:
 
     cycle_limit = 30
 
-    async def _limited_run() -> None:
+    async def _limited_run(max_cycles: int | None = None) -> None:
+        # Demo keeps its own cycle_limit + progress bar; max_cycles is ignored here.
         pbar = None
         if quiet:
             from tqdm import tqdm

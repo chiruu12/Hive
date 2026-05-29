@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 
-from hive.models.base import BaseProvider
+from hive.models.base import Availability, BaseProvider
 from hive.models.factory import create_runtime_provider
 from hive.models.registry import get_model_registry
 
@@ -15,6 +15,8 @@ class ModelInfo:
     name: str
     provider: str
     available: bool
+    #: When unavailable, why -- e.g. "no_api_key" or "unreachable". Empty if available.
+    detail: str = ""
 
 
 def create_provider(model_name: str) -> BaseProvider:
@@ -96,7 +98,15 @@ def detect_models() -> dict[str, list[ModelInfo]]:
         local_models = []
         for m in reg.local:
             p = create_runtime_provider(m.id)
-            local_models.append(ModelInfo(m.id, m.provider or "local", p.available))
+            status = p.availability()
+            local_models.append(
+                ModelInfo(
+                    m.id,
+                    m.provider or "local",
+                    status == Availability.AVAILABLE,
+                    "" if status == Availability.AVAILABLE else status.value,
+                )
+            )
         providers["Local"] = local_models
 
     return providers

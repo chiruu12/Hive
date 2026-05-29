@@ -57,6 +57,37 @@ agent = Agent(
 )
 ```
 
+The `instructions` argument accepts a plain `str` or any **`InstructionLike`** object --
+anything implementing `build_system_prompt(toolkit_instructions=None, response_model=None)`.
+`Instructions` and `Persona` both satisfy it, and you can supply your own. The agent never
+mutates the object you pass (the response model is injected per call).
+
+### Standalone (no daemon)
+
+The `Agent` is fully usable on its own -- no daemon, no `.hive` directory, no global
+state. Construct it with a name and a model and run a task:
+
+```python
+import asyncio
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
+
+agent = Agent(name="helper", model=Anthropic.lite())
+result = asyncio.run(agent.run(Task(instruction="What is 2 + 2?")))
+print(result.output)
+```
+
+Or a synchronous one-shot, with no `async` at all:
+
+```python
+agent = Agent(name="q", model=Anthropic.lite())
+print(agent.run_once_sync("Capital of France?"))
+```
+
+Add `toolkits=[...]` for tools, `response_model=...` for validated output, or
+`on_text=...` to stream. The daemon, when used, is just another consumer of this
+same `Agent`.
+
 ### Key Methods
 
 | Method | Returns | Description |
@@ -66,6 +97,18 @@ agent = Agent(
 | `await agent.run_once_structured(prompt, output_type)` | `T` | Single response as Pydantic model |
 | `agent.run_once_sync(prompt)` | `str` | Synchronous one-shot |
 | `agent.run_once_structured_sync(prompt, output_type)` | `T` | Synchronous structured output |
+
+### Streaming text
+
+Pass an `on_text` callback to stream assistant text as it is generated. When the
+provider supports `Capability.STREAMING` the callback receives token deltas; with a
+non-streaming provider it receives the full text in one call (via the base fallback).
+The ReAct loop is otherwise unchanged -- tool calls and control flow run as usual.
+
+```python
+agent = Agent(name="coder", model=Anthropic.standard(), on_text=lambda t: print(t, end=""))
+await agent.run(Task(instruction="Explain the plan, then list the files."))
+```
 
 ### TaskResult
 
@@ -128,8 +171,35 @@ All providers implement:
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `await generate_with_metadata(messages, tools, temperature, max_tokens)` | `GenerateResult` | Generate with full metadata |
+| `generate_stream(messages, tools, temperature, max_tokens)` | `AsyncIterator[StreamEvent]` | Stream `TEXT` deltas then a terminal `DONE` event |
 | `await generate_structured(messages, output_type, temperature, max_tokens)` | `T` | Generate as Pydantic model |
 | `available` (property) | `bool` | Whether the provider can be used |
+| `supports(capability)` | `bool` | Whether an optional `Capability` is supported |
+| `availability()` | `Availability` | Why the provider is or isn't usable |
+
+### Capabilities and Availability
+
+Branch on what a provider can do with `supports()` rather than special-casing
+provider classes, and use `availability()` to tell *why* a provider is unusable --
+a missing API key reads differently from an unreachable local server.
+
+```python
+from hive.models.anthropic import Anthropic
+from hive.models.base import Availability, Capability
+
+model = Anthropic.standard()
+
+model.supports(Capability.TOOLS)              # True
+model.supports(Capability.STRUCTURED_OUTPUT)  # True
+model.supports(Capability.STREAMING)          # True for Anthropic + OpenAI-compatible
+
+status = model.availability()
+if status is not Availability.AVAILABLE:
+    print(f"unusable: {status.value}")  # e.g. "no_api_key" or "unreachable"
+```
+
+`Capability` members: `TOOLS`, `STRUCTURED_OUTPUT`, `STREAMING`.
+`Availability` members: `AVAILABLE`, `NO_API_KEY`, `UNREACHABLE`, `UNKNOWN`.
 
 ### Factory
 
@@ -140,3 +210,26 @@ model = create_runtime_provider("anthropic:lite")
 model = create_runtime_provider("openai:standard")
 model = create_runtime_provider("ollama:standard")
 ```
+
+## Errors
+
+Hive raises a small typed hierarchy rooted at `HiveError`, so you can catch the whole
+family at once:
+
+```python
+from hive import AgentNotFoundError, HiveError, ProfileNotFoundError
+
+try:
+    hive.kill("ghost")
+except HiveError as e:
+    print(f"hive failed: {e}")
+```
+
+| Error | Raised when | Also subclasses |
+|-------|-------------|-----------------|
+| `HiveError` | base for all Hive errors | `Exception` |
+| `AgentNotFoundError` | an agent id/name/prefix can't be resolved | `ValueError` |
+| `ProfileNotFoundError` | a preset/profile file is missing | `FileNotFoundError` |
+
+Each subclasses the builtin it replaced, so existing `except ValueError` /
+`except FileNotFoundError` handlers keep working.

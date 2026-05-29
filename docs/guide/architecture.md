@@ -93,6 +93,30 @@ src/hive/
 | `HiveStore` | `memory/store.py` | SQLite persistence | `save_goal()`, `complete_goal()`, `list_agents()` |
 | `EventLog` | `memory/events.py` | JSONL event stream | `append()` |
 
+## Performance and Persistence Notes
+
+- **Concurrent tool execution.** When a model turn emits several tool calls, the
+  `Agent` runs them concurrently (`asyncio.gather`) rather than one at a time, so a
+  turn's wall-time tracks the slowest tool instead of their sum. Each call is isolated
+  -- a raised exception or unknown tool name becomes an error result for that call
+  without affecting its siblings -- and results are appended to the conversation in the
+  original call order so transcripts stay deterministic.
+- **Concurrent agent cycles.** Each heartbeat runs alive agents' cycles concurrently
+  with bounded concurrency (`max_concurrent_agents`, a semaphore). Every cycle is
+  isolated -- its own timeout and error handling -- so one slow, timed-out, or failing
+  agent never blocks or breaks the others that heartbeat. Set `max_concurrent_agents: 1`
+  for fully sequential behavior. Each agent's provider and profile are cached across
+  cycles (rebuilt only when the model changes or the profile YAML's mtime changes),
+  alongside the existing per-agent memory and persona caches.
+- **Tool discovery is cached.** A `Toolkit` discovers its `@tool` methods once (at
+  `bind()` or first `get_tools()`) and reuses the result; `rebind()` swaps the agent id
+  without rebuilding the cache (a copy resets the cache so a clone binds to itself).
+- **Indexed, versioned SQLite.** `HiveStore` indexes hot lookup columns
+  (`agent_id`, `status`, `fire_at`, `parent_goal_id`, ...) and tracks its schema with
+  SQLite's `PRAGMA user_version`. Schema changes are ordered migration steps applied in
+  a single transaction on `initialize()`, so an older database upgrades in place without
+  data loss.
+
 ## Extension Points
 
 | What | How | File | Example |
@@ -111,7 +135,8 @@ src/hive/
 ```
 Each heartbeat (default 10s):
   1. Hot-load plugins (every 10 cycles)
-  2. For each alive agent:
+  2. For each alive agent (run concurrently, bounded by max_concurrent_agents;
+     each cycle isolated so one slow/failing agent never blocks the others):
      a. emit("cycle_start")
      b. Escalate all stressors
      c. Load profile, identity, persona, memory
@@ -155,6 +180,8 @@ All config lives in `.hive/config.yaml` and env vars.
 | `economy` | `learnable_skills` | `list[str]` | 6 skills | Available skills to learn |
 | `daemon` | `heartbeat` | `int` | `10` | Seconds between cycles |
 | `daemon` | `max_retries` | `int` | `2` | Retries on agent failure |
+| `daemon` | `cycle_timeout` | `int` | `300` | Per-agent cycle timeout in seconds (0 = none) |
+| `daemon` | `max_concurrent_agents` | `int` | `8` | Max agent cycles run concurrently per heartbeat |
 | `model` | `default_model` | `str` | `claude-haiku-4-5` | Default LLM model |
 | `model` | `planning_model` | `str` | `claude-sonnet-4-6` | Model for planning tasks |
 | `model` | `max_tokens` | `int` | `4096` | Max generation tokens |

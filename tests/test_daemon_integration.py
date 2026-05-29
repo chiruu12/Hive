@@ -131,9 +131,11 @@ class TestDaemonIntegration:
             profiles=["researcher"],
         )
 
+        # Drive just the agent-cycle path for 2 cycles in isolation (no economy /
+        # swarm), so the test stays deterministic and provider-mocked.
         cycles_run = 0
 
-        async def _limited_run() -> None:
+        async def _limited_run(max_cycles: int | None = None) -> None:
             nonlocal cycles_run
             while daemon._running and cycles_run < 2:
                 daemon._cycle_count += 1

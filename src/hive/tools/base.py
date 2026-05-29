@@ -306,6 +306,7 @@ class Toolkit:
     """Base class for grouping related tools. Subclass and decorate methods with @tool."""
 
     _agent_id: str = ""
+    _cached_tools: list[Tool] | None = None
 
     @property
     def instructions(self) -> str:
@@ -325,6 +326,8 @@ class Toolkit:
                 f"Use rebind() to switch agents or create a new instance."
             )
         self._agent_id = agent_id
+        if self._cached_tools is None:
+            self._cached_tools = self._discover_tools()
 
     def rebind(self, agent_id: str) -> None:
         """Rebind to a different agent. Use for server/API patterns with shared toolkits."""
@@ -337,7 +340,34 @@ class Toolkit:
             )
         self._agent_id = agent_id
 
+    def __copy__(self) -> Toolkit:
+        """Shallow copy with a fresh (empty) tool cache.
+
+        The ``Tool`` objects in ``_cached_tools`` wrap @tool methods bound to the
+        *original* instance, so a shallow copy must not share them: a rebound
+        clone would otherwise execute tools against the original agent's id. The
+        clone re-discovers its own bound methods lazily on first ``get_tools()``.
+        """
+        clone = self.__class__.__new__(self.__class__)
+        clone.__dict__.update(self.__dict__)
+        clone._cached_tools = None
+        return clone
+
     def get_tools(self) -> list[Tool]:
+        """Return this toolkit's tools, discovered once and cached.
+
+        The tool set is defined by the class, so it is computed lazily on first
+        access (or at ``bind()``) and reused. ``rebind()`` only changes the agent
+        id, which bound methods resolve at call time, so the cache stays valid on
+        the same instance. Copies reset the cache (see ``__copy__``) so a clone's
+        tools bind to the clone. Adding ``@tool`` methods to an instance after
+        first use is not supported.
+        """
+        if self._cached_tools is None:
+            self._cached_tools = self._discover_tools()
+        return self._cached_tools
+
+    def _discover_tools(self) -> list[Tool]:
         """Auto-discover all @tool-decorated methods on this instance."""
         tools: list[Tool] = []
         for attr_name in dir(self):

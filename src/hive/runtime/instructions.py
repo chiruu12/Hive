@@ -3,7 +3,22 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
+
+
+@runtime_checkable
+class InstructionLike(Protocol):
+    """Anything the Agent can render into a system prompt (e.g. Instructions, Persona).
+
+    Distinguishes structured instruction objects from a plain ``str`` without
+    type-branching: a string has no ``build_system_prompt``.
+    """
+
+    def build_system_prompt(
+        self,
+        toolkit_instructions: list[str] | None = None,
+        response_model: type[Any] | None = None,
+    ) -> str: ...
 
 
 class Instructions:
@@ -49,9 +64,26 @@ class Instructions:
     def response_model(self, model: type[Any] | None) -> None:
         self._response_model = model
 
+    def _response_schema_block(self, response_model: type[Any] | None) -> str | None:
+        """Render the JSON-schema instruction block, if a response model applies.
+
+        Uses the ``response_model`` argument when given (the Agent injects it
+        per-call), otherwise the model set via the ``response_model`` property.
+        """
+        model = response_model if response_model is not None else self._response_model
+        if not model:
+            return None
+        schema = model.model_json_schema()
+        schema.pop("title", None)
+        return (
+            "Respond with a JSON object matching this schema:\n"
+            f"```json\n{json.dumps(schema, indent=2)}\n```"
+        )
+
     def build_system_prompt(
         self,
         toolkit_instructions: list[str] | None = None,
+        response_model: type[Any] | None = None,
     ) -> str:
         """Assemble the full system prompt from all parts."""
         parts: list[str] = []
@@ -71,13 +103,9 @@ class Instructions:
                 if ti.strip():
                     parts.append(ti)
 
-        if self._response_model:
-            schema = self._response_model.model_json_schema()
-            schema.pop("title", None)
-            parts.append(
-                "Respond with a JSON object matching this schema:\n"
-                f"```json\n{json.dumps(schema, indent=2)}\n```"
-            )
+        block = self._response_schema_block(response_model)
+        if block:
+            parts.append(block)
 
         return "\n\n".join(parts)
 

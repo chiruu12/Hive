@@ -24,6 +24,7 @@ from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.semantic import SemanticMemory
 from hive.memory.store import HiveStore
+from hive.models.base import BaseProvider
 from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent, DaemonAgentAdapter, Message
 from hive.runtime.persona import Persona
@@ -109,6 +110,10 @@ class HiveDaemon:
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._personas: dict[str, Persona] = {}
+        # Per-agent caches reused across cycles (B3). Provider invalidates when the
+        # agent's model changes; profile when its YAML file's mtime changes.
+        self._provider_cache: dict[str, tuple[str, BaseProvider]] = {}
+        self._profile_cache: dict[str, tuple[float | None, AgentProfile]] = {}
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
@@ -202,8 +207,12 @@ class HiveDaemon:
                 lines.append(f"- {t.name}({params}): {t.description}")
         return "\n".join(lines)
 
-    async def start(self) -> None:
-        """Initialize store, start heartbeat."""
+    async def start(self, max_cycles: int | None = None) -> None:
+        """Initialize store, start heartbeat.
+
+        Args:
+            max_cycles: Stop after this many cycles. ``None`` runs until stopped.
+        """
         await self._store.initialize()
 
         if not self._fresh:
@@ -229,7 +238,7 @@ class HiveDaemon:
         self._running = True
         self._pending_shutdown = False
         self._alarm_task = asyncio.create_task(self._alarm_check_loop())
-        await self._run()
+        await self._run(max_cycles)
         await self._shutdown()
 
     async def _alarm_check_loop(self) -> None:
@@ -249,9 +258,10 @@ class HiveDaemon:
                 logger.warning("Alarm check failed: %s", e)
             await asyncio.sleep(15)
 
-    async def _run(self) -> None:
+    async def _run(self, max_cycles: int | None = None) -> None:
         goals_completed = 0
         goals_abandoned = 0
+        cycles_run = 0
 
         new_plugins = self._plugin_loader.discover()
         self._plugin_toolkits.extend(new_plugins)
@@ -260,6 +270,7 @@ class HiveDaemon:
 
         while self._running:
             self._cycle_count += 1
+            cycles_run += 1
 
             if self._cycle_count % 10 == 0:
                 new = self._plugin_loader.discover()
@@ -271,42 +282,16 @@ class HiveDaemon:
             crisis_count = sum(1 for a in alive if self._get_suffering(a.agent_id).in_crisis)
 
             cycle_timeout = get_config().daemon.cycle_timeout
+            sem = asyncio.Semaphore(get_config().daemon.max_concurrent_agents)
 
-            for agent in alive:
-                try:
-                    if cycle_timeout > 0:
-                        result = await asyncio.wait_for(
-                            self._run_agent_cycle(agent),
-                            timeout=cycle_timeout,
-                        )
-                    else:
-                        result = await self._run_agent_cycle(agent)
-                    if result == "completed":
-                        goals_completed += 1
-                    elif result == "abandoned":
-                        goals_abandoned += 1
-                except TimeoutError:
-                    logger.warning(
-                        "Cycle %d: agent %s timed out after %ds, abandoning goal",
-                        self._cycle_count,
-                        agent.agent_id,
-                        cycle_timeout,
-                    )
-                    active_goal = await self._store.get_active_goal(agent.agent_id)
-                    if active_goal:
-                        await self._store.abandon_goal(active_goal["goal_id"])
-                    await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
-                except Exception as e:
-                    logger.error(
-                        "Cycle %d failed for agent %s: %s",
-                        self._cycle_count,
-                        agent.agent_id,
-                        e,
-                        exc_info=True,
-                    )
-                    await self._store.update_agent_status(
-                        agent.agent_id, AgentStatus.ERROR, error=str(e)
-                    )
+            # Run agent cycles concurrently with bounded concurrency. Each cycle
+            # is isolated (its own timeout + error handling), so one slow or
+            # failing agent never blocks or breaks the others this heartbeat.
+            results = await asyncio.gather(
+                *(self._run_agent_cycle_guarded(agent, cycle_timeout, sem) for agent in alive)
+            )
+            goals_completed += sum(1 for r in results if r == "completed")
+            goals_abandoned += sum(1 for r in results if r == "abandoned")
 
             killed = await self._sub_agents.auto_kill_expired()
             for kid in killed:
@@ -344,7 +329,52 @@ class HiveDaemon:
             goals_completed = 0
             goals_abandoned = 0
 
+            if max_cycles is not None and cycles_run >= max_cycles:
+                break
+
             await asyncio.sleep(self._heartbeat)
+
+    async def _run_agent_cycle_guarded(
+        self, agent: AgentState, cycle_timeout: int, sem: asyncio.Semaphore
+    ) -> str | None:
+        """Run one agent's cycle under the concurrency limit, isolating failures.
+
+        Returns the cycle result ("completed"/"abandoned"/...) or ``None`` if the
+        agent timed out or errored. A timeout/exception is contained here -- it is
+        logged and the agent moved to IDLE/ERROR -- so sibling agents are
+        unaffected and ``asyncio.gather`` never sees an exception.
+        """
+        async with sem:
+            try:
+                if cycle_timeout > 0:
+                    return await asyncio.wait_for(
+                        self._run_agent_cycle(agent), timeout=cycle_timeout
+                    )
+                return await self._run_agent_cycle(agent)
+            except TimeoutError:
+                logger.warning(
+                    "Cycle %d: agent %s timed out after %ds, abandoning goal",
+                    self._cycle_count,
+                    agent.agent_id,
+                    cycle_timeout,
+                )
+                active_goal = await self._store.get_active_goal(agent.agent_id)
+                if active_goal:
+                    await self._store.abandon_goal(active_goal["goal_id"])
+                await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
+                return None
+            except Exception as e:
+                logger.error(
+                    "Cycle %d failed for agent %s: %s",
+                    self._cycle_count,
+                    agent.agent_id,
+                    e,
+                    exc_info=True,
+                )
+                await self._store.update_agent_status(
+                    agent.agent_id, AgentStatus.ERROR, error=str(e)
+                )
+                return None
 
     async def _run_agent_cycle(self, agent: AgentState) -> str:
         await self._hooks.emit("cycle_start", agent_id=agent.agent_id, cycle_num=self._cycle_count)
@@ -383,7 +413,7 @@ class HiveDaemon:
         else:
             self._crisis_counts[agent.agent_id] = 0
 
-        runtime_provider = create_runtime_provider(agent.model)
+        runtime_provider = self._get_provider(agent)
         profile = self._load_profile(agent.name)
         session_id = f"sess-{agent.agent_id}"
         identity = self._identity.load_or_create(agent.agent_id, profile)
@@ -757,15 +787,34 @@ class HiveDaemon:
             await self._store.abandon_goal(parent_id)
             logger.info("Parent goal %s abandoned (subtask failed)", parent_id)
 
+    def _get_provider(self, agent: AgentState) -> BaseProvider:
+        """Return a cached provider for the agent, rebuilding only if its model changed."""
+        cached = self._provider_cache.get(agent.agent_id)
+        if cached is None or cached[0] != agent.model:
+            provider = create_runtime_provider(agent.model)
+            self._provider_cache[agent.agent_id] = (agent.model, provider)
+            return provider
+        return cached[1]
+
     def _load_profile(self, name: str) -> AgentProfile:
+        """Load the agent's profile, cached and invalidated on the YAML's mtime."""
         from hive.agents.profile import default_profiles_dir
 
         cfg = get_config()
         profiles_dir = Path(cfg.profiles_dir) if cfg.profiles_dir else default_profiles_dir()
+        path = profiles_dir / f"{name}.yaml"
+        mtime = path.stat().st_mtime if path.exists() else None
+
+        cached = self._profile_cache.get(name)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
         try:
-            return AgentProfile.from_preset(name, profiles_dir)
+            profile = AgentProfile.from_preset(name, profiles_dir)
         except FileNotFoundError:
-            return AgentProfile(name=name, role="general agent")
+            profile = AgentProfile(name=name, role="general agent")
+        self._profile_cache[name] = (mtime, profile)
+        return profile
 
     async def _get_peer_summaries(self, exclude_id: str) -> list[str]:
         agents = await self._store.list_agents()

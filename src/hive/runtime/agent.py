@@ -6,18 +6,20 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
-from hive.runtime.instructions import Instructions
+from hive.runtime.instructions import InstructionLike, Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.persona import Persona
-from hive.runtime.structured import StructuredGenerateResult, generate_structured_fallback
+from hive.runtime.structured import StructuredGenerateResult
 from hive.runtime.types import (
     GenerateResult,
     Message,
+    StreamEventType,
     StructuredTaskResult,
     Task,
     TaskResult,
@@ -72,9 +74,11 @@ class Agent:
         response_model: type[Any] | None = None,
         persona: Persona | None = None,
         conversation_log_dir: Path | str | None = None,
+        on_text: Callable[[str], None] | None = None,
     ):
         self.name = name
         self._model = model
+        self._on_text = on_text
         self._toolkits = toolkits or []
         self._extra_tools = _coerce_tools(tools or [])
         self._memory = memory
@@ -109,26 +113,16 @@ class Agent:
 
         toolkit_instr = [tk.instructions for tk in self._toolkits if tk.instructions]
 
-        if persona is not None:
-            if response_model:
-                persona.response_model = response_model
-            self._instructions: Instructions | None = persona
-            self._system_prompt = persona.build_system_prompt(toolkit_instr)
-        elif isinstance(instructions, Persona):
-            if response_model:
-                instructions.response_model = response_model
-            self._instructions = instructions
-            self._system_prompt = instructions.build_system_prompt(toolkit_instr)
-        elif isinstance(instructions, Instructions):
-            instr_copy = Instructions(
-                persona=instructions.persona,
-                instructions=list(instructions.goals),
-                context=instructions.context,
-            )
-            if response_model:
-                instr_copy.response_model = response_model
-            self._instructions = instr_copy
-            self._system_prompt = instr_copy.build_system_prompt(toolkit_instr)
+        # One protocol path for any instruction-like object (Instructions, Persona,
+        # or a custom InstructionLike); the explicit persona arg takes precedence.
+        # response_model is passed per-call, so the caller's object is never mutated.
+        instruction_obj: InstructionLike | None = persona
+        if instruction_obj is None and isinstance(instructions, InstructionLike):
+            instruction_obj = instructions
+
+        self._instructions: InstructionLike | None = instruction_obj
+        if instruction_obj is not None:
+            self._system_prompt = instruction_obj.build_system_prompt(toolkit_instr, response_model)
         else:
             if instructions and system_prompt:
                 logger.warning(
@@ -136,7 +130,6 @@ class Agent:
                     "'instructions' takes precedence.",
                     name,
                 )
-            self._instructions = None
             base = str(instructions) if instructions else system_prompt
             self._system_prompt = self._assemble_prompt(base, toolkit_instr, response_model)
 
@@ -217,10 +210,17 @@ class Agent:
         tool_map: dict[str, Tool],
         conversation: ConversationMemory,
     ) -> int:
-        """Execute tool calls and add results to conversation. Returns count."""
-        count = 0
-        for tc in tool_calls:
-            count += 1
+        """Execute tool calls concurrently, then add results in order. Returns count.
+
+        Tool calls within a single model turn run concurrently (``asyncio.gather``),
+        so total wall-time is the slowest tool rather than the sum. Each call is
+        isolated -- an unknown tool or a raised exception produces an error
+        ``tool_result`` and log entry without affecting the others. Results are
+        appended to the conversation in the original ``tool_calls`` order so
+        transcripts and logs stay deterministic.
+        """
+
+        async def _run_one(tc: Any) -> dict[str, Any]:
             tool = tool_map.get(tc.name)
 
             if tool is None:
@@ -231,29 +231,26 @@ class Agent:
                     tc.name,
                     available,
                 )
-                conversation.add(
-                    Message.tool_result(
-                        tc.id,
-                        f"Error: unknown tool '{tc.name}'. Available: {available}",
-                        is_error=True,
-                        name=tc.name,
-                    )
-                )
-                self._log_tool(tc.name, tc.arguments, False, "", "unknown tool", 0)
-                continue
+                return {
+                    "tc": tc,
+                    "ok": False,
+                    "result_text": f"Error: unknown tool '{tc.name}'. Available: {available}",
+                    "log_result": "",
+                    "error": "unknown tool",
+                    "duration_ms": 0,
+                }
 
             tool_t0 = time.time()
             try:
                 result_text = await tool.call(**(tc.arguments or {}))
-                conversation.add(Message.tool_result(tc.id, result_text, name=tc.name))
-                self._log_tool(
-                    tc.name,
-                    tc.arguments,
-                    True,
-                    result_text[:500],
-                    None,
-                    int((time.time() - tool_t0) * 1000),
-                )
+                return {
+                    "tc": tc,
+                    "ok": True,
+                    "result_text": result_text,
+                    "log_result": result_text[:500],
+                    "error": None,
+                    "duration_ms": int((time.time() - tool_t0) * 1000),
+                }
             except Exception as e:
                 logger.warning(
                     "Agent %r: tool %r failed with args %s: %s",
@@ -263,23 +260,72 @@ class Agent:
                     e,
                     exc_info=True,
                 )
-                conversation.add(
-                    Message.tool_result(
-                        tc.id,
-                        f"Error: {e}",
-                        is_error=True,
-                        name=tc.name,
-                    )
+                return {
+                    "tc": tc,
+                    "ok": False,
+                    "result_text": f"Error: {e}",
+                    "log_result": "",
+                    "error": str(e),
+                    "duration_ms": int((time.time() - tool_t0) * 1000),
+                }
+
+        outcomes = await asyncio.gather(*(_run_one(tc) for tc in tool_calls))
+
+        for outcome in outcomes:
+            tc = outcome["tc"]
+            conversation.add(
+                Message.tool_result(
+                    tc.id,
+                    outcome["result_text"],
+                    is_error=not outcome["ok"],
+                    name=tc.name,
                 )
-                self._log_tool(
-                    tc.name,
-                    tc.arguments,
-                    False,
-                    "",
-                    str(e),
-                    int((time.time() - tool_t0) * 1000),
-                )
-        return count
+            )
+            self._log_tool(
+                tc.name,
+                tc.arguments,
+                outcome["ok"],
+                outcome["log_result"],
+                outcome["error"],
+                outcome["duration_ms"],
+            )
+
+        return len(tool_calls)
+
+    async def _generate_message(
+        self,
+        messages: list[Message],
+        tool_schemas: list[dict[str, Any]] | None,
+    ) -> GenerateResult:
+        """Generate one assistant turn, streaming text to ``on_text`` if configured.
+
+        When an ``on_text`` callback is set and the provider supports streaming,
+        text deltas are forwarded as they arrive and the terminal DONE event's
+        result drives the rest of the loop. Otherwise this is a plain
+        ``generate_with_metadata`` call.
+        """
+        if self._on_text is None:
+            return await self._model.generate_with_metadata(
+                messages=messages,
+                tools=tool_schemas,
+                temperature=self._temperature,
+                max_tokens=self._gen_max_tokens,
+            )
+
+        final: GenerateResult | None = None
+        async for event in self._model.generate_stream(
+            messages=messages,
+            tools=tool_schemas,
+            temperature=self._temperature,
+            max_tokens=self._gen_max_tokens,
+        ):
+            if event.type == StreamEventType.TEXT and event.text:
+                self._on_text(event.text)
+            elif event.type == StreamEventType.DONE and event.result is not None:
+                final = event.result
+        if final is None:
+            raise RuntimeError("Streaming generation ended without a DONE event")
+        return final
 
     async def run(self, task: Task) -> TaskResult:
         """Execute a task using the ReAct loop."""
@@ -303,12 +349,7 @@ class Agent:
             steps += 1
 
             try:
-                result = await self._model.generate_with_metadata(
-                    messages=conversation.get_messages(),
-                    tools=tool_schemas,
-                    temperature=self._temperature,
-                    max_tokens=self._gen_max_tokens,
-                )
+                result = await self._generate_message(conversation.get_messages(), tool_schemas)
                 response = result.message
                 self._log_decision(steps, result)
                 self._total_tokens += result.input_tokens + result.output_tokens
@@ -393,21 +434,12 @@ class Agent:
             messages.append(Message.user(task.instruction))
 
         try:
-            if hasattr(self._model, "generate_structured"):
-                structured: StructuredGenerateResult[Any] = await self._model.generate_structured(
-                    messages,
-                    output_type=output_type,
-                    temperature=self._temperature,
-                    max_tokens=self._gen_max_tokens,
-                )
-            else:
-                structured = await generate_structured_fallback(
-                    self._model,
-                    messages,
-                    output_type,
-                    self._temperature,
-                    self._gen_max_tokens,
-                )
+            structured: StructuredGenerateResult[Any] = await self._model.generate_structured(
+                messages,
+                output_type=output_type,
+                temperature=self._temperature,
+                max_tokens=self._gen_max_tokens,
+            )
 
             return StructuredTaskResult(
                 task_id=task.id,
@@ -555,21 +587,12 @@ class Agent:
             messages.append(Message.system(context))
         messages.append(Message.user(message))
 
-        if hasattr(self._model, "generate_structured"):
-            result: StructuredGenerateResult[Any] = await self._model.generate_structured(
-                messages,
-                output_type=output_type,
-                temperature=self._temperature,
-                max_tokens=self._gen_max_tokens,
-            )
-        else:
-            result = await generate_structured_fallback(
-                self._model,
-                messages,
-                output_type,
-                self._temperature,
-                self._gen_max_tokens,
-            )
+        result: StructuredGenerateResult[Any] = await self._model.generate_structured(
+            messages,
+            output_type=output_type,
+            temperature=self._temperature,
+            max_tokens=self._gen_max_tokens,
+        )
         return result.parsed
 
     def run_once_structured_sync(
