@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -14,8 +13,6 @@ from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
 from hive.errors import AgentNotFoundError
 from hive.memory.store import HiveStore
-
-logger = logging.getLogger(__name__)
 
 
 def _run_sync(coro: Any) -> Any:

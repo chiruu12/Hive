@@ -26,13 +26,13 @@ async def _seed(store: HiveStore, agent_id: str) -> None:
     )
 
 
-def _daemon(tmp_path: Path, max_concurrent: int) -> HiveDaemon:
+def _daemon(tmp_path: Path, max_concurrent: int, cycle_timeout: int = 0) -> HiveDaemon:
     # The daemon loads config in __init__, so set the global config AFTER
     # construction (read by _run at runtime) and disable economy on the instance.
     daemon = HiveDaemon(tmp_path / ".hive", heartbeat=0, logs_dir=tmp_path / "logs")
     cfg = HiveConfig()
     cfg.daemon.max_concurrent_agents = max_concurrent
-    cfg.daemon.cycle_timeout = 0  # no per-cycle timeout in these tests
+    cfg.daemon.cycle_timeout = cycle_timeout
     set_config(cfg)
     daemon._economy_enabled = False  # avoid life-event provider calls
     return daemon
@@ -92,3 +92,48 @@ class TestConcurrentCycles:
         # The failing agent was isolated and marked ERROR.
         boom = await daemon._store.get_agent("boom")
         assert boom is not None and boom.status == AgentStatus.ERROR
+
+    @pytest.mark.asyncio
+    async def test_timeout_isolates_slow_agent(self, tmp_path: Path) -> None:
+        """A timed-out cycle abandons that agent's goal and frees it; siblings finish.
+
+        Drives the real _run_agent_cycle_guarded timeout path (not an inline copy).
+        """
+        daemon = _daemon(tmp_path, max_concurrent=8, cycle_timeout=1)
+        await daemon._store.initialize()
+        for aid in ["slow", "ok"]:
+            await _seed(daemon._store, aid)
+        await daemon._store.save_goal("g-slow", "slow", "a goal that will time out")
+
+        ran: set[str] = set()
+
+        async def fake_cycle(agent: AgentState) -> str:
+            if agent.agent_id == "slow":
+                await asyncio.sleep(5)  # exceeds the 1s cycle_timeout -> cancelled
+                return "completed"
+            ran.add(agent.agent_id)
+            return "completed"
+
+        daemon._run_agent_cycle = fake_cycle  # type: ignore[method-assign]
+        await daemon.start(max_cycles=1)
+
+        assert ran == {"ok"}  # the healthy agent completed despite the slow sibling
+        slow = await daemon._store.get_agent("slow")
+        assert slow is not None and slow.status == AgentStatus.IDLE  # freed, not stuck
+        goal = await daemon._store.get_goal_by_id("g-slow")
+        assert goal is not None and goal["status"] == "abandoned"
+
+
+class TestConcurrencyConfig:
+    def test_max_concurrent_agents_must_be_positive(self) -> None:
+        from pydantic import ValidationError
+
+        from hive.config import DaemonConfig
+
+        with pytest.raises(ValidationError, match="max_concurrent_agents"):
+            DaemonConfig(max_concurrent_agents=0)
+
+    def test_max_concurrent_agents_default(self) -> None:
+        from hive.config import DaemonConfig
+
+        assert DaemonConfig().max_concurrent_agents == 8

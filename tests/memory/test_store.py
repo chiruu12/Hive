@@ -117,6 +117,32 @@ class TestMigrations:
         assert row is not None and row[0] == "Ada"  # pre-existing data survived
 
     @pytest.mark.asyncio
+    async def test_partial_migration_recovers_on_rerun(self, tmp_path: Path) -> None:
+        """A half-applied migration (some columns added, version still 0) recovers.
+
+        The column-existence guards exist precisely so re-running initialize()
+        finishes the migration instead of erroring on the already-added column.
+        """
+        db_path = tmp_path / "state.db"
+        async with aiosqlite.connect(db_path) as db:
+            await db.executescript(_OLD_AGENTS_SCHEMA)
+            # Simulate a crash mid-_migration_1: spawned_by added, the rest not,
+            # and user_version never bumped.
+            await db.execute("ALTER TABLE agents ADD COLUMN spawned_by TEXT")
+            await db.execute("PRAGMA user_version = 0")
+            await db.commit()
+
+        await HiveStore(db_path).initialize()  # must not raise on the existing column
+
+        async with aiosqlite.connect(db_path) as db:
+            version = (await (await db.execute("PRAGMA user_version")).fetchone())[0]
+            cursor = await db.execute("PRAGMA table_info(agents)")
+            cols = {row[1] for row in await cursor.fetchall()}
+
+        assert version == LATEST_SCHEMA_VERSION
+        assert {"spawned_by", "max_cycles", "cycles_lived"} <= cols
+
+    @pytest.mark.asyncio
     async def test_initialize_is_idempotent(self, tmp_path: Path) -> None:
         """Initializing twice is a no-op and does not error or change the version."""
         store = HiveStore(tmp_path / "state.db")

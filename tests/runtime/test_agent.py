@@ -428,8 +428,31 @@ class StreamingProvider(BaseProvider):
         yield StreamEvent(type=StreamEventType.DONE, result=result)
 
 
+class NoDoneProvider(BaseProvider):
+    """Streams text but never emits the terminal DONE event (a broken provider)."""
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def generate_with_metadata(self, *args: Any, **kwargs: Any) -> GenerateResult:
+        return GenerateResult(message=Message.assistant("x"), model="nodone")
+
+    async def generate_stream(self, *args: Any, **kwargs: Any):
+        yield StreamEvent(type=StreamEventType.TEXT, text="partial")
+        # intentionally no DONE event
+
+
 class TestStreaming:
     """A2: the agent's optional on_text path forwards streamed text deltas."""
+
+    @pytest.mark.asyncio
+    async def test_stream_without_done_event_fails_cleanly(self):
+        """A stream missing the terminal DONE event surfaces a clear failure."""
+        agent = Agent(name="x", model=NoDoneProvider("nodone"), on_text=lambda t: None)
+        result = await agent.run(Task(instruction="hi"))
+        assert result.status == TaskStatus.FAILED
+        assert "DONE" in (result.error or "")
 
     @pytest.mark.asyncio
     async def test_on_text_via_base_default(self):
