@@ -62,6 +62,32 @@ anything implementing `build_system_prompt(toolkit_instructions=None, response_m
 `Instructions` and `Persona` both satisfy it, and you can supply your own. The agent never
 mutates the object you pass (the response model is injected per call).
 
+### Standalone (no daemon)
+
+The `Agent` is fully usable on its own -- no daemon, no `.hive` directory, no global
+state. Construct it with a name and a model and run a task:
+
+```python
+import asyncio
+from hive import Agent, Task
+from hive.models.anthropic import Anthropic
+
+agent = Agent(name="helper", model=Anthropic.lite())
+result = asyncio.run(agent.run(Task(instruction="What is 2 + 2?")))
+print(result.output)
+```
+
+Or a synchronous one-shot, with no `async` at all:
+
+```python
+agent = Agent(name="q", model=Anthropic.lite())
+print(agent.run_once_sync("Capital of France?"))
+```
+
+Add `toolkits=[...]` for tools, `response_model=...` for validated output, or
+`on_text=...` to stream. The daemon, when used, is just another consumer of this
+same `Agent`.
+
 ### Key Methods
 
 | Method | Returns | Description |
