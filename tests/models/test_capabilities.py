@@ -61,7 +61,7 @@ class TestAnthropicAvailability:
             p = Anthropic.lite()
         assert p.supports(Capability.TOOLS)
         assert p.supports(Capability.STRUCTURED_OUTPUT)
-        assert not p.supports(Capability.STREAMING)
+        assert p.supports(Capability.STREAMING)
 
 
 class TestOpenAIAvailability:

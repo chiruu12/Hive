@@ -5,17 +5,25 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from hive.config import get_env
-from hive.models.base import Availability, BaseProvider
+from hive.models.base import Availability, BaseProvider, Capability
 from hive.models.registry import estimate_cost
 from hive.runtime.structured import (
     StructuredGenerateResult,
     generate_structured_fallback,
     pydantic_to_response_format,
 )
-from hive.runtime.types import GenerateResult, Message, Role, ToolCall
+from hive.runtime.types import (
+    GenerateResult,
+    Message,
+    Role,
+    StreamEvent,
+    StreamEventType,
+    ToolCall,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +34,8 @@ class OpenAI(BaseProvider):
     Also serves as the base class for OpenAI-compatible APIs
     (Groq, Fireworks, Ollama, LM Studio).
     """
+
+    CAPABILITIES = BaseProvider.CAPABILITIES | {Capability.STREAMING}
 
     def __init__(
         self,
@@ -145,6 +155,85 @@ class OpenAI(BaseProvider):
             output_tokens=output_tokens,
             cost_usd=cost,
             duration_ms=duration_ms,
+        )
+
+    async def generate_stream(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream text deltas, accumulating tool-call fragments for the final message.
+
+        Opens a single streaming request without the retry wrapper used by the
+        non-streaming path, since partial output cannot be safely replayed.
+        """
+        api_messages = self._messages_to_openai(messages)
+        t0 = time.time()
+
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": api_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if tools:
+            kwargs["tools"] = self._tools_to_openai(tools)
+
+        stream = await self._client.chat.completions.create(**kwargs)
+
+        content_parts: list[str] = []
+        # tool-call index -> accumulated {id, name, args}
+        tool_acc: dict[int, dict[str, str]] = {}
+        input_tokens = 0
+        output_tokens = 0
+
+        async for chunk in stream:
+            if chunk.usage:
+                input_tokens = chunk.usage.prompt_tokens or 0
+                output_tokens = chunk.usage.completion_tokens or 0
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                content_parts.append(delta.content)
+                yield StreamEvent(type=StreamEventType.TEXT, text=delta.content)
+            for tc in delta.tool_calls or []:
+                slot = tool_acc.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                if tc.id:
+                    slot["id"] = tc.id
+                if tc.function and tc.function.name:
+                    slot["name"] = tc.function.name
+                if tc.function and tc.function.arguments:
+                    slot["args"] += tc.function.arguments
+
+        tool_calls: list[ToolCall] = []
+        for index in sorted(tool_acc):
+            slot = tool_acc[index]
+            try:
+                args = json.loads(slot["args"]) if slot["args"] else {}
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append(ToolCall(id=slot["id"], name=slot["name"], arguments=args))
+
+        content = "".join(content_parts)
+        message = Message.assistant(content, tool_calls or None)
+        duration_ms = int((time.time() - t0) * 1000)
+        cost = estimate_cost(self._model, input_tokens, output_tokens)
+
+        yield StreamEvent(
+            type=StreamEventType.DONE,
+            result=GenerateResult(
+                message=message,
+                model=self._model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost,
+                duration_ms=duration_ms,
+            ),
         )
 
     async def generate_structured(

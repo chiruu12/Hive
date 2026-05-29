@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +19,7 @@ from hive.runtime.structured import StructuredGenerateResult, generate_structure
 from hive.runtime.types import (
     GenerateResult,
     Message,
+    StreamEventType,
     StructuredTaskResult,
     Task,
     TaskResult,
@@ -72,9 +74,11 @@ class Agent:
         response_model: type[Any] | None = None,
         persona: Persona | None = None,
         conversation_log_dir: Path | str | None = None,
+        on_text: Callable[[str], None] | None = None,
     ):
         self.name = name
         self._model = model
+        self._on_text = on_text
         self._toolkits = toolkits or []
         self._extra_tools = _coerce_tools(tools or [])
         self._memory = memory
@@ -299,6 +303,41 @@ class Agent:
 
         return len(tool_calls)
 
+    async def _generate_message(
+        self,
+        messages: list[Message],
+        tool_schemas: list[dict[str, Any]] | None,
+    ) -> GenerateResult:
+        """Generate one assistant turn, streaming text to ``on_text`` if configured.
+
+        When an ``on_text`` callback is set and the provider supports streaming,
+        text deltas are forwarded as they arrive and the terminal DONE event's
+        result drives the rest of the loop. Otherwise this is a plain
+        ``generate_with_metadata`` call.
+        """
+        if self._on_text is None:
+            return await self._model.generate_with_metadata(
+                messages=messages,
+                tools=tool_schemas,
+                temperature=self._temperature,
+                max_tokens=self._gen_max_tokens,
+            )
+
+        final: GenerateResult | None = None
+        async for event in self._model.generate_stream(
+            messages=messages,
+            tools=tool_schemas,
+            temperature=self._temperature,
+            max_tokens=self._gen_max_tokens,
+        ):
+            if event.type == StreamEventType.TEXT and event.text:
+                self._on_text(event.text)
+            elif event.type == StreamEventType.DONE and event.result is not None:
+                final = event.result
+        if final is None:
+            raise RuntimeError("Streaming generation ended without a DONE event")
+        return final
+
     async def run(self, task: Task) -> TaskResult:
         """Execute a task using the ReAct loop."""
         self._total_cost = 0.0
@@ -321,12 +360,7 @@ class Agent:
             steps += 1
 
             try:
-                result = await self._model.generate_with_metadata(
-                    messages=conversation.get_messages(),
-                    tools=tool_schemas,
-                    temperature=self._temperature,
-                    max_tokens=self._gen_max_tokens,
-                )
+                result = await self._generate_message(conversation.get_messages(), tool_schemas)
                 response = result.message
                 self._log_decision(steps, result)
                 self._total_tokens += result.input_tokens + result.output_tokens

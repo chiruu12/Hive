@@ -5,19 +5,29 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from hive.config import get_env
-from hive.models.base import Availability, BaseProvider
+from hive.models.base import Availability, BaseProvider, Capability
 from hive.models.registry import estimate_cost
 from hive.runtime.structured import StructuredGenerateResult, pydantic_to_json_schema
-from hive.runtime.types import GenerateResult, Message, Role, ToolCall
+from hive.runtime.types import (
+    GenerateResult,
+    Message,
+    Role,
+    StreamEvent,
+    StreamEventType,
+    ToolCall,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class Anthropic(BaseProvider):
     """Anthropic Claude provider with native tool_use support."""
+
+    CAPABILITIES = BaseProvider.CAPABILITIES | {Capability.STREAMING}
 
     def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
         import anthropic
@@ -53,16 +63,15 @@ class Anthropic(BaseProvider):
     def availability(self) -> Availability:
         return Availability.AVAILABLE if self._has_key else Availability.NO_API_KEY
 
-    async def generate_with_metadata(
+    def _build_request(
         self,
         messages: list[Message],
-        tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
-        max_tokens: int = 4096,
-    ) -> GenerateResult:
+        tools: list[dict[str, Any]] | None,
+        temperature: float,
+        max_tokens: int,
+    ) -> dict[str, Any]:
+        """Assemble the messages.create kwargs shared by streaming and non-streaming."""
         system, api_messages = self._messages_to_anthropic(messages)
-        t0 = time.time()
-
         kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": api_messages,
@@ -80,6 +89,17 @@ class Anthropic(BaseProvider):
                 }
                 for t in tools
             ]
+        return kwargs
+
+    async def generate_with_metadata(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> GenerateResult:
+        kwargs = self._build_request(messages, tools, temperature, max_tokens)
+        t0 = time.time()
 
         response = await self._retry_with_backoff(self._client.messages.create, **kwargs)
         duration_ms = int((time.time() - t0) * 1000)
@@ -95,6 +115,44 @@ class Anthropic(BaseProvider):
             output_tokens=output_tokens,
             cost_usd=cost,
             duration_ms=duration_ms,
+        )
+
+    async def generate_stream(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream text deltas, then emit a DONE event with the final message.
+
+        Streaming opens a single request without the retry wrapper used by the
+        non-streaming path, since partial output cannot be safely replayed.
+        """
+        kwargs = self._build_request(messages, tools, temperature, max_tokens)
+        t0 = time.time()
+
+        async with self._client.messages.stream(**kwargs) as stream:
+            async for text in stream.text_stream:
+                if text:
+                    yield StreamEvent(type=StreamEventType.TEXT, text=text)
+            final = await stream.get_final_message()
+
+        duration_ms = int((time.time() - t0) * 1000)
+        input_tokens = final.usage.input_tokens
+        output_tokens = final.usage.output_tokens
+        cost = estimate_cost(self._model, input_tokens, output_tokens)
+
+        yield StreamEvent(
+            type=StreamEventType.DONE,
+            result=GenerateResult(
+                message=self._response_to_message(final),
+                model=self._model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost,
+                duration_ms=duration_ms,
+            ),
         )
 
     async def generate_structured(

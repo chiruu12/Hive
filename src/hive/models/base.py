@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from enum import StrEnum
 from typing import Any, ClassVar, TypeVar
 
 import httpx
 from pydantic import BaseModel
 
-from hive.runtime.types import GenerateResult, Message
+from hive.runtime.types import GenerateResult, Message, StreamEvent, StreamEventType
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,25 @@ class BaseProvider(ABC):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> Any: ...
+
+    async def generate_stream(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[StreamEvent]:
+        """Stream a generation as a sequence of ``StreamEvent``s.
+
+        The base implementation does not truly stream: it calls
+        ``generate_with_metadata()`` and emits the full text as one ``TEXT``
+        event followed by a terminal ``DONE`` event. Providers that support
+        token streaming override this and advertise ``Capability.STREAMING``.
+        """
+        result = await self.generate_with_metadata(messages, tools, temperature, max_tokens)
+        if result.message.content:
+            yield StreamEvent(type=StreamEventType.TEXT, text=result.message.content)
+        yield StreamEvent(type=StreamEventType.DONE, result=result)
 
     async def _retry_with_backoff(
         self,

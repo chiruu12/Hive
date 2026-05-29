@@ -7,10 +7,19 @@ from typing import Any
 
 import pytest
 
-from hive.models.base import BaseProvider
+from hive.models.base import BaseProvider, Capability
 from hive.runtime.agent import Agent
 from hive.runtime.memory import ConversationMemory
-from hive.runtime.types import GenerateResult, Message, Role, Task, TaskStatus, ToolCall
+from hive.runtime.types import (
+    GenerateResult,
+    Message,
+    Role,
+    StreamEvent,
+    StreamEventType,
+    Task,
+    TaskStatus,
+    ToolCall,
+)
 from hive.tools import Toolkit, tool
 
 
@@ -388,6 +397,87 @@ class TestParallelToolExecution:
         assert "kaboom" in tool_msgs["tc-2"].content
         assert tool_msgs["tc-3"].is_error is True
         assert "unknown tool" in tool_msgs["tc-3"].content.lower()
+
+
+class StreamingProvider(BaseProvider):
+    """Provider that streams pre-programmed text deltas per turn (A2)."""
+
+    CAPABILITIES = BaseProvider.CAPABILITIES | {Capability.STREAMING}
+
+    def __init__(self, turns: list[tuple[list[str], GenerateResult]]):
+        super().__init__("stream-model")
+        self._turns = list(turns)
+        self._i = 0
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def generate_with_metadata(self, *args: Any, **kwargs: Any) -> GenerateResult:
+        _, result = self._turns[min(self._i, len(self._turns) - 1)]
+        return result
+
+    async def generate_structured(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+        raise NotImplementedError
+
+    async def generate_stream(self, *args: Any, **kwargs: Any):
+        deltas, result = self._turns[self._i]
+        self._i += 1
+        for delta in deltas:
+            yield StreamEvent(type=StreamEventType.TEXT, text=delta)
+        yield StreamEvent(type=StreamEventType.DONE, result=result)
+
+
+class TestStreaming:
+    """A2: the agent's optional on_text path forwards streamed text deltas."""
+
+    @pytest.mark.asyncio
+    async def test_on_text_via_base_default(self):
+        """A non-streaming provider still drives on_text via the base default."""
+        collected: list[str] = []
+        provider = MockProvider([Message.assistant("Hello there.")])
+        agent = Agent(name="test", model=provider, on_text=collected.append)
+
+        result = await agent.run(Task(instruction="hi"))
+        assert result.status == TaskStatus.COMPLETED
+        assert result.output == "Hello there."
+        assert collected == ["Hello there."]
+
+    @pytest.mark.asyncio
+    async def test_on_text_receives_deltas(self):
+        """A streaming provider's deltas are forwarded in order."""
+        collected: list[str] = []
+        done = GenerateResult(message=Message.assistant("Hello"), model="stream-model")
+        provider = StreamingProvider([(["Hel", "lo"], done)])
+        agent = Agent(name="test", model=provider, on_text=collected.append)
+
+        result = await agent.run(Task(instruction="hi"))
+        assert result.status == TaskStatus.COMPLETED
+        assert result.output == "Hello"
+        assert collected == ["Hel", "lo"]
+
+    @pytest.mark.asyncio
+    async def test_streaming_with_tool_calls(self):
+        """The DONE result drives tool execution; deltas across turns are forwarded."""
+        collected: list[str] = []
+        turn1 = GenerateResult(
+            message=Message.assistant(
+                "Let me add.",
+                [ToolCall(id="tc-1", name="add", arguments={"a": 2, "b": 3})],
+            ),
+            model="stream-model",
+        )
+        turn2 = GenerateResult(message=Message.assistant("The sum is 5."), model="stream-model")
+        provider = StreamingProvider([(["Let me ", "add."], turn1), (["The sum ", "is 5."], turn2)])
+        agent = Agent(
+            name="calc", model=provider, toolkits=[CalculatorToolkit()], on_text=collected.append
+        )
+
+        result = await agent.run(Task(instruction="add 2 and 3"))
+        assert result.status == TaskStatus.COMPLETED
+        assert result.output == "The sum is 5."
+        assert result.tool_calls_made == 1
+        assert collected == ["Let me ", "add.", "The sum ", "is 5."]
 
 
 class TestProviderMetadata:

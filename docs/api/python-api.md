@@ -67,6 +67,18 @@ agent = Agent(
 | `agent.run_once_sync(prompt)` | `str` | Synchronous one-shot |
 | `agent.run_once_structured_sync(prompt, output_type)` | `T` | Synchronous structured output |
 
+### Streaming text
+
+Pass an `on_text` callback to stream assistant text as it is generated. When the
+provider supports `Capability.STREAMING` the callback receives token deltas; with a
+non-streaming provider it receives the full text in one call (via the base fallback).
+The ReAct loop is otherwise unchanged -- tool calls and control flow run as usual.
+
+```python
+agent = Agent(name="coder", model=Anthropic.standard(), on_text=lambda t: print(t, end=""))
+await agent.run(Task(instruction="Explain the plan, then list the files."))
+```
+
 ### TaskResult
 
 ```python
@@ -128,6 +140,7 @@ All providers implement:
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `await generate_with_metadata(messages, tools, temperature, max_tokens)` | `GenerateResult` | Generate with full metadata |
+| `generate_stream(messages, tools, temperature, max_tokens)` | `AsyncIterator[StreamEvent]` | Stream `TEXT` deltas then a terminal `DONE` event |
 | `await generate_structured(messages, output_type, temperature, max_tokens)` | `T` | Generate as Pydantic model |
 | `available` (property) | `bool` | Whether the provider can be used |
 | `supports(capability)` | `bool` | Whether an optional `Capability` is supported |
@@ -147,7 +160,7 @@ model = Anthropic.standard()
 
 model.supports(Capability.TOOLS)              # True
 model.supports(Capability.STRUCTURED_OUTPUT)  # True
-model.supports(Capability.STREAMING)          # False (until streaming lands)
+model.supports(Capability.STREAMING)          # True for Anthropic + OpenAI-compatible
 
 status = model.availability()
 if status is not Availability.AVAILABLE:
