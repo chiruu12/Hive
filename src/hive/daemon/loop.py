@@ -277,42 +277,16 @@ class HiveDaemon:
             crisis_count = sum(1 for a in alive if self._get_suffering(a.agent_id).in_crisis)
 
             cycle_timeout = get_config().daemon.cycle_timeout
+            sem = asyncio.Semaphore(get_config().daemon.max_concurrent_agents)
 
-            for agent in alive:
-                try:
-                    if cycle_timeout > 0:
-                        result = await asyncio.wait_for(
-                            self._run_agent_cycle(agent),
-                            timeout=cycle_timeout,
-                        )
-                    else:
-                        result = await self._run_agent_cycle(agent)
-                    if result == "completed":
-                        goals_completed += 1
-                    elif result == "abandoned":
-                        goals_abandoned += 1
-                except TimeoutError:
-                    logger.warning(
-                        "Cycle %d: agent %s timed out after %ds, abandoning goal",
-                        self._cycle_count,
-                        agent.agent_id,
-                        cycle_timeout,
-                    )
-                    active_goal = await self._store.get_active_goal(agent.agent_id)
-                    if active_goal:
-                        await self._store.abandon_goal(active_goal["goal_id"])
-                    await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
-                except Exception as e:
-                    logger.error(
-                        "Cycle %d failed for agent %s: %s",
-                        self._cycle_count,
-                        agent.agent_id,
-                        e,
-                        exc_info=True,
-                    )
-                    await self._store.update_agent_status(
-                        agent.agent_id, AgentStatus.ERROR, error=str(e)
-                    )
+            # Run agent cycles concurrently with bounded concurrency. Each cycle
+            # is isolated (its own timeout + error handling), so one slow or
+            # failing agent never blocks or breaks the others this heartbeat.
+            results = await asyncio.gather(
+                *(self._run_agent_cycle_guarded(agent, cycle_timeout, sem) for agent in alive)
+            )
+            goals_completed += sum(1 for r in results if r == "completed")
+            goals_abandoned += sum(1 for r in results if r == "abandoned")
 
             killed = await self._sub_agents.auto_kill_expired()
             for kid in killed:
@@ -354,6 +328,48 @@ class HiveDaemon:
                 break
 
             await asyncio.sleep(self._heartbeat)
+
+    async def _run_agent_cycle_guarded(
+        self, agent: AgentState, cycle_timeout: int, sem: asyncio.Semaphore
+    ) -> str | None:
+        """Run one agent's cycle under the concurrency limit, isolating failures.
+
+        Returns the cycle result ("completed"/"abandoned"/...) or ``None`` if the
+        agent timed out or errored. A timeout/exception is contained here -- it is
+        logged and the agent moved to IDLE/ERROR -- so sibling agents are
+        unaffected and ``asyncio.gather`` never sees an exception.
+        """
+        async with sem:
+            try:
+                if cycle_timeout > 0:
+                    return await asyncio.wait_for(
+                        self._run_agent_cycle(agent), timeout=cycle_timeout
+                    )
+                return await self._run_agent_cycle(agent)
+            except TimeoutError:
+                logger.warning(
+                    "Cycle %d: agent %s timed out after %ds, abandoning goal",
+                    self._cycle_count,
+                    agent.agent_id,
+                    cycle_timeout,
+                )
+                active_goal = await self._store.get_active_goal(agent.agent_id)
+                if active_goal:
+                    await self._store.abandon_goal(active_goal["goal_id"])
+                await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
+                return None
+            except Exception as e:
+                logger.error(
+                    "Cycle %d failed for agent %s: %s",
+                    self._cycle_count,
+                    agent.agent_id,
+                    e,
+                    exc_info=True,
+                )
+                await self._store.update_agent_status(
+                    agent.agent_id, AgentStatus.ERROR, error=str(e)
+                )
+                return None
 
     async def _run_agent_cycle(self, agent: AgentState) -> str:
         await self._hooks.emit("cycle_start", agent_id=agent.agent_id, cycle_num=self._cycle_count)
