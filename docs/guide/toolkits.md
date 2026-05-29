@@ -354,6 +354,31 @@ tk.bind("my-agent")
 
 Use `AlarmChecker` to poll for due alarms and fire notifications in a background loop. The `set_alarm_at` tool uses `python-dateutil` for time parsing, interprets naive times as local timezone, and auto-rolls time-only inputs to tomorrow if the time has already passed today.
 
+## ClipboardToolkit
+
+Copy text/notes/tasks/links to the system clipboard and read what's on it. Uses `pbcopy`/`pbpaste` on macOS and `xclip` on Linux; other platforms are unsupported (logged, no error). Works standalone for plain text; pass a store/memory to copy notes, tasks, and links.
+
+```python
+from hive import ClipboardToolkit
+
+# Standalone (text + read only):
+tk = ClipboardToolkit()
+tk.bind("my-agent")
+
+# With store + memory (also copy_note / copy_task / copy_link):
+tk = ClipboardToolkit(store=hive_store, memory=semantic_memory)
+```
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `copy_to_clipboard` | `text` | Copy arbitrary text to the system clipboard |
+| `read_clipboard` | | Read the current clipboard text (for "save the link I just copied") |
+| `copy_note` | `note_id` | Copy a knowledge note's content (needs memory) |
+| `copy_task` | `task_id` | Copy a task's description (needs store) |
+| `copy_link` | `query` | Find a saved link by search and copy its URL (needs memory) |
+
+`read_clipboard` returns a friendly message when the clipboard is empty or unreadable, and never raises (5s timeout).
+
 ## Using Multiple Toolkits
 
 ```python

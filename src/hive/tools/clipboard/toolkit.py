@@ -42,6 +42,35 @@ async def _copy_to_system_clipboard(text: str) -> bool:
         return False
 
 
+async def _read_from_system_clipboard() -> str | None:
+    """Read text from the system clipboard. Supports macOS and Linux.
+
+    Returns the clipboard text, or None if reading is unsupported or failed.
+    """
+    system = platform.system()
+    if system == "Darwin":
+        cmd = ["pbpaste"]
+    elif system == "Linux":
+        cmd = ["xclip", "-selection", "clipboard", "-o"]
+    else:
+        logger.warning("Clipboard not supported on %s", system)
+        return None
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+        if proc.returncode != 0:
+            return None
+        return stdout.decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.warning("Clipboard read failed: %s", e)
+        return None
+
+
 class ClipboardToolkit(Toolkit):
     """Tools for copying content to the system clipboard.
 
@@ -99,7 +128,10 @@ class ClipboardToolkit(Toolkit):
 
     @property
     def instructions(self) -> str:
-        return "You can copy text, notes, tasks, or links to the user's clipboard."
+        return (
+            "You can copy text, notes, tasks, or links to the user's clipboard, "
+            "and read what's currently on the clipboard."
+        )
 
     @tool()
     async def copy_to_clipboard(self, text: str) -> str:
@@ -113,6 +145,21 @@ class ClipboardToolkit(Toolkit):
             preview = text[:80] + ("..." if len(text) > 80 else "")
             return f"Copied to clipboard: {preview}"
         return "Failed to copy to clipboard."
+
+    @tool()
+    async def read_clipboard(self) -> str:
+        """Read the current text contents of the system clipboard.
+
+        Use this when the user refers to something they have already copied --
+        for example "save the link I just copied" or "add this to my notes".
+        """
+        text = await _read_from_system_clipboard()
+        if text is None:
+            return "Couldn't read the clipboard on this system."
+        text = text.strip()
+        if not text:
+            return "The clipboard is empty."
+        return text
 
     @tool()
     async def copy_note(self, note_id: str) -> str:

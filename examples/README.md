@@ -27,6 +27,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 | 14 | [14_memory_and_comms.py](14_memory_and_comms.py) | Agents that remember things and message each other |
 | 15 | [15_zero_config.py](15_zero_config.py) | Every toolkit with zero setup — just create and go |
 | 21 | [21_production_hardening.py](21_production_hardening.py) | Retry, budget limits, conversation logging, safe binding, config validation, timeouts |
+| 23 | [23_streaming_and_capabilities.py](23_streaming_and_capabilities.py) | Token streaming via `on_text`, `supports()` / `availability()` provider introspection |
 
 ## Running
 
@@ -48,3 +49,4 @@ hive agent chat
 - **Agent Intelligence** (11, 12, 13, 14): Notepad presets, web research, instructions, memory
 - **Multi-Agent** (04, 05, 08): Delegation, MCP integration, workflow pipelines
 - **Production** (09, 10, 21): Error handling, budget control, multi-provider routing, hardening
+- **Provider features** (23): Token streaming via `on_text`, capability/availability introspection
