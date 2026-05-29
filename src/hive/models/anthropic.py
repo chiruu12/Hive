@@ -206,4 +206,3 @@ class Anthropic(BaseProvider):
             duration_ms=duration_ms,
         )
         return StructuredGenerateResult(result=gen_result, parsed=parsed)
-

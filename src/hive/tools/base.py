@@ -340,13 +340,28 @@ class Toolkit:
             )
         self._agent_id = agent_id
 
+    def __copy__(self) -> Toolkit:
+        """Shallow copy with a fresh (empty) tool cache.
+
+        The ``Tool`` objects in ``_cached_tools`` wrap @tool methods bound to the
+        *original* instance, so a shallow copy must not share them: a rebound
+        clone would otherwise execute tools against the original agent's id. The
+        clone re-discovers its own bound methods lazily on first ``get_tools()``.
+        """
+        clone = self.__class__.__new__(self.__class__)
+        clone.__dict__.update(self.__dict__)
+        clone._cached_tools = None
+        return clone
+
     def get_tools(self) -> list[Tool]:
         """Return this toolkit's tools, discovered once and cached.
 
         The tool set is defined by the class, so it is computed lazily on first
         access (or at ``bind()``) and reused. ``rebind()`` only changes the agent
-        id, which bound methods resolve at call time, so the cache stays valid.
-        Adding ``@tool`` methods to an instance after first use is not supported.
+        id, which bound methods resolve at call time, so the cache stays valid on
+        the same instance. Copies reset the cache (see ``__copy__``) so a clone's
+        tools bind to the clone. Adding ``@tool`` methods to an instance after
+        first use is not supported.
         """
         if self._cached_tools is None:
             self._cached_tools = self._discover_tools()

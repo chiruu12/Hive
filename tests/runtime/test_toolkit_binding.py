@@ -159,3 +159,38 @@ async def test_rebound_toolkit_tools_use_new_agent_id() -> None:
     result_b = await greet.call(name="world")
     assert "agent-b" in result_b
     assert "agent-a" not in result_b
+
+
+@pytest.mark.asyncio
+async def test_copy_resets_cache_so_clone_tools_bind_to_clone() -> None:
+    """copy.copy() must not share the cached tools (bound to the original)."""
+    import copy
+
+    tk = _DummyToolkit()
+    tk.bind("agent-a")
+    tk.get_tools()  # populate the cache on the original
+
+    clone = copy.copy(tk)
+    clone.rebind("agent-b")
+    # The clone's cached list is independent, and its tool runs against agent-b.
+    assert clone._cached_tools is None or clone._cached_tools is not tk._cached_tools
+    result = await clone.get_tools()[0].call(name="world")
+    assert "agent-b" in result
+    assert "agent-a" not in result
+
+
+@pytest.mark.asyncio
+async def test_agent_sharing_one_toolkit_instance_isolates_agent_id() -> None:
+    """Two agents built from one already-bound toolkit don't cross-bind (A7a + copy)."""
+    from unittest.mock import AsyncMock
+
+    from hive.runtime.agent import Agent
+
+    tk = _DummyToolkit()
+    tk.bind("agent-a")
+    Agent(name="agent-a", model=AsyncMock(), toolkits=[tk], agent_id="agent-a")
+    agent_b = Agent(name="agent-b", model=AsyncMock(), toolkits=[tk], agent_id="agent-b")
+
+    # agent_b got a clone; its tool must resolve agent-b, not agent-a.
+    b_tool = agent_b.get_tools()[0]
+    assert "agent-b" in await b_tool.call(name="x")
