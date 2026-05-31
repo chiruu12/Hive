@@ -1,3 +1,41 @@
+# Hive v0.5.2 Release Notes
+
+## Headline: Hardened No-Tools Recovery
+
+A follow-up to v0.5.1 that incorporates review feedback on the no-tools recovery
+path, plus the Phase 3 simulation core that landed on `main`.
+
+## What's Fixed
+
+- **Streaming recovery is scoped to pre-content failures**: the OpenAI-compatible
+  adapter now recovers a `tool_use_failed` only when it happens *before* any text has
+  reached the caller, so a mid-stream error can never produce duplicated output. If a
+  recovery stream errors after emitting text, the terminal result preserves the text
+  already streamed.
+- **Recovery no longer masks real errors**: a `tool_use_failed` on a request that
+  *did* offer tools (e.g. a malformed tool schema) is surfaced instead of being
+  swallowed by the recovery retry.
+- **No mid-thread system messages**: both the agent-layer wrap-up nudge and the
+  adapter's text-only recovery nudge are sent as `user`-role messages, which strict
+  providers accept mid-conversation (some reject mid-thread `system` messages). The
+  agent nudge is sent only for the wrap-up call and is not written to the logged
+  conversation.
+
+## Also Included
+
+- **Phase 3 simulation core**: registry-driven world catalogs (events & jobs) and
+  wired simulation feedback loops.
+
+## Upgrade
+
+```bash
+pip install --upgrade hive-agent
+```
+
+No code changes required. The happy path (tools provided, or no error) is unchanged.
+
+---
+
 # Hive v0.5.1 Release Notes
 
 ## Headline: Resilient No-Tools Wrap-Up Across Strict Providers
@@ -17,8 +55,9 @@ even though the tools that ran during the loop already persisted.
   of raising -- the tools already ran. Covers both `generate_with_metadata` and
   `generate_stream`.
 - **Belt-and-suspenders nudge** at the agent layer: `Agent.run_once` now appends a
-  "tool budget exhausted, reply in plain text" system message before the final
-  wrap-up call, reducing the chance of hitting the error at all.
+  "tool budget exhausted, reply in plain text" user message before the final
+  wrap-up call, reducing the chance of hitting the error at all. (A user-role message
+  is used deliberately -- some strict providers reject mid-thread system messages.)
 
 A multi-action turn (e.g. "make three notes") now completes on Groq without surfacing
 a 400.

@@ -176,6 +176,33 @@ class TestGenerateStreamRecovery:
         assert done.result.message.content == ""
 
     @pytest.mark.asyncio
+    async def test_recovery_stream_error_preserves_streamed_text(self) -> None:
+        # Double failure: initial no-tools call rejects, then the recovery stream emits
+        # some text and errors mid-flight. The terminal DONE must carry the text already
+        # streamed (not empty), so consumers reconstructing from DONE.result don't lose it.
+        p = OpenAI(api_key="sk-test")
+
+        async def fake_create(**kwargs: Any) -> Any:
+            if not _has_nudge(kwargs["messages"]):
+                raise _ToolUseFailedError()
+
+            async def gen() -> Any:
+                yield _stream_chunk(content="Saved the ")
+                yield _stream_chunk(content="notes")
+                raise _ToolUseFailedError()
+
+            return gen()
+
+        p._client.chat.completions.create = fake_create
+        events = await _collect(p.generate_stream([Message.user("make three notes")], None))
+
+        texts = [e.text for e in events if e.type == StreamEventType.TEXT]
+        assert texts == ["Saved the ", "notes"]
+        done = events[-1]
+        assert done.type == StreamEventType.DONE
+        assert done.result.message.content == "Saved the notes"
+
+    @pytest.mark.asyncio
     async def test_error_after_text_propagates_without_duplicate(self) -> None:
         # If the stream fails *after* text already reached the caller, recovery would
         # duplicate output -- so the error must propagate instead of recovering.
