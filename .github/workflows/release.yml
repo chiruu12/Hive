@@ -26,10 +26,11 @@ jobs:
         run: |
           version="$(grep -m1 -E '^version = ' pyproject.toml | sed -E 's/version = "([^"]+)"/\1/')"
           echo "version=$version"
-          if curl -sf -o /dev/null "https://pypi.org/pypi/hive-agent/$version/json"; then
+          if curl -sf --retry 3 --retry-delay 2 -o /dev/null "https://pypi.org/pypi/hive-agent/$version/json"; then
             echo "hive-agent $version is already on PyPI -- skipping publish (a moved/re-pushed tag can't re-upload an immutable version)."
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
+            echo "hive-agent $version not found on PyPI (or check failed) -- proceeding with publish (uv publish --check-url is the final guard)."
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 

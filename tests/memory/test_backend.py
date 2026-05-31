@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hive.memory.semantic import SemanticMemory
+from hive.memory.semantic import MemoryRecord, SemanticMemory
 from hive.memory.tfidf_backend import TFIDFBackend
 
 
@@ -182,3 +182,62 @@ class TestChromaBackendImport:
 
             with pytest.raises(ImportError, match="chromadb"):
                 await ChromaBackend.create()
+
+
+class TestCrossProcessReads:
+    """Reads must reflect on-disk appends from another process (no restart)."""
+
+    def _jsonl_path(self, tmp_path: Path) -> Path:
+        return tmp_path / "memory" / "test-agent" / "memories.jsonl"
+
+    def _external_line(self, agent_id: str, thought: str) -> str:
+        # Simulate a different process appending a note to the same file.
+        rec = MemoryRecord(memory_id=f"mem-{thought[:4]}", agent_id=agent_id, thought=thought)
+        return rec.model_dump_json() + "\n"
+
+    @pytest.mark.asyncio
+    async def test_recent_sees_out_of_band_append(self, tmp_path: Path) -> None:
+        backend = TFIDFBackend(tmp_path, "test-agent")
+        await backend.store("first note")
+        assert backend.count() == 1
+
+        # Out-of-band append by "another process" -- same backend instance, no reload call.
+        with open(self._jsonl_path(tmp_path), "a") as f:
+            f.write(self._external_line("test-agent", "external note added elsewhere"))
+
+        recent = backend.recent_sync(10)
+        thoughts = {r.thought for r in recent}
+        assert "external note added elsewhere" in thoughts  # visible without reconstruction
+        assert backend.count() == 2
+
+    @pytest.mark.asyncio
+    async def test_search_and_async_recent_see_external_append(self, tmp_path: Path) -> None:
+        backend = TFIDFBackend(tmp_path, "test-agent")
+        await backend.store("agent wrote this")
+        with open(self._jsonl_path(tmp_path), "a") as f:
+            f.write(self._external_line("test-agent", "pineapple harvest schedule"))
+
+        assert any(r.thought == "pineapple harvest schedule" for r in await backend.recent(10))
+        results = await backend.search("pineapple harvest")
+        assert any(r.thought == "pineapple harvest schedule" for r in results)
+
+    @pytest.mark.asyncio
+    async def test_same_process_writes_still_visible(self, tmp_path: Path) -> None:
+        """No regression: a note stored by this backend is immediately visible."""
+        backend = TFIDFBackend(tmp_path, "test-agent")
+        await backend.store("my own note")
+        assert backend.count() == 1
+        assert any(r.thought == "my own note" for r in backend.recent_sync(5))
+
+    @pytest.mark.asyncio
+    async def test_tolerates_partial_last_line(self, tmp_path: Path) -> None:
+        backend = TFIDFBackend(tmp_path, "test-agent")
+        await backend.store("complete note")
+        # A concurrent appender mid-write leaves a truncated JSON line.
+        with open(self._jsonl_path(tmp_path), "a") as f:
+            f.write('{"memory_id": "mem-partial", "agent_id": "test-agent", "thoug')
+
+        recent = backend.recent_sync(10)  # must not raise
+        thoughts = {r.thought for r in recent}
+        assert "complete note" in thoughts
+        assert backend.count() == 1  # the partial line is skipped
