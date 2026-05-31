@@ -533,6 +533,14 @@ class Agent:
                     output = f"Unknown tool: {tc.name}"
                 messages.append(Message.tool_result(tc.id, output))
 
+        # Tool budget exhausted: nudge toward a plain-text wrap-up so the model doesn't
+        # emit another tool call on this no-tools request (which strict providers reject).
+        messages.append(
+            Message.system(
+                "Your tool budget is exhausted. Answer the user in plain text. "
+                "Do not call any tools."
+            )
+        )
         final_result = await self._model.generate_with_metadata(
             messages,
             None,

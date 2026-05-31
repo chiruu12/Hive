@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.1] -- 2026-05-31
+
+### Fixed
+- **No-tools tool-call recovery**: when a provider (e.g. Groq) rejects a tool call made on a no-tools request (`tool_use_failed`), the OpenAI-compatible adapter now retries once with a text-only instruction and falls back to clean text instead of surfacing a 400 -- so a multi-action turn (e.g. "make three notes") completes after its tools run. Covers both `generate_with_metadata` and `generate_stream`. Detection is provider-agnostic (by error code/message); `Agent.run_once` also nudges the final wrap-up call toward plain text.
+
 ## [0.5.0] -- 2026-05-29
 
 Composable-core and daemon-scalability release. Most changes are additive; the public `Agent`, provider, and toolkit APIs stay backward compatible.
