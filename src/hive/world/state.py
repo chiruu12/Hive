@@ -61,9 +61,12 @@ class WorldState:
     """Manages the economy, jobs, skills, and agent finances."""
 
     def __init__(self, hive_dir: Path):
+        # Local import: registry imports Job/AVAILABLE_JOBS from this module.
+        from hive.world.registry import JobRegistry
+
         self._state_path = hive_dir / "world_state.json"
         self._finances: dict[str, AgentFinances] = {}
-        self._jobs: list[Job] = [j.model_copy() for j in AVAILABLE_JOBS]
+        self._jobs: list[Job] = [j.model_copy() for j in JobRegistry.default().all()]
         self._skills: dict[str, list[SkillProgress]] = {}
         self._cycle_count = 0
         self._load()

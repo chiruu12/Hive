@@ -4,8 +4,8 @@ import logging
 import random
 from pathlib import Path
 
-from hive.world.event_catalog import EVENT_MAP, EVENTS
 from hive.world.events import EventOutcome, LifeEvent
+from hive.world.registry import EventRegistry
 from hive.world.state import WorldState
 from hive.world.stats import AgentStats, StatsManager
 
@@ -24,9 +24,16 @@ class PendingFollowUp:
 class EventEngine:
     """Fires random life events and tracks follow-ups."""
 
-    def __init__(self, stats: StatsManager, world: WorldState, hive_dir: Path | None = None):
+    def __init__(
+        self,
+        stats: StatsManager,
+        world: WorldState,
+        hive_dir: Path | None = None,
+        events: EventRegistry | None = None,
+    ):
         self._stats = stats
         self._world = world
+        self._events = events or EventRegistry.default()
         self._pending: list[PendingFollowUp] = []
         self._history: list[EventOutcome] = []
         self._history_path = (hive_dir / "event_history.jsonl") if hive_dir else None
@@ -54,7 +61,7 @@ class EventEngine:
 
         due = [p for p in self._pending if p.agent_id == agent_id and p.fires_at_cycle <= cycle]
         for p in due:
-            ev = EVENT_MAP.get(p.event_id)
+            ev = self._events.get(p.event_id)
             if ev:
                 events_to_fire.append(ev)
             self._pending.remove(p)
@@ -140,7 +147,7 @@ class EventEngine:
             if outcome.agent_id == agent_id:
                 agent_recent.add(outcome.event_id)
                 count += 1
-        for ev in EVENTS:
+        for ev in self._events.all():
             if ev.min_cycles_alive > stats.cycles_alive:
                 continue
             if ev.event_id in agent_recent:

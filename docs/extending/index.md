@@ -472,3 +472,48 @@ def test_plugin_discovered():
     names = [tk.__name__ for tk in toolkits]
     assert "CalculatorToolkit" in names
 ```
+
+## 12. Custom World Content (Events & Jobs)
+
+The life-event and job catalogs are registry-driven (mirroring `StressorRegistry`).
+Register your own without editing the catalog modules, or pass a custom registry to
+an `EventEngine` / `WorldState` for an isolated content set.
+
+```python
+from hive.world.registry import EventRegistry, JobRegistry
+from hive.world.events import LifeEvent, Choice, StatEffect
+from hive.world.state import Job
+
+# Add a new life event to the default catalog
+EventRegistry.default().register(
+    LifeEvent(
+        event_id="found_wallet",
+        name="Found a Wallet",
+        description="You found a wallet on the street.",
+        category="luck",
+        choices=[
+            Choice(id="keep", description="Keep it", stat_effects=[StatEffect(stat="money", change=80)]),
+            Choice(id="return", description="Return it", stat_effects=[StatEffect(stat="happiness", change=8, change_type="percent")]),
+        ],
+    )
+)
+
+# Add a new job
+JobRegistry.default().register(Job(job_id="pilot", title="Pilot", salary=180.0, required_skills=["flying"]))
+```
+
+```python
+# Test
+def test_custom_event_registered():
+    from hive.world.registry import EventRegistry
+    from hive.world.events import LifeEvent
+
+    EventRegistry._reset()
+    reg = EventRegistry.default()
+    reg.register(LifeEvent(event_id="lucky", name="Lucky", description="!", category="luck", choices=[]))
+    assert reg.get("lucky") is not None
+```
+
+An `EventEngine(stats, world, events=my_registry)` fires only the events in
+`my_registry`; a `WorldState` seeds its jobs from `JobRegistry.default()` at
+construction, so register custom jobs before creating it.
