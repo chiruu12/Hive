@@ -230,6 +230,33 @@ class TestCrossProcessReads:
         assert any(r.thought == "my own note" for r in backend.recent_sync(5))
 
     @pytest.mark.asyncio
+    async def test_delete_preserves_external_append(self, tmp_path: Path) -> None:
+        """A full-file rewrite (delete) must not drop a note appended by another process."""
+        backend = TFIDFBackend(tmp_path, "test-agent")
+        mine = await backend.store("my own note")
+        # Another process appends a note after our last read.
+        with open(self._jsonl_path(tmp_path), "a") as f:
+            f.write(self._external_line("test-agent", "external survivor"))
+
+        await backend.delete(mine)  # rewrites the file from the in-memory set
+
+        thoughts = {r.thought for r in backend.recent_sync(10)}
+        assert "external survivor" in thoughts  # not overwritten by the delete's _save
+        assert "my own note" not in thoughts
+
+    @pytest.mark.asyncio
+    async def test_update_preserves_external_append(self, tmp_path: Path) -> None:
+        backend = TFIDFBackend(tmp_path, "test-agent")
+        mine = await backend.store("editable note")
+        with open(self._jsonl_path(tmp_path), "a") as f:
+            f.write(self._external_line("test-agent", "external survivor 2"))
+
+        await backend.update(mine, text="edited note")
+
+        thoughts = {r.thought for r in backend.recent_sync(10)}
+        assert {"edited note", "external survivor 2"} <= thoughts
+
+    @pytest.mark.asyncio
     async def test_tolerates_partial_last_line(self, tmp_path: Path) -> None:
         backend = TFIDFBackend(tmp_path, "test-agent")
         await backend.store("complete note")

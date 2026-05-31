@@ -129,6 +129,9 @@ class TFIDFBackend:
         return recs[:limit]
 
     async def delete(self, memory_id: str) -> None:
+        # Reload first: _save() rewrites the whole file from self._records, so
+        # without this an external append since the last read would be lost.
+        self._reload_if_changed()
         if memory_id in self._records:
             del self._records[memory_id]
             self._save()
@@ -152,6 +155,8 @@ class TFIDFBackend:
         text: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> bool:
+        # Reload first so a full-file _save() preserves external appends.
+        self._reload_if_changed()
         rec = self._records.get(memory_id)
         if rec is None:
             return False
@@ -167,6 +172,8 @@ class TFIDFBackend:
         return True
 
     async def consolidate(self, max_age_days: int = 30, min_access: int = 2) -> int:
+        # Reload first so a full-file _save() preserves external appends.
+        self._reload_if_changed()
         now = datetime.now(UTC)
         to_remove = []
         for mid, rec in self._records.items():
