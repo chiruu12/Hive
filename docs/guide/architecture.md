@@ -125,6 +125,7 @@ src/hive/
 | Custom model provider | Subclass `BaseProvider` | `models/base.py` | See EXTENDING.md |
 | Custom stressor | `StressorRegistry.default().register(...)` | `agents/suffering.py` | See EXTENDING.md |
 | Custom A2A pattern | Subclass `A2APattern`, register via `PatternRegistry` | `interactions/registry.py` | See EXTENDING.md |
+| Custom world content | `EventRegistry`/`JobRegistry` `.default().register(...)` | `world/registry.py` | See EXTENDING.md |
 | Custom goal strategy | Implement `GoalStrategy` protocol | `agents/goal_strategy.py` | See EXTENDING.md |
 | Daemon hooks | `daemon.hooks.on("event", callback)` | `daemon/hooks.py` | See EXTENDING.md |
 | Custom agent profile | YAML file in `profiles/` | `agents/profile.py` | See EXTENDING.md |

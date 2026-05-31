@@ -418,3 +418,31 @@ Key points:
 - **Agent creation is cheap** (~1ms) -- no disk I/O in the constructor
 - **Toolkits are reusable** -- call `rebind(agent_id)` to switch context between requests. `bind()` raises `ToolkitAlreadyBoundError` if the toolkit is already bound to a different agent (prevents accidental state leakage in daemon mode)
 - **Memory backends are pluggable** -- swap `TFIDFBackend` for `ChromaBackend` via `SemanticMemory(hive_dir, agent_id, backend=ChromaBackend(...))`
+
+## 10. Custom World Content (Events & Jobs)
+
+The simulation's life-event and job catalogs are registry-driven (mirroring `StressorRegistry`). Register your own content without editing the catalog modules, or pass a custom `EventRegistry` to an `EventEngine` for an isolated set.
+
+```python
+from hive.world.registry import EventRegistry, JobRegistry
+from hive.world.events import Choice, LifeEvent, StatEffect
+from hive.world.state import Job
+
+EventRegistry.default().register(
+    LifeEvent(
+        event_id="found_wallet",
+        name="Found a Wallet",
+        description="You found a wallet on the street.",
+        category="luck",
+        choices=[
+            Choice(id="keep", description="Keep it", stat_effects=[StatEffect(stat="money", change=80)]),
+        ],
+    )
+)
+JobRegistry.default().register(Job(job_id="pilot", title="Pilot", salary=180.0, required_skills=["flying"]))
+```
+
+Key points:
+- **`EventRegistry`/`JobRegistry`** expose `register()`, `get()`, `all()`, and a singleton `default()` seeded from the built-in catalogs (`world/registry.py`)
+- **`EventEngine(stats, world, events=my_registry)`** fires only the events in `my_registry`
+- **`WorldState`** seeds its jobs from `JobRegistry.default()` at construction -- register custom jobs before creating it
