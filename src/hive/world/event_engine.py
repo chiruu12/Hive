@@ -127,6 +127,8 @@ class EventEngine:
             stat_changes=stat_changes,
             follow_ups_triggered=follow_ups,
             cycle=cycle,
+            stressor_added=choice.stressor,
+            stressor_resolved=choice.resolves_stressor,
         )
         self._history.append(outcome)
         self._persist_outcome(outcome)

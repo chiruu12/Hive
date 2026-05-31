@@ -333,6 +333,8 @@ EVENTS: list[LifeEvent] = [
                     StatEffect(stat="money", change=-1000),
                     StatEffect(stat="happiness", change=-25, change_type="percent"),
                 ],
+                stressor="financial_strain",
+                stressor_severity=0.4,
             ),
         ],
     ),
@@ -406,6 +408,7 @@ EVENTS: list[LifeEvent] = [
                     StatEffect(stat="money", change=300),
                     StatEffect(stat="happiness", change=5, change_type="percent"),
                 ],
+                resolves_stressor="financial_strain",
             ),
             Choice(
                 id="treat_yourself",
@@ -433,6 +436,7 @@ EVENTS: list[LifeEvent] = [
                     StatEffect(stat="happiness", change=10, change_type="percent"),
                     StatEffect(stat="money", change=-100),
                 ],
+                resolves_stressor="burnout",
             ),
             Choice(
                 id="push_through",
@@ -441,6 +445,8 @@ EVENTS: list[LifeEvent] = [
                     StatEffect(stat="energy", change=-0.2),
                     StatEffect(stat="health", change=-0.1),
                 ],
+                stressor="burnout",
+                stressor_severity=0.35,
             ),
         ],
     ),
