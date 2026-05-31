@@ -31,6 +31,29 @@ from hive.runtime.types import (
 
 logger = logging.getLogger(__name__)
 
+_TEXT_ONLY_NUDGE = (
+    "You have no tools available. Reply to the user in plain text. Do not call any tools."
+)
+
+
+def _is_tool_use_failed(error: Exception) -> bool:
+    """True when a provider rejected a tool call made on a no-tools request.
+
+    Provider-agnostic: matches Groq's ``tool_use_failed`` error code (in the
+    exception's ``code`` or ``body['error']['code']``) or a message indicating the
+    model called a tool when none were offered. OpenAI tolerates this by coercing
+    the call to text; stricter providers (Groq) return a 400 instead.
+    """
+    if getattr(error, "code", None) == "tool_use_failed":
+        return True
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict) and err.get("code") == "tool_use_failed":
+            return True
+    msg = str(getattr(error, "message", "") or error).lower()
+    return "model called a tool" in msg
+
 
 class OpenAI(BaseProvider):
     """OpenAI provider with native function calling.
@@ -141,7 +164,17 @@ class OpenAI(BaseProvider):
         if tools:
             kwargs["tools"] = tools_to_openai(tools)
 
-        response = await self._retry_with_backoff(self._client.chat.completions.create, **kwargs)
+        try:
+            response = await self._retry_with_backoff(
+                self._client.chat.completions.create, **kwargs
+            )
+        except Exception as e:
+            if not _is_tool_use_failed(e):
+                raise
+            # The model called a tool on a no-tools request and the provider rejected it
+            # (e.g. Groq's tool_use_failed 400). Any tools already ran, so recover the turn
+            # with a bounded text-only retry instead of surfacing the error.
+            return await self._recover_no_tools(messages, temperature, max_tokens, t0)
         duration_ms = int((time.time() - t0) * 1000)
 
         input_tokens = 0
@@ -159,6 +192,56 @@ class OpenAI(BaseProvider):
             output_tokens=output_tokens,
             cost_usd=cost,
             duration_ms=duration_ms,
+        )
+
+    async def _recover_no_tools(
+        self,
+        messages: list[Message],
+        temperature: float,
+        max_tokens: int,
+        t0: float,
+    ) -> GenerateResult:
+        """Retry a no-tools call once with an explicit text-only instruction.
+
+        Used after a provider rejects a tool call made when no tools were offered.
+        The tools already ran, so the turn must still complete: if the retry also
+        fails, return a clean empty-text result rather than raising.
+        """
+        recovery_messages = messages_to_openai([*messages, Message.system(_TEXT_ONLY_NUDGE)])
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": recovery_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        try:
+            response = await self._retry_with_backoff(
+                self._client.chat.completions.create, **kwargs
+            )
+        except Exception:
+            logger.warning(
+                "No-tools recovery retry for model %s failed; returning empty text",
+                self._model,
+            )
+            return GenerateResult(
+                message=Message.assistant(""),
+                model=self._model,
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+
+        input_tokens = 0
+        output_tokens = 0
+        if response.usage:
+            input_tokens = response.usage.prompt_tokens or 0
+            output_tokens = response.usage.completion_tokens or 0
+
+        return GenerateResult(
+            message=openai_response_to_message(response),
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=estimate_cost(self._model, input_tokens, output_tokens),
+            duration_ms=int((time.time() - t0) * 1000),
         )
 
     async def generate_stream(
@@ -187,8 +270,50 @@ class OpenAI(BaseProvider):
         if tools:
             kwargs["tools"] = tools_to_openai(tools)
 
-        stream = await self._client.chat.completions.create(**kwargs)
+        try:
+            stream = await self._client.chat.completions.create(**kwargs)
+            async for event in self._consume_stream(stream, t0):
+                yield event
+            return
+        except Exception as e:
+            if not _is_tool_use_failed(e):
+                raise
 
+        # The model called a tool on a no-tools request and the provider rejected it.
+        # tool_use_failed means the model chose a tool over text, so no content streamed
+        # yet -- retry once with a text-only instruction; fall back to clean empty text.
+        recovery_kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages_to_openai([*messages, Message.system(_TEXT_ONLY_NUDGE)]),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        try:
+            stream = await self._client.chat.completions.create(**recovery_kwargs)
+            async for event in self._consume_stream(stream, t0):
+                yield event
+        except Exception:
+            logger.warning(
+                "No-tools recovery stream for model %s failed; returning empty text",
+                self._model,
+            )
+            yield StreamEvent(
+                type=StreamEventType.DONE,
+                result=GenerateResult(
+                    message=Message.assistant(""),
+                    model=self._model,
+                    duration_ms=int((time.time() - t0) * 1000),
+                ),
+            )
+
+    async def _consume_stream(self, stream: Any, t0: float) -> AsyncIterator[StreamEvent]:
+        """Emit TEXT deltas from a chat-completion stream, then a terminal DONE event.
+
+        Accumulates tool-call fragments into the final message so callers see a
+        complete ``GenerateResult`` on DONE.
+        """
         content_parts: list[str] = []
         # tool-call index -> accumulated {id, name, args}
         tool_acc: dict[int, dict[str, str]] = {}

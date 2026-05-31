@@ -1,3 +1,38 @@
+# Hive v0.5.1 Release Notes
+
+## Headline: Resilient No-Tools Wrap-Up Across Strict Providers
+
+A focused reliability fix. When `Agent.run_once` finishes its tool loop it makes a
+final wrap-up call with no tools offered. If the model still emits a tool call on
+that call -- common on multi-action requests -- strict OpenAI-compatible providers
+(notably **Groq**) reject it with a `tool_use_failed` 400, failing the whole turn
+even though the tools that ran during the loop already persisted.
+
+## What's Fixed
+
+- **Provider-agnostic recovery** in the OpenAI-compatible adapter: a `tool_use_failed`
+  rejection on a no-tools request is detected by error code/message (no provider
+  hardcoding) and recovered with a single bounded retry carrying a strong text-only
+  instruction. If the retry still fails, the turn completes with clean text instead
+  of raising -- the tools already ran. Covers both `generate_with_metadata` and
+  `generate_stream`.
+- **Belt-and-suspenders nudge** at the agent layer: `Agent.run_once` now appends a
+  "tool budget exhausted, reply in plain text" system message before the final
+  wrap-up call, reducing the chance of hitting the error at all.
+
+A multi-action turn (e.g. "make three notes") now completes on Groq without surfacing
+a 400.
+
+## Upgrade
+
+```bash
+pip install --upgrade hive-agent
+```
+
+No code changes required. The happy path (tools provided, or no error) is unchanged.
+
+---
+
 # Hive v0.5.0 Release Notes
 
 ## Headline: A Composable Core That Scales
