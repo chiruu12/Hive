@@ -76,6 +76,10 @@ class TFIDFBackend:
         self._stat = self._current_stat()
 
     async def store(self, text: str, metadata: dict[str, Any] | None = None) -> str:
+        # Reload first: _append() refreshes self._stat, so without this an external
+        # append since the last read would be masked (stat matches but the record
+        # was never loaded) and later erased by a full-file _save().
+        self._reload_if_changed()
         mid = f"mem-{uuid4().hex[:8]}"
         rec = MemoryRecord(
             memory_id=mid,

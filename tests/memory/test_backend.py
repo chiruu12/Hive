@@ -257,6 +257,30 @@ class TestCrossProcessReads:
         assert {"edited note", "external survivor 2"} <= thoughts
 
     @pytest.mark.asyncio
+    async def test_store_does_not_mask_prior_external_append(self, tmp_path: Path) -> None:
+        """store() must reload first so an earlier external append isn't masked/erased.
+
+        Greptile sequence: external append X -> store(Y) -> delete(old) must keep X.
+        """
+        backend = TFIDFBackend(tmp_path, "test-agent")
+        old = await backend.store("old note")
+        # External append BEFORE our next store -- store() must pick it up.
+        with open(self._jsonl_path(tmp_path), "a") as f:
+            f.write(self._external_line("test-agent", "external before store"))
+
+        await backend.store("my new note")  # must not mask the external record
+
+        thoughts = {r.thought for r in backend.recent_sync(10)}
+        assert "external before store" in thoughts  # visible, not masked
+        assert {"old note", "my new note"} <= thoughts
+
+        # And a subsequent full-file rewrite must not erase the external record.
+        await backend.delete(old)
+        thoughts_after = {r.thought for r in backend.recent_sync(10)}
+        assert "external before store" in thoughts_after
+        assert "old note" not in thoughts_after
+
+    @pytest.mark.asyncio
     async def test_tolerates_partial_last_line(self, tmp_path: Path) -> None:
         backend = TFIDFBackend(tmp_path, "test-agent")
         await backend.store("complete note")
