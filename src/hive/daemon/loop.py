@@ -531,6 +531,13 @@ class HiveDaemon:
                 await self._hooks.emit(
                     "goal_abandoned", agent_id=agent.agent_id, goal_id=active_goal["goal_id"]
                 )
+                # D1: abandonment is part of the agent's story too (success path
+                # already records narrative; this closes the gap).
+                self._identity.update_narrative(
+                    agent.agent_id,
+                    active_goal["objective"],
+                    f"Abandoned: {outcome.summary}",
+                )
                 if persona is not None:
                     persona.update_from_event("goal_abandoned", outcome.summary)
                 self._specialization.record(
@@ -567,6 +574,9 @@ class HiveDaemon:
             if self._economy_enabled and self._ctx.world is not None:
                 world_status = self._ctx.world.get_status(agent.agent_id)
 
+            # D1: feed structured stats into goal generation (economy-gated).
+            agent_stats = self._stats.get(agent.agent_id) if self._stats else None
+
             notepad_content = self._notepad.get_tail(agent.agent_id)
 
             pending_a2a = await self._a2a_store.get_pending_requests(agent.agent_id, limit=3)
@@ -593,6 +603,7 @@ class HiveDaemon:
                     world_status=world_status,
                     notepad_content=notepad_content,
                     economy_enabled=self._economy_enabled,
+                    agent_stats=agent_stats,
                 )
                 result_goal = await self._goal_strategy.generate_goal(ctx)
                 if result_goal is not None:
@@ -621,6 +632,7 @@ class HiveDaemon:
                     world_status=world_status,
                     notepad_content=notepad_content,
                     persona=persona,
+                    stats=agent_stats,
                 )
                 goal = await existence.generate_goal(suffering, peers, nudges)
 
@@ -733,6 +745,30 @@ class HiveDaemon:
                     self._cycle_count,
                 )
 
+                # D1: feed the chosen outcome back into the suffering system.
+                suffering = self._get_suffering(agent.agent_id)
+                if outcome.stressor_added:
+                    chosen = next((c for c in event.choices if c.id == outcome.choice_id), None)
+                    severity = chosen.stressor_severity if chosen else None
+                    suffering.add_stressor(
+                        outcome.stressor_added,
+                        description=f"Triggered by life event: {event.name}",
+                        observable_condition="Resolved by a positive life event or recovery",
+                        initial_severity=severity,
+                    )
+                if outcome.stressor_resolved:
+                    suffering.resolve(
+                        outcome.stressor_resolved,
+                        note=f"Relieved by life event: {event.name}",
+                    )
+
+                # D1: record the event in the agent's narrative (not just memory).
+                self._identity.update_narrative(
+                    agent.agent_id,
+                    f"Life event: {event.name}",
+                    outcome.choice_description,
+                )
+
                 session_id = f"sess-{agent.agent_id}"
                 await self._emit(
                     agent.agent_id,
@@ -743,6 +779,8 @@ class HiveDaemon:
                         "choice": outcome.choice_description,
                         "stat_changes": outcome.stat_changes,
                         "follow_ups": outcome.follow_ups_triggered,
+                        "stressor_added": outcome.stressor_added,
+                        "stressor_resolved": outcome.stressor_resolved,
                     },
                 )
 

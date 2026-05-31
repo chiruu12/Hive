@@ -146,20 +146,27 @@ Each heartbeat (default 10s):
         - Pursue goal via Agent ReAct loop
         - Assess conditions (fire/resolve stressors)
         - On success: emit("goal_completed"), checkpoint, update narrative
-        - On failure: emit("goal_abandoned"), record stressor
+        - On failure: emit("goal_abandoned"), update narrative, record stressor
      f. If idle:
         - Check scheduled goals
-        - If custom GoalStrategy: call generate_goal(GoalContext)
-        - Else: run ExistenceLoop → LLM generates goal
+        - Generate a goal (custom GoalStrategy or ExistenceLoop). The prompt
+          includes the agent's stats (health/energy/happiness/reputation) so a
+          drained or unwell agent steers toward recovery (D1)
         - emit("goal_generated")
      g. Log suffering state
      h. emit("suffering_changed")
      i. emit("cycle_end")
   3. Auto-kill expired sub-agents
   4. Every 5 cycles: swarm learning
-  5. If economy: process payday + life events
+  5. If economy: process payday + life events. A life-event Choice may declare a
+     `stressor` it causes or `resolves_stressor` it relieves -- the daemon feeds
+     these into the agent's suffering, and records the event in its narrative (D1)
   6. Sleep heartbeat seconds
 ```
+
+**Feedback loops (D1).** The world, suffering, goals, and identity influence each
+other: life events add/resolve stressors and append to the narrative; agent stats
+feed goal generation; and both goal *and* event outcomes shape the agent's story.
 
 ## Configuration
 

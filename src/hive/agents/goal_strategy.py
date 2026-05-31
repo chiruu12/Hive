@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from hive.agents.profile import AgentProfile
     from hive.agents.suffering import SufferingState
     from hive.runtime.persona import Persona
+    from hive.world.stats import AgentStats
 
 
 @dataclass
@@ -31,6 +32,7 @@ class GoalContext:
     world_status: str = ""
     notepad_content: str = ""
     economy_enabled: bool = True
+    agent_stats: AgentStats | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
 

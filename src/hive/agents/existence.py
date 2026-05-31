@@ -18,6 +18,7 @@ from hive.runtime.types import Message
 
 if TYPE_CHECKING:
     from hive.runtime.persona import Persona
+    from hive.world.stats import AgentStats
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class ExistenceLoop:
         world_status: str = "",
         notepad_content: str = "",
         persona: Persona | None = None,
+        stats: AgentStats | None = None,
     ):
         self._agent_id = agent_id
         self._profile = profile
@@ -54,6 +56,7 @@ class ExistenceLoop:
         self._world_status = world_status
         self._notepad_content = notepad_content
         self._persona = persona
+        self._stats = stats
 
     async def _emit(self, event_type: EventType, data: dict[str, Any]) -> None:
         event = HiveEvent(
@@ -216,6 +219,20 @@ class ExistenceLoop:
 
         if self._economy_enabled and self._world_status:
             sections.append(f"\n--- Your economic status ---\n{self._world_status}")
+
+        if self._stats is not None:
+            s = self._stats
+            condition = (
+                f"- Health: {s.health:.0%}\n"
+                f"- Energy: {s.energy:.0%}\n"
+                f"- Happiness: {s.happiness:.0%}\n"
+                f"- Reputation: {s.reputation:.0%}"
+            )
+            sections.append(
+                "\n--- Your current condition ---\n"
+                f"{condition}\n"
+                "Let low stats steer your goal (rest when drained, recover when unwell)."
+            )
 
         suffering_frag = suffering.prompt_fragment()
         if suffering_frag:
