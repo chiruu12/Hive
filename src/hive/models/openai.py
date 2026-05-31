@@ -299,19 +299,25 @@ class OpenAI(BaseProvider):
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+        recovered_text: list[str] = []
         try:
             stream = await self._client.chat.completions.create(**recovery_kwargs)
             async for event in self._consume_stream(stream, t0):
+                if event.type == StreamEventType.TEXT and event.text:
+                    recovered_text.append(event.text)
                 yield event
         except Exception:
             logger.warning(
-                "No-tools recovery stream for model %s failed; returning empty text",
+                "No-tools recovery stream for model %s failed; returning streamed text so far",
                 self._model,
             )
+            # If the recovery stream errored mid-flight, _consume_stream never emitted its
+            # terminal DONE -- synthesize one carrying whatever text already reached the
+            # caller, so consumers reconstructing from DONE.result don't lose it.
             yield StreamEvent(
                 type=StreamEventType.DONE,
                 result=GenerateResult(
-                    message=Message.assistant(""),
+                    message=Message.assistant("".join(recovered_text)),
                     model=self._model,
                     duration_ms=int((time.time() - t0) * 1000),
                 ),

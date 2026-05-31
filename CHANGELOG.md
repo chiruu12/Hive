@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.2] — 2026-05-31
+
+### Fixed
+- **Hardened no-tools recovery** (review follow-up to 0.5.1) — streaming recovery now fires only when the `tool_use_failed` occurs *before* any text reaches the caller (no duplicated output), and a recovery stream that errors after emitting text preserves that text in its terminal result. A `tool_use_failed` on a request that *did* offer tools is no longer swallowed. The agent-layer wrap-up nudge and the adapter's text-only recovery nudge are now `user`-role messages (some strict providers reject mid-thread `system` messages); the agent nudge is sent only for the wrap-up call and isn't written to the logged conversation.
+
+### Added
+- **Phase 3 simulation core** — registry-driven world catalogs (events & jobs) and wired simulation feedback loops.
+
+### CI
+- Release workflow skips publishing when the version already exists on PyPI, so moving or re-pushing a tag can't trigger a conflicting re-upload.
+
 ## [0.5.1] — 2026-05-31
 
 ### Fixed

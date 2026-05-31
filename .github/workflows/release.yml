@@ -21,7 +21,20 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Check whether this version is already on PyPI
+        id: pypi_check
+        run: |
+          version="$(grep -m1 -E '^version = ' pyproject.toml | sed -E 's/version = "([^"]+)"/\1/')"
+          echo "version=$version"
+          if curl -sf -o /dev/null "https://pypi.org/pypi/hive-agent/$version/json"; then
+            echo "hive-agent $version is already on PyPI -- skipping publish (a moved/re-pushed tag can't re-upload an immutable version)."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to PyPI
+        if: steps.pypi_check.outputs.exists == 'false'
         run: uv publish --token "$PYPI_TOKEN" --check-url https://pypi.org/simple/
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
