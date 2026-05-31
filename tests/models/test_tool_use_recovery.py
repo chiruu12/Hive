@@ -38,7 +38,7 @@ def _response(text: str, prompt_tokens: int = 7, completion_tokens: int = 4) -> 
 
 
 def _has_nudge(messages: list[dict[str, Any]]) -> bool:
-    return any(m.get("role") == "system" and m.get("content") == _TEXT_ONLY_NUDGE for m in messages)
+    return any(m.get("role") == "user" and m.get("content") == _TEXT_ONLY_NUDGE for m in messages)
 
 
 def _stream_chunk(content: str | None = None, usage: Any = None) -> Any:
@@ -113,6 +113,23 @@ class TestGenerateWithMetadataRecovery:
         with pytest.raises(ValueError, match="boom"):
             await p.generate_with_metadata([Message.user("hi")], None)
 
+    @pytest.mark.asyncio
+    async def test_tool_use_failed_with_tools_offered_propagates(self) -> None:
+        # A tool_use_failed on a request that *did* offer tools is a real error
+        # (e.g. malformed schema) -- it must not be swallowed by recovery.
+        p = OpenAI(api_key="sk-test")
+        calls: list[dict[str, Any]] = []
+
+        async def fake_create(**kwargs: Any) -> Any:
+            calls.append(kwargs)
+            raise _ToolUseFailedError()
+
+        p._client.chat.completions.create = fake_create
+        tools = [{"name": "add", "description": "Add.", "input_schema": {"type": "object"}}]
+        with pytest.raises(_ToolUseFailedError):
+            await p.generate_with_metadata([Message.user("add")], tools)
+        assert len(calls) == 1  # no recovery retry attempted
+
 
 class TestGenerateStreamRecovery:
     @pytest.mark.asyncio
@@ -157,3 +174,44 @@ class TestGenerateStreamRecovery:
         done = events[-1]
         assert done.type == StreamEventType.DONE
         assert done.result.message.content == ""
+
+    @pytest.mark.asyncio
+    async def test_error_after_text_propagates_without_duplicate(self) -> None:
+        # If the stream fails *after* text already reached the caller, recovery would
+        # duplicate output -- so the error must propagate instead of recovering.
+        p = OpenAI(api_key="sk-test")
+        calls: list[dict[str, Any]] = []
+
+        async def fake_create(**kwargs: Any) -> Any:
+            calls.append(kwargs)
+
+            async def gen() -> Any:
+                yield _stream_chunk(content="partial ")
+                raise _ToolUseFailedError()
+
+            return gen()
+
+        p._client.chat.completions.create = fake_create
+        events: list[Any] = []
+        with pytest.raises(_ToolUseFailedError):
+            async for event in p.generate_stream([Message.user("make three notes")], None):
+                events.append(event)
+
+        assert [e.text for e in events if e.type == StreamEventType.TEXT] == ["partial "]
+        assert len(calls) == 1  # no recovery retry after content streamed
+
+    @pytest.mark.asyncio
+    async def test_tool_use_failed_with_tools_offered_propagates(self) -> None:
+        p = OpenAI(api_key="sk-test")
+        calls: list[dict[str, Any]] = []
+
+        async def fake_create(**kwargs: Any) -> Any:
+            calls.append(kwargs)
+            raise _ToolUseFailedError()
+
+        p._client.chat.completions.create = fake_create
+        tools = [{"name": "add", "description": "Add.", "input_schema": {"type": "object"}}]
+        with pytest.raises(_ToolUseFailedError):
+            async for _ in p.generate_stream([Message.user("add")], tools):
+                pass
+        assert len(calls) == 1  # no recovery retry attempted

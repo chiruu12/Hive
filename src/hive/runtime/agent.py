@@ -535,14 +535,18 @@ class Agent:
 
         # Tool budget exhausted: nudge toward a plain-text wrap-up so the model doesn't
         # emit another tool call on this no-tools request (which strict providers reject).
-        messages.append(
-            Message.system(
+        # The nudge is a user-role message (mid-thread system messages are rejected by some
+        # strict providers) sent only for this call -- it isn't appended to the logged
+        # conversation. The adapter's text-only recovery is the real safety net.
+        wrap_up_messages = [
+            *messages,
+            Message.user(
                 "Your tool budget is exhausted. Answer the user in plain text. "
                 "Do not call any tools."
-            )
-        )
+            ),
+        ]
         final_result = await self._model.generate_with_metadata(
-            messages,
+            wrap_up_messages,
             None,
             self._temperature,
             self._gen_max_tokens,

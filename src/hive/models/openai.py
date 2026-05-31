@@ -169,7 +169,9 @@ class OpenAI(BaseProvider):
                 self._client.chat.completions.create, **kwargs
             )
         except Exception as e:
-            if not _is_tool_use_failed(e):
+            # Recover only the no-tools case this targets: a tool_use_failed on a request
+            # that *did* offer tools (e.g. a malformed schema) is a real error, so re-raise.
+            if tools or not _is_tool_use_failed(e):
                 raise
             # The model called a tool on a no-tools request and the provider rejected it
             # (e.g. Groq's tool_use_failed 400). Any tools already ran, so recover the turn
@@ -207,7 +209,7 @@ class OpenAI(BaseProvider):
         The tools already ran, so the turn must still complete: if the retry also
         fails, return a clean empty-text result rather than raising.
         """
-        recovery_messages = messages_to_openai([*messages, Message.system(_TEXT_ONLY_NUDGE)])
+        recovery_messages = messages_to_openai([*messages, Message.user(_TEXT_ONLY_NUDGE)])
         kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": recovery_messages,
@@ -270,21 +272,28 @@ class OpenAI(BaseProvider):
         if tools:
             kwargs["tools"] = tools_to_openai(tools)
 
+        # Track whether any text reached the caller: once it has, recovery would yield a
+        # duplicate run of events, so we only recover when the failure happens before any
+        # content streamed -- the realistic tool_use_failed case (the model chose a tool
+        # over text). Anything after that, or with tools offered, re-raises.
+        yielded_text = False
         try:
             stream = await self._client.chat.completions.create(**kwargs)
             async for event in self._consume_stream(stream, t0):
+                if event.type == StreamEventType.TEXT:
+                    yielded_text = True
                 yield event
             return
         except Exception as e:
-            if not _is_tool_use_failed(e):
+            if yielded_text or tools or not _is_tool_use_failed(e):
                 raise
 
-        # The model called a tool on a no-tools request and the provider rejected it.
-        # tool_use_failed means the model chose a tool over text, so no content streamed
-        # yet -- retry once with a text-only instruction; fall back to clean empty text.
+        # The model called a tool on a no-tools request and the provider rejected it before
+        # any content streamed -- retry once with a text-only instruction; fall back to
+        # clean empty text.
         recovery_kwargs: dict[str, Any] = {
             "model": self._model,
-            "messages": messages_to_openai([*messages, Message.system(_TEXT_ONLY_NUDGE)]),
+            "messages": messages_to_openai([*messages, Message.user(_TEXT_ONLY_NUDGE)]),
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": True,
