@@ -296,9 +296,20 @@ class HiveStore:
     def __init__(self, db_path: Path):
         self._db_path = db_path
 
+    # Busy-wait this long for a lock before raising "database is locked", so
+    # concurrent agent cycles (and other processes) queue instead of erroring.
+    _BUSY_TIMEOUT_MS = 5000
+
     @asynccontextmanager
     async def _connect(self, foreign_keys: bool = False) -> AsyncIterator[aiosqlite.Connection]:
-        """Open a connection.
+        """Open a connection with WAL-friendly contention settings.
+
+        Connections are opened per operation rather than pooled: aiosqlite's
+        worker thread is non-daemon, so a long-lived shared connection without
+        disciplined teardown at every call site would block interpreter exit.
+        Cross-process / concurrent-cycle contention is instead handled by WAL
+        journaling (set persistently in ``initialize``) plus a busy timeout, so
+        readers and a writer no longer lock each other out.
 
         SQLite defaults ``foreign_keys`` to OFF per connection. We keep it off by
         default so child rows (tasks/alarms/goals) can be written for agents that
@@ -308,12 +319,19 @@ class HiveStore:
         fires only if FKs are on at the time of the DELETE.
         """
         async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(f"PRAGMA busy_timeout = {self._BUSY_TIMEOUT_MS}")
             if foreign_keys:
                 await db.execute("PRAGMA foreign_keys = ON")
             yield db
 
     async def initialize(self) -> None:
         async with aiosqlite.connect(self._db_path) as db:
+            # WAL lets readers and a single writer proceed concurrently (across
+            # the daemon's parallel cycles and other processes like the MCP
+            # server). It is persistent in the DB header, so setting it once
+            # here applies to every future connection.
+            await db.execute("PRAGMA journal_mode = WAL")
+            await db.execute(f"PRAGMA busy_timeout = {self._BUSY_TIMEOUT_MS}")
             # Keep foreign_keys OFF during schema setup: the cascade migration
             # rebuilds child tables (DROP/RENAME), which must not trip FK checks.
             # PRAGMA is a no-op inside a transaction, so set it before any DML.

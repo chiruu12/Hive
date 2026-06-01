@@ -200,6 +200,34 @@ async def _insert_agent_with_children(db_path: Path) -> None:
         await db.commit()
 
 
+class TestConcurrencySettings:
+    @pytest.mark.asyncio
+    async def test_wal_mode_enabled_persistently(self, tmp_path: Path) -> None:
+        """initialize() switches the DB to WAL, which sticks for new connections."""
+        db_path = tmp_path / "state.db"
+        await HiveStore(db_path).initialize()
+
+        # A brand-new connection (no PRAGMA) should report WAL -- it's persistent.
+        async with aiosqlite.connect(db_path) as db:
+            mode = (await (await db.execute("PRAGMA journal_mode")).fetchone())[0]
+        assert mode.lower() == "wal"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_writers_no_lock_errors(self, tmp_path: Path) -> None:
+        """Many concurrent writes under WAL + busy_timeout complete without errors."""
+        import asyncio
+
+        store = HiveStore(tmp_path / "state.db")
+        await store.initialize()
+
+        async def writer(i: int) -> None:
+            await store.save_nudge(f"n-{i}", f"agent-{i % 4}", f"msg {i}")
+
+        await asyncio.gather(*(writer(i) for i in range(40)))
+        # No exception == no "database is locked". Spot-check a couple landed.
+        assert await store.get_pending_nudges("agent-0")
+
+
 class TestCascades:
     @pytest.mark.asyncio
     async def test_delete_agent_cascades_to_children(self, tmp_path: Path) -> None:
