@@ -280,3 +280,37 @@ class TestCascades:
         async with aiosqlite.connect(db_path) as db:
             cur = await db.execute("SELECT COUNT(*) FROM goals")
             assert (await cur.fetchone())[0] == 0
+
+    @pytest.mark.asyncio
+    async def test_migration_recovers_from_mid_swap_crash(self, tmp_path: Path) -> None:
+        """Crash after DROP {table} but before RENAME must not lose data on re-run.
+
+        Simulates that window for `goals`: the table is gone and `goals_new`
+        holds the only copy. A re-run must finish the swap, not drop the data.
+        """
+        db_path = tmp_path / "state.db"
+        store = HiveStore(db_path)
+        await store.initialize()  # fresh v2
+        await _insert_agent_with_children(db_path)
+
+        # Reproduce the interrupted-swap on-disk state: goals -> goals_new, v1.
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("ALTER TABLE goals RENAME TO goals_new")
+            await db.execute("PRAGMA user_version = 1")
+            await db.commit()
+
+        await HiveStore(db_path).initialize()  # must recover, not destroy
+
+        async with aiosqlite.connect(db_path) as db:
+            version = (await (await db.execute("PRAGMA user_version")).fetchone())[0]
+            cur = await db.execute("SELECT objective FROM goals WHERE goal_id = 'g1'")
+            row = await cur.fetchone()
+            # The leftover *_new table is gone after a clean run.
+            cur = await db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='goals_new'"
+            )
+            leftover = await cur.fetchone()
+
+        assert version == LATEST_SCHEMA_VERSION
+        assert row is not None and row[0] == "obj"  # data recovered, not lost
+        assert leftover is None

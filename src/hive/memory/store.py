@@ -266,14 +266,39 @@ async def _migration_1(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE agents ADD COLUMN cycles_lived INTEGER DEFAULT 0")
 
 
+async def _table_exists(db: aiosqlite.Connection, name: str) -> bool:
+    cursor = await db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+    )
+    return await cursor.fetchone() is not None
+
+
+async def _recover_interrupted_rebuilds(db: aiosqlite.Connection) -> None:
+    """Finish a table rebuild interrupted mid-swap (crash recovery).
+
+    In `sqlite3` each DDL statement auto-commits, so ``_migration_2``'s
+    ``DROP TABLE {table}`` and ``ALTER TABLE {table}_new RENAME TO {table}`` are
+    not one atomic unit. If the process died between them, ``{table}`` is gone
+    and ``{table}_new`` holds the only copy of the data. This must run *before*
+    ``executescript(_SCHEMA)`` -- otherwise ``CREATE TABLE IF NOT EXISTS`` would
+    recreate ``{table}`` empty and mask the loss. Renaming the orphaned
+    ``{table}_new`` back finishes the swap without data loss; the migration then
+    rebuilds from the recovered table as usual.
+    """
+    for table, _create_sql, _cols in _CASCADE_REBUILDS:
+        if not await _table_exists(db, table) and await _table_exists(db, f"{table}_new"):
+            await db.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+
+
 async def _migration_2(db: aiosqlite.Connection) -> None:
     """Add ON DELETE CASCADE to each child table's FK to agents.
 
     SQLite cannot alter a constraint in place, so every child table is recreated
     with the cascade and its rows copied over (the standard rebuild procedure).
     ``initialize()`` runs migrations with foreign_keys OFF, so the DROP/RENAME
-    here does not trip referential checks. Re-runnable: if a previous attempt
-    left a ``*_new`` table behind, it is dropped first.
+    here does not trip referential checks. A crash mid-swap is recovered before
+    this runs by ``_recover_interrupted_rebuilds``, so here a stale ``{table}_new``
+    is always a safe-to-discard partial copy.
     """
     for table, create_sql, cols in _CASCADE_REBUILDS:
         await db.execute(f"DROP TABLE IF EXISTS {table}_new")
@@ -336,6 +361,12 @@ class HiveStore:
             # rebuilds child tables (DROP/RENAME), which must not trip FK checks.
             # PRAGMA is a no-op inside a transaction, so set it before any DML.
             await db.execute("PRAGMA foreign_keys = OFF")
+
+            # Recover any rebuild interrupted mid-swap BEFORE _SCHEMA runs, so a
+            # CREATE IF NOT EXISTS can't recreate a dropped table empty and mask
+            # the orphaned {table}_new that holds the data.
+            await _recover_interrupted_rebuilds(db)
+
             await db.executescript(_SCHEMA)
 
             cursor = await db.execute("PRAGMA user_version")

@@ -84,16 +84,25 @@ class EventLog:
         if not path.exists():
             return []
         text = await asyncio.to_thread(path.read_text)
+        if not text:
+            return []
+        # A complete append always ends in "\n"; if the file doesn't, the final
+        # line is a torn/half-written record we tolerate. Earlier lines (and a
+        # final line on a newline-terminated file) must parse -- a failure there
+        # is real corruption and is surfaced, not silently dropped.
+        ends_clean = text.endswith("\n")
+        lines = text.splitlines()
         events = []
-        for line in text.strip().splitlines():
+        for idx, line in enumerate(lines):
             if not line.strip():
                 continue
             try:
                 events.append(HiveEvent.from_jsonl(line))
-            except Exception:
-                # Tolerate a partial/half-written last line from an interrupted
-                # append (torn write); the rest of the log is still readable.
-                continue
+            except ValueError:
+                # pydantic ValidationError / JSON errors subclass ValueError.
+                if idx == len(lines) - 1 and not ends_clean:
+                    continue  # torn final write -- expected, skip it
+                raise
         return events
 
     async def stream(self, agent_id: str) -> AsyncIterator[HiveEvent]:
@@ -120,10 +129,10 @@ class EventLog:
                 for line in complete.splitlines():
                     if not line.strip():
                         continue
-                    try:
-                        yield HiveEvent.from_jsonl(line)
-                    except Exception:
-                        continue
+                    # These are complete (newline-terminated) lines, so a parse
+                    # error is real corruption -- let it surface rather than
+                    # silently dropping events.
+                    yield HiveEvent.from_jsonl(line)
                 offset += len(complete)
             await asyncio.sleep(0.3)
 
