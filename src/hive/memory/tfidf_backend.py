@@ -23,26 +23,63 @@ class TFIDFBackend:
         self._path = self._dir / "memories.jsonl"
         self._records: dict[str, MemoryRecord] = {}
         self._load()
+        # (mtime, size) of the JSONL as last loaded. Used to detect out-of-band
+        # writes from other processes and reload the index without a restart.
+        self._stat = self._current_stat()
+
+    def _current_stat(self) -> tuple[float, int] | None:
+        try:
+            st = self._path.stat()
+        except OSError:
+            return None
+        return (st.st_mtime, st.st_size)
 
     def _load(self) -> None:
         if not self._path.exists():
             return
-        for line in self._path.read_text().strip().splitlines():
-            if line.strip():
+        for line in self._path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
                 rec = MemoryRecord.model_validate_json(line)
-                self._records[rec.memory_id] = rec
+            except Exception:
+                # Tolerate a partial/half-written last line from a concurrent
+                # appender; it will parse on the next reload once fully flushed.
+                continue
+            self._records[rec.memory_id] = rec
+
+    def _reload_if_changed(self) -> None:
+        """Reload the index if the JSONL changed on disk (another process appended).
+
+        One cheap stat() per read; reloads only when (mtime, size) differs from
+        the last load. In-process writes refresh the cached stat (see _append /
+        _save), so they never trigger a redundant reload.
+        """
+        current = self._current_stat()
+        if current == self._stat:
+            return
+        self._records = {}
+        self._load()
+        self._stat = current
 
     def _save(self) -> None:
         lines = [r.model_dump_json() for r in self._records.values()]
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text("\n".join(lines) + "\n" if lines else "")
         tmp.rename(self._path)
+        self._stat = self._current_stat()
 
     def _append(self, rec: MemoryRecord) -> None:
         with open(self._path, "a") as f:
             f.write(rec.model_dump_json() + "\n")
+        self._stat = self._current_stat()
 
     async def store(self, text: str, metadata: dict[str, Any] | None = None) -> str:
+        # Reload first: _append() refreshes self._stat, so without this an external
+        # append since the last read would be masked (stat matches but the record
+        # was never loaded) and later erased by a full-file _save().
+        self._reload_if_changed()
         mid = f"mem-{uuid4().hex[:8]}"
         rec = MemoryRecord(
             memory_id=mid,
@@ -55,6 +92,7 @@ class TFIDFBackend:
         return mid
 
     async def search(self, query: str, top_k: int = 5) -> list[MemoryRecord]:
+        self._reload_if_changed()
         if not self._records:
             return []
         query_tokens = _tokenize(query)
@@ -85,22 +123,29 @@ class TFIDFBackend:
         return results
 
     async def recent(self, limit: int = 5) -> list[MemoryRecord]:
+        self._reload_if_changed()
         recs = sorted(self._records.values(), key=lambda r: r.ts, reverse=True)
         return recs[:limit]
 
     def recent_sync(self, limit: int = 5) -> list[MemoryRecord]:
+        self._reload_if_changed()
         recs = sorted(self._records.values(), key=lambda r: r.ts, reverse=True)
         return recs[:limit]
 
     async def delete(self, memory_id: str) -> None:
+        # Reload first: _save() rewrites the whole file from self._records, so
+        # without this an external append since the last read would be lost.
+        self._reload_if_changed()
         if memory_id in self._records:
             del self._records[memory_id]
             self._save()
 
     def count(self) -> int:
+        self._reload_if_changed()
         return len(self._records)
 
     async def recall(self, memory_id: str) -> MemoryRecord | None:
+        self._reload_if_changed()
         rec = self._records.get(memory_id)
         if rec:
             rec.access_count += 1
@@ -114,6 +159,8 @@ class TFIDFBackend:
         text: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> bool:
+        # Reload first so a full-file _save() preserves external appends.
+        self._reload_if_changed()
         rec = self._records.get(memory_id)
         if rec is None:
             return False
@@ -129,6 +176,8 @@ class TFIDFBackend:
         return True
 
     async def consolidate(self, max_age_days: int = 30, min_access: int = 2) -> int:
+        # Reload first so a full-file _save() preserves external appends.
+        self._reload_if_changed()
         now = datetime.now(UTC)
         to_remove = []
         for mid, rec in self._records.items():

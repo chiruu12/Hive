@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3] -- 2026-06-01
+
+### Fixed
+- **SemanticMemory reflects cross-process writes**: the TF-IDF note store (behind `KnowledgeToolkit`) cached `memories.jsonl` in memory at construction, so a note appended by another process stayed invisible until restart. Reads now stat the file and reload only when `(mtime, size)` changed; in-process writes refresh the cached stat; the mutators (`store`/`delete`/`update`/`consolidate`) reload before writing so external appends aren't masked or dropped; loading tolerates a partial last line. Same-process behavior unchanged.
+
+### CI
+- Release workflow's PyPI existence check uses `curl --retry` and logs the proceed-to-publish path explicitly; `uv publish --check-url` remains the final guard.
+
 ## [0.5.2] -- 2026-05-31
 
 ### Fixed

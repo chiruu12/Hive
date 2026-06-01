@@ -1,3 +1,40 @@
+# Hive v0.5.3 Release Notes
+
+## Headline: Notes See Cross-Process Writes
+
+`SemanticMemory` (the store behind `KnowledgeToolkit`) loaded its `memories.jsonl`
+index once at construction, so a note appended by *another* process -- e.g. a host's
+MCP server calling `save_note` while a long-running backend held the toolkit -- was
+invisible to the reader until it restarted. (Tasks/alarms on SQLite and links on JSON
+already read fresh.)
+
+## What's Fixed
+
+- **Stat-based cache invalidation**: `search`, `recent`, `count`, and `recall` now do
+  one cheap `stat()` and reload the in-memory index only when the file's `(mtime, size)`
+  changed. Cross-process appends become visible without a restart; the in-memory index
+  (and its speed) is kept.
+- **In-process writes are still immediate** (no regression) -- they refresh the cached
+  stat, so they never cause a redundant reload.
+- **Partial-line tolerant**: a half-written last line from a concurrent appender is
+  skipped and picked up on the next reload once flushed.
+
+## Also Included
+
+- **CI**: the release workflow's PyPI existence check uses `curl --retry` so a transient
+  network error doesn't look like a clean 404 (`uv publish --check-url` is still the final
+  guard).
+
+## Upgrade
+
+```bash
+pip install --upgrade hive-agent
+```
+
+No code changes required.
+
+---
+
 # Hive v0.5.2 Release Notes
 
 ## Headline: Hardened No-Tools Recovery
