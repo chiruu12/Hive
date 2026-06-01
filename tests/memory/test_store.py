@@ -154,3 +154,101 @@ class TestMigrations:
             version = (await cursor.fetchone())[0]
 
         assert version == LATEST_SCHEMA_VERSION
+
+
+# A version-1 database: child tables WITHOUT ON DELETE CASCADE, as they existed
+# before migration 2. Subset of tables is enough to exercise the rebuild.
+_V1_SCHEMA_NO_CASCADE = """
+CREATE TABLE agents (
+    agent_id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,
+    model TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'idle', current_task TEXT,
+    steps_completed INTEGER DEFAULT 0, steps_total INTEGER DEFAULT 0,
+    workspace TEXT DEFAULT '', spawned_at TEXT NOT NULL, last_active TEXT NOT NULL,
+    error TEXT, spawned_by TEXT, max_cycles INTEGER, cycles_lived INTEGER DEFAULT 0
+);
+CREATE TABLE goals (
+    goal_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, objective TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active', priority INTEGER DEFAULT 4,
+    parent_goal_id TEXT, created_at TEXT NOT NULL, completed_at TEXT,
+    steps_completed INTEGER DEFAULT 0,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
+);
+CREATE TABLE tasks (
+    task_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, description TEXT NOT NULL,
+    priority TEXT DEFAULT 'medium', status TEXT DEFAULT 'pending', due_date TEXT,
+    created_at TEXT NOT NULL, completed_at TEXT,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id)
+);
+"""
+
+
+async def _insert_agent_with_children(db_path: Path) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("PRAGMA foreign_keys = ON")
+        await db.execute(
+            "INSERT INTO agents (agent_id, name, role, model, spawned_at, last_active) "
+            "VALUES ('a1', 'Ada', 'coder', 'claude', 't', 't')"
+        )
+        await db.execute(
+            "INSERT INTO goals (goal_id, agent_id, objective, created_at) "
+            "VALUES ('g1', 'a1', 'obj', 't')"
+        )
+        await db.execute(
+            "INSERT INTO tasks (task_id, agent_id, description, created_at) "
+            "VALUES ('t1', 'a1', 'desc', 't')"
+        )
+        await db.commit()
+
+
+class TestCascades:
+    @pytest.mark.asyncio
+    async def test_delete_agent_cascades_to_children(self, tmp_path: Path) -> None:
+        """delete_agent removes the agent and (via cascade) all its child rows."""
+        db_path = tmp_path / "state.db"
+        store = HiveStore(db_path)
+        await store.initialize()
+        await _insert_agent_with_children(db_path)
+
+        assert await store.delete_agent("a1") is True
+
+        async with aiosqlite.connect(db_path) as db:
+            for table in ("agents", "goals", "tasks"):
+                cur = await db.execute(f"SELECT COUNT(*) FROM {table}")
+                assert (await cur.fetchone())[0] == 0, f"{table} not cascaded"
+
+    @pytest.mark.asyncio
+    async def test_delete_missing_agent_returns_false(self, tmp_path: Path) -> None:
+        store = HiveStore(tmp_path / "state.db")
+        await store.initialize()
+        assert await store.delete_agent("nope") is False
+
+    @pytest.mark.asyncio
+    async def test_v1_to_v2_migration_adds_cascade_and_keeps_data(self, tmp_path: Path) -> None:
+        """A v1 DB (no cascade) upgrades to v2 with data intact and cascade live."""
+        db_path = tmp_path / "state.db"
+        async with aiosqlite.connect(db_path) as db:
+            await db.executescript(_V1_SCHEMA_NO_CASCADE)
+            await db.execute("PRAGMA user_version = 1")
+            await db.commit()
+        await _insert_agent_with_children(db_path)
+
+        store = HiveStore(db_path)
+        await store.initialize()  # runs migration 2 (table rebuild)
+
+        async with aiosqlite.connect(db_path) as db:
+            version = (await (await db.execute("PRAGMA user_version")).fetchone())[0]
+            # Data survived the rebuild.
+            cur = await db.execute("SELECT objective FROM goals WHERE goal_id = 'g1'")
+            goal_row = await cur.fetchone()
+            cur = await db.execute("SELECT description FROM tasks WHERE task_id = 't1'")
+            task_row = await cur.fetchone()
+
+        assert version == LATEST_SCHEMA_VERSION
+        assert goal_row is not None and goal_row[0] == "obj"
+        assert task_row is not None and task_row[0] == "desc"
+
+        # Cascade is now active: deleting the agent clears the rebuilt children.
+        assert await store.delete_agent("a1") is True
+        async with aiosqlite.connect(db_path) as db:
+            cur = await db.execute("SELECT COUNT(*) FROM goals")
+            assert (await cur.fetchone())[0] == 0
