@@ -76,3 +76,48 @@ def test_all_event_types_valid():
         line = event.to_jsonl()
         restored = HiveEvent.from_jsonl(line)
         assert restored.event_type == et
+
+
+def test_fsync_append_durable_and_readable(tmp_dir):
+    """With fsync enabled, appends still round-trip and the file is on disk."""
+    log = EventLog(tmp_dir, fsync=True)
+
+    async def _run():
+        await log.append(
+            HiveEvent(
+                event_type=EventType.GOAL_SET,
+                agent_id="agent-1",
+                session_id="sess-1",
+                data={"goal": "durable"},
+            )
+        )
+        events = await log.replay("agent-1", "sess-1")
+        assert len(events) == 1
+        assert events[0].data["goal"] == "durable"
+
+    asyncio.run(_run())
+
+
+def test_replay_tolerates_partial_last_line(tmp_dir):
+    """A torn/half-written final line must not break replay of prior events."""
+    log = EventLog(tmp_dir)
+
+    async def _run():
+        await log.append(
+            HiveEvent(
+                event_type=EventType.GOAL_SET,
+                agent_id="agent-1",
+                session_id="sess-1",
+                data={"goal": "complete"},
+            )
+        )
+        # Simulate an interrupted append: a partial JSON line with no newline.
+        path = log._session_path("agent-1", "sess-1")
+        with open(path, "a") as f:
+            f.write('{"event_type": "tool_used", "agen')
+
+        events = await log.replay("agent-1", "sess-1")
+        assert len(events) == 1
+        assert events[0].data["goal"] == "complete"
+
+    asyncio.run(_run())

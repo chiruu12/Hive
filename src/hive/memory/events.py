@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -45,11 +46,21 @@ class HiveEvent(BaseModel):
 
 
 class EventLog:
-    """Append-only JSONL event stream for agent sessions."""
+    """Append-only JSONL event stream for agent sessions.
 
-    def __init__(self, hive_dir: Path):
+    Each session is one file opened only in append mode ("a"); events are never
+    rewritten or removed in place, so the log is append-only by construction.
+
+    With ``fsync=True`` every append is flushed and ``os.fsync``'d before
+    returning, so a power/OS crash cannot lose an acknowledged event. This costs
+    one fsync per event, so it defaults to off (it runs off the event loop via a
+    worker thread, but the syscall is still on the per-event write path).
+    """
+
+    def __init__(self, hive_dir: Path, fsync: bool = False):
         self._sessions_dir = hive_dir / "sessions"
         self._sessions_dir.mkdir(parents=True, exist_ok=True)
+        self._fsync = fsync
 
     def _session_path(self, agent_id: str, session_id: str) -> Path:
         agent_dir = self._sessions_dir / agent_id
@@ -64,6 +75,9 @@ class EventLog:
     def _write_line(self, path: Path, line: str) -> None:
         with open(path, "a") as f:
             f.write(line)
+            if self._fsync:
+                f.flush()
+                os.fsync(f.fileno())
 
     async def replay(self, agent_id: str, session_id: str) -> list[HiveEvent]:
         path = self._session_path(agent_id, session_id)
@@ -72,8 +86,14 @@ class EventLog:
         text = await asyncio.to_thread(path.read_text)
         events = []
         for line in text.strip().splitlines():
-            if line.strip():
+            if not line.strip():
+                continue
+            try:
                 events.append(HiveEvent.from_jsonl(line))
+            except Exception:
+                # Tolerate a partial/half-written last line from an interrupted
+                # append (torn write); the rest of the log is still readable.
+                continue
         return events
 
     async def stream(self, agent_id: str) -> AsyncIterator[HiveEvent]:
@@ -91,11 +111,20 @@ class EventLog:
 
         while True:
             text = await asyncio.to_thread(path.read_text)
-            lines = text[offset:].strip().splitlines()
-            for line in lines:
-                if line.strip():
-                    yield HiveEvent.from_jsonl(line)
-            offset = len(text)
+            chunk = text[offset:]
+            # Only consume up to the last newline; a trailing partial line (an
+            # in-progress append) is left for the next poll once fully flushed.
+            nl = chunk.rfind("\n")
+            if nl != -1:
+                complete = chunk[: nl + 1]
+                for line in complete.splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        yield HiveEvent.from_jsonl(line)
+                    except Exception:
+                        continue
+                offset += len(complete)
             await asyncio.sleep(0.3)
 
     async def list_sessions(self, agent_id: str) -> list[str]:
