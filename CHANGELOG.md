@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.5.4] — 2026-06-01
+
+Durability & dependency-hardening release. All changes are additive and
+backward compatible; existing databases upgrade automatically on first open.
+
+### Added
+- **Event-log fsync durability (C5)** — `EventLog(fsync=True)` flushes and
+  `os.fsync()`s every append so a power/OS crash cannot lose an acknowledged
+  event. Gated by the new `event_log_fsync` config option (env
+  `HIVE_EVENT_LOG_FSYNC`), default off to protect the hot heartbeat write path;
+  the daemon honors it. Reads now tolerate a torn/partial last line.
+- **`HiveStore.delete_agent()`** — deletes an agent and, via the new cascade,
+  all of its child rows in one call.
+
+### Changed
+- **FK cascades (C3)** — every child table's foreign key to `agents`
+  (`sessions`, `goals`, `nudges`, `schedules`, `sub_agents`, `tasks`, `alarms`)
+  now declares `ON DELETE CASCADE`. A `user_version` 1→2 migration rebuilds
+  existing tables to add it (data preserved). Foreign-key enforcement is opt-in
+  per operation (on for `delete_agent`), so writing child rows for
+  not-yet-persisted agents keeps working.
+- **WAL journaling (C4)** — the store now runs in WAL mode (set persistently on
+  initialize) with an explicit 5s busy timeout, so readers and a writer no
+  longer lock each other out across the daemon's concurrent cycles and other
+  processes (MCP server, CLI). Verified: 1200 concurrent writes, 0
+  "database is locked".
+- **Dependency upper bounds (E3)** — fast-moving deps are capped below their
+  next major (`anthropic<1`, `httpx<1`, `openai<3`, `mcp<2`, `pydantic<3`) so a
+  breaking release can't silently enter; minimums stay loose.
+
 ## [0.5.3] — 2026-06-01
 
 ### Fixed

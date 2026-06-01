@@ -111,6 +111,8 @@ economy:
 suffering:
   threshold_crisis: 0.90
   max_stressors: 5
+
+event_log_fsync: false  # fsync every event-log append (crash-durable, slower)
 ```
 
-Override with environment variables: `HIVE_HEARTBEAT`, `HIVE_DEFAULT_MODEL`, `HIVE_STARTING_BALANCE`.
+Override with environment variables: `HIVE_HEARTBEAT`, `HIVE_DEFAULT_MODEL`, `HIVE_STARTING_BALANCE`, `HIVE_EVENT_LOG_FSYNC`.
