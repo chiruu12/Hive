@@ -46,6 +46,20 @@ def test_env_override(tmp_dir, monkeypatch):
     assert cfg.daemon.heartbeat == 99
 
 
+def test_event_log_fsync_default_off():
+    assert HiveConfig().event_log_fsync is False
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("1", True), ("true", True), ("YES", True), ("on", True), ("0", False), ("false", False)],
+)
+def test_event_log_fsync_env_parse(tmp_dir, monkeypatch, value, expected):
+    monkeypatch.setenv("HIVE_EVENT_LOG_FSYNC", value)
+    cfg = HiveConfig.load(tmp_dir)
+    assert cfg.event_log_fsync is expected
+
+
 def test_set_and_get_config():
     from hive.config import get_config
 

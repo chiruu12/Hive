@@ -116,6 +116,18 @@ src/hive/
   SQLite's `PRAGMA user_version`. Schema changes are ordered migration steps applied in
   a single transaction on `initialize()`, so an older database upgrades in place without
   data loss.
+- **WAL journaling + cascades.** The store runs in WAL mode (set once on `initialize()`,
+  persistent in the DB header) with a 5s busy timeout, so readers and a writer don't lock
+  each other out across concurrent agent cycles or other processes (the MCP server, the
+  CLI). Child tables (`sessions`, `goals`, `tasks`, ...) declare `ON DELETE CASCADE` on
+  their foreign key to `agents`, so `HiveStore.delete_agent()` removes an agent and all
+  of its rows together. FK enforcement is opt-in per operation, so writing child rows for
+  a standalone agent that was never persisted to `agents` still works.
+- **Crash-durable event log.** The JSONL session log is append-only by construction.
+  Setting `event_log_fsync: true` (env `HIVE_EVENT_LOG_FSYNC`) flushes and `fsync()`s
+  every append so an acknowledged event survives a power/OS crash; it defaults to off
+  because that is one `fsync` per event on the hot write path. Readers tolerate a torn
+  last line from an interrupted append.
 
 ## Extension Points
 

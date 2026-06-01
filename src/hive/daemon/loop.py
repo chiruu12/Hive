@@ -68,7 +68,7 @@ class HiveDaemon:
         self._economy_enabled = cfg.economy.enabled
         self._running = False
         self._store = HiveStore(hive_dir / "hive.db")
-        self._events = EventLog(hive_dir)
+        self._events = EventLog(hive_dir, fsync=cfg.event_log_fsync)
 
         world = None
         if self._economy_enabled:

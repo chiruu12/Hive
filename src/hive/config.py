@@ -1,6 +1,7 @@
 """Central configuration — all tunables in one place."""
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,11 @@ def get_env(key: str, default: str = "") -> str:
     """Get a value from .env file first, then os.environ, never setting os.environ."""
     dot = _load_dotenv_safe()
     return dot.get(key) or os.environ.get(key, default)
+
+
+def _parse_bool(value: str) -> bool:
+    """Parse a truthy env-var string (bool('false') is True, so we can't use it)."""
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class SufferingConfig(BaseModel):
@@ -163,6 +169,8 @@ class HiveConfig(BaseModel):
     model: ModelConfig = ModelConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
+    # fsync every event-log append for crash durability (one fsync per event).
+    event_log_fsync: bool = False
 
     @classmethod
     def load(cls, hive_dir: Path | None = None) -> "HiveConfig":
@@ -176,7 +184,7 @@ class HiveConfig(BaseModel):
                     file_data = yaml.safe_load(f) or {}
                 data.update(file_data)
 
-        env_map = {
+        env_map: dict[str, tuple[str, str | None, Callable[[str], Any]]] = {
             "HIVE_HEARTBEAT": ("daemon", "heartbeat", int),
             "HIVE_MAX_RETRIES": ("daemon", "max_retries", int),
             "HIVE_DEFAULT_MODEL": ("model", "default_model", str),
@@ -185,6 +193,7 @@ class HiveConfig(BaseModel):
             "HIVE_STARTING_BALANCE": ("economy", "starting_balance", float),
             "HIVE_PROFILES_DIR": ("profiles_dir", None, str),
             "HIVE_LOGS_DIR": ("logs_dir", None, str),
+            "HIVE_EVENT_LOG_FSYNC": ("event_log_fsync", None, _parse_bool),
         }
 
         for env_key, (section, field, cast) in env_map.items():
