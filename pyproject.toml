@@ -23,6 +23,8 @@ dependencies = [
     "rich>=13.0",
     # Upper bounds on fast-moving deps cap the next major so a breaking release
     # can't silently enter; minimums stay loose for downstream compatibility.
+    # anthropic is still 0.x (breaking changes land in minor bumps), so its <1
+    # cap mainly guards the eventual 1.0 -- revisit/loosen when 1.0 ships.
     "httpx>=0.27,<1",
     "aiosqlite>=0.20",
     "pyyaml>=6.0",

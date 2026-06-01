@@ -24,8 +24,9 @@ backward compatible; existing databases upgrade automatically on first open.
 - **WAL journaling (C4)** — the store now runs in WAL mode (set persistently on
   initialize) with an explicit 5s busy timeout, so readers and a writer no
   longer lock each other out across the daemon's concurrent cycles and other
-  processes (MCP server, CLI). Verified: 1200 concurrent writes, 0
-  "database is locked".
+  processes (MCP server, CLI). Verified with concurrent writers and no
+  "database is locked" errors (40 in the test suite; 1200 in the local stress
+  harness).
 - **Dependency upper bounds (E3)** — fast-moving deps are capped below their
   next major (`anthropic<1`, `httpx<1`, `openai<3`, `mcp<2`, `pydantic<3`) so a
   breaking release can't silently enter; minimums stay loose.

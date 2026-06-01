@@ -10,7 +10,7 @@ Durability & dependency-hardening release. All changes are additive and backward
 
 ### Changed
 - **FK cascades (C3)**: every child table's foreign key to `agents` (`sessions`, `goals`, `nudges`, `schedules`, `sub_agents`, `tasks`, `alarms`) now declares `ON DELETE CASCADE`; a `user_version` 1->2 migration rebuilds existing tables to add it (data preserved). FK enforcement is opt-in per operation, so writing child rows for not-yet-persisted agents keeps working.
-- **WAL journaling (C4)**: the store runs in WAL mode (persistent) with a 5s busy timeout, so readers and a writer don't lock each other out across concurrent cycles and other processes. Verified at 1200 concurrent writes with 0 "database is locked".
+- **WAL journaling (C4)**: the store runs in WAL mode (persistent) with a 5s busy timeout, so readers and a writer don't lock each other out across concurrent cycles and other processes. Verified with concurrent writers and no "database is locked" errors (40 in the test suite; 1200 in the local stress harness).
 - **Dependency upper bounds (E3)**: fast-moving deps capped below their next major (`anthropic<1`, `httpx<1`, `openai<3`, `mcp<2`, `pydantic<3`); minimums stay loose.
 
 ## [0.5.3] -- 2026-06-01
