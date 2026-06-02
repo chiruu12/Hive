@@ -4,9 +4,13 @@ on:
   push:
     branches: [main]
 
+# Queue dev-release runs instead of cancelling the in-flight one. Each push gets
+# a unique BASE.devN version (N = commit count), so back-to-back merges can all
+# publish safely; cancelling mid-run only left orphaned "error"/inactive
+# deployment records that looked like failures.
 concurrency:
   group: dev-release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish-dev:
