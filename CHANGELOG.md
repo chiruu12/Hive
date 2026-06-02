@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.6.0] — 2026-06-02
+
+Framework-hardening release: the agent runtime is more robust under streaming
+interruptions, hung tools, and corrupt state, and the package is friendlier to
+import and embed. All changes are backward compatible; existing databases
+upgrade automatically.
+
+### Added
+- **Per-tool execution timeout** — `Agent(tool_timeout=...)` and the new
+  `daemon.tool_timeout` config (default 60s, env-validated `>= 0`) wrap each tool
+  call in a timeout. A hung tool becomes a tool-error result fed back to the
+  model instead of stalling the whole cycle. `0` disables it.
+- **Install extras** — `hive-agent[anthropic]`, `[openai]`, `[mcp]`, and `[cli]`.
+  The SDKs still ship in the core dependencies (existing installs are unchanged),
+  but the extras pave the way for a slimmer core and back the new error below.
+- **Context managers + lazy init on the `Hive` facade** — `with Hive() as h:` and
+  `async with Hive() as h:` both work, and `Hive(path).spawn(...)` now scaffolds
+  `.hive/` lazily, so a manual `init()` call is optional. `ensure_hive_dirs()`
+  is exported for embedders who want loop-safe directory scaffolding.
+- **`StructuredParseError`** and **`MissingDependencyError`** typed exceptions,
+  exported from the package.
+
+### Changed
+- **Streaming falls back instead of failing** — when a stream ends without a
+  terminal DONE event (or errors mid-stream), the agent keeps the text already
+  shown or falls back to a retried non-streaming call, rather than raising. The
+  stream is closed on cancellation so the underlying connection is released.
+- **`StructuredTaskResult.parsed` is now `T | None`** — a failed structured run
+  returns `parsed=None` instead of an unvalidated `model_construct()` object.
+- **Provider error detection is structured-first** — `response_format`/
+  `json_schema` unsupported errors are matched via error code/body before any
+  message-substring fallback.
+
+### Fixed
+- **Previously-silent failures are surfaced** — memory-recall failures, corrupt
+  suffering/persona checkpoint restores, and plugin-init failures now log at
+  warning level with context, and corrupt suffering snapshots fall back to a
+  fresh state instead of being left unset.
+- **Robust structured-output parsing** — a brace-matching scanner that respects
+  string literals replaces the naive first-`{`/last-`}` slice, so embedded or
+  nested braces no longer corrupt extraction.
+- **One active generated goal per agent** — the existence loop re-checks for an
+  active goal immediately before saving, so a concurrently-arriving goal
+  (delegation, schedule) isn't duplicated. (Subgoals/delegation still create
+  multiple active goals by design.)
+- **Malformed tool-call arguments are logged** instead of silently dropped.
+- **Budget enforcement** — the `run_once` wrap-up generation is now budget-checked;
+  a hard budget can still overshoot by at most one generation (documented).
+
 ## [0.5.4] — 2026-06-01
 
 Durability, simulation, and hardening release. All changes are additive and

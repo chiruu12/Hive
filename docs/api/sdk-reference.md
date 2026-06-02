@@ -142,7 +142,7 @@ TaskResult(
 # StructuredTaskResult adds:
 StructuredTaskResult[T](
     ...TaskResult fields...,
-    parsed: T,                           # validated Pydantic model instance
+    parsed: T | None,                    # validated model on COMPLETED; None on FAILED
 )
 ```
 
@@ -596,7 +596,7 @@ from pathlib import Path
 from hive import Hive
 
 h = Hive(path=Path("."))
-h.init()                                # create .hive/ directory structure
+h.init()                                # optional -- .hive/ is created lazily on first use
 agent_id = h.spawn("coder")            # spawn from preset profile
 h.spawn("coder", model="gpt-5.4-nano")  # override model
 h.start(cycles=10, heartbeat=10)        # run 10 daemon cycles (blocking)
@@ -604,6 +604,17 @@ h.status()                              # -> list[dict] with agent_id, name, rol
 h.nudge("coder", "write tests next")   # send message to agent
 h.kill("coder")                         # terminate agent
 h.stop()                                # signal daemon to stop
+```
+
+`Hive` is also a context manager -- `init()` is optional, and the daemon is
+stopped on exit:
+
+```python
+with Hive(Path(".")) as h:              # sync
+    h.spawn("coder")
+
+async with Hive(Path(".")) as h:        # async (native init, no thread hop)
+    h.spawn("coder")
 ```
 
 ---

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.0] -- 2026-06-02
+
+Framework-hardening release: the agent runtime is more robust under streaming interruptions, hung tools, and corrupt state, and the package is friendlier to import and embed. All changes are backward compatible; existing databases upgrade automatically.
+
+### Added
+- **Per-tool execution timeout**: `Agent(tool_timeout=...)` and the `daemon.tool_timeout` config (default 60s, validated `>= 0`) wrap each tool call; a hung tool becomes a tool-error fed back to the model instead of stalling the cycle. `0` disables it.
+- **Install extras**: `hive-agent[anthropic]`, `[openai]`, `[mcp]`, `[cli]`. The SDKs still ship in core deps (existing installs unchanged); a missing one now raises a clear `MissingDependencyError` pointing at the extra.
+- **Context managers + lazy init on `Hive`**: `with Hive() as h:` and `async with Hive() as h:` both work, and `Hive(path).spawn(...)` scaffolds `.hive/` lazily, so `init()` is optional. `ensure_hive_dirs()` is exported for loop-safe scaffolding.
+- **`StructuredParseError`** and **`MissingDependencyError`** typed exceptions, exported from the package.
+
+### Changed
+- **Streaming falls back instead of failing**: a stream that ends without a terminal DONE event (or errors mid-stream) keeps the text already shown or falls back to a retried non-streaming call; the stream is closed on cancellation.
+- **`StructuredTaskResult.parsed` is now `T | None`**: a failed structured run returns `parsed=None` instead of an unvalidated `model_construct()` object.
+- **Provider error detection is structured-first** for unsupported `response_format`/`json_schema`.
+
+### Fixed
+- **Previously-silent failures surfaced**: memory-recall, corrupt suffering/persona restore, and plugin-init failures log at warning level; corrupt suffering snapshots fall back to a fresh state.
+- **Robust structured-output parsing**: a brace-matching scanner replaces the naive first-`{`/last-`}` slice.
+- **One active generated goal per agent**: the existence loop re-checks before saving (subgoals/delegation still create multiple by design).
+- **Malformed tool-call arguments are logged** instead of silently dropped.
+
 ## [0.5.4] -- 2026-06-01
 
 Durability, simulation, and hardening release. All changes are additive and backward compatible; existing databases and identities upgrade automatically.

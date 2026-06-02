@@ -10,7 +10,7 @@ from uuid import uuid4
 from hive.agents.profile import AgentProfile, default_profiles_dir
 from hive.agents.state import AgentState, AgentStatus
 from hive.daemon.loop import HiveDaemon
-from hive.daemon.setup import initialize_hive
+from hive.daemon.setup import ensure_hive_dirs, initialize_hive
 from hive.errors import AgentNotFoundError
 from hive.memory.store import HiveStore
 
@@ -47,13 +47,38 @@ class Hive:
 
     def _get_store(self) -> HiveStore:
         if self._store is None:
+            # Lazily scaffold .hive/ so Hive(path).spawn(...) works without a
+            # manual init() call. ensure_hive_dirs is idempotent and loop-safe.
+            ensure_hive_dirs(self._root)
             self._store = HiveStore(self._hive_dir / "hive.db")
             _run_sync(self._store.initialize())
         return self._store
 
     def init(self) -> None:
-        """Initialize a new hive directory structure."""
+        """Initialize a new hive directory structure.
+
+        Optional -- the directory is created lazily on first use. Kept for
+        back-compat and for explicitly scaffolding without any other operation.
+        """
         initialize_hive(self._root)
+
+    def __enter__(self) -> Hive:
+        self._get_store()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.stop()
+
+    async def __aenter__(self) -> Hive:
+        # Native async init -- no thread-pool hop, safe inside a running loop.
+        ensure_hive_dirs(self._root)
+        if self._store is None:
+            self._store = HiveStore(self._hive_dir / "hive.db")
+            await self._store.initialize()
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        self.stop()
 
     def spawn(
         self,
