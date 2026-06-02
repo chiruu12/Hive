@@ -445,9 +445,17 @@ class HiveDaemon:
                     toolkits=self._build_toolkits(agent.agent_id),
                 )
             adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
+            # Give the pursuing agent its persistent self -- name and accumulated
+            # narrative/opinions -- which the persona/profile system prompt alone
+            # doesn't carry. Same context channel the suffering fragment uses.
+            pursuit_context = "\n\n".join(
+                p
+                for p in (self._identity.render_preamble(identity), suffering.prompt_fragment())
+                if p
+            )
             outcome = await adapter.pursue_goal(
                 active_goal["objective"],
-                context=suffering.prompt_fragment(),
+                context=pursuit_context,
             )
 
             goals = await self._store.list_agent_goals(agent.agent_id, limit=10)

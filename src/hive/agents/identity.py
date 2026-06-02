@@ -182,11 +182,19 @@ class IdentityManager:
         self.save(identity)
 
     def build_preamble(self, agent_id: str) -> str:
-        """Build identity context string for LLM prompts."""
+        """Build identity context string for LLM prompts (loads from disk)."""
         identity = self.load(agent_id)
         if not identity:
             return ""
+        return self.render_preamble(identity)
 
+    @staticmethod
+    def render_preamble(identity: AgentIdentity) -> str:
+        """Render an identity context string from an already-loaded identity.
+
+        Used both for goal generation and (via the daemon) for goal pursuit, so a
+        caller that already holds the identity can avoid a redundant disk read.
+        """
         parts = [f"Your name is {identity.display_name}."]
 
         if identity.traits:
