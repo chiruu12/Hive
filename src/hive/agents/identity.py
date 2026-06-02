@@ -194,6 +194,11 @@ class IdentityManager:
         identity = self.load(agent_id)
         if not identity:
             return
+        # Normalize newlines: a multi-line goal/outcome (e.g. LLM text) would
+        # otherwise split one entry across lines and break chapter sealing
+        # (entry_count / date / goal extraction all operate per-line).
+        goal_text = goal_text.replace("\n", " ").replace("\r", " ")
+        outcome = outcome.replace("\n", " ").replace("\r", " ")
         # Full date (%Y-%m-%d) so chapter spans are unambiguous across year boundaries.
         entry = f"[{datetime.now(UTC).strftime('%Y-%m-%d')}] {goal_text}: {outcome}"
         # Cap a single pathological entry so the open narrative can never exceed
@@ -210,6 +215,7 @@ class IdentityManager:
         """Roll the open narrative into a sealed Chapter and clear it."""
         lines = [ln for ln in identity.narrative.splitlines() if ln.strip()]
         if not lines:
+            identity.narrative = ""  # defensive: clear a whitespace-only narrative
             return
         started = _entry_date(lines[0])
         ended = _entry_date(lines[-1])

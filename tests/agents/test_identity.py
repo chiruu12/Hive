@@ -113,6 +113,29 @@ class TestSealing:
         # The first sealed chapter began with objective-0.
         assert "objective-0" in ident.chapters[0].summary
 
+    def test_newlines_in_entry_are_normalized(self, tmp_path: Path) -> None:
+        """A multi-line goal/outcome must stay one narrative line (sealing is per-line)."""
+        idm = self._idm_with_agent(tmp_path)
+        idm.update_narrative("a1", "multi\nline\ngoal", "did\r\nthings")
+        ident = idm.load("a1")
+        assert ident is not None
+        assert len([ln for ln in ident.narrative.splitlines() if ln.strip()]) == 1
+        assert "multi line goal" in ident.narrative
+
+    def test_max_chapters_trim_drops_oldest(self, tmp_path: Path) -> None:
+        """Past MAX_CHAPTERS, the oldest chapter is dropped so history stays bounded."""
+        idm = self._idm_with_agent(tmp_path)
+        # Large outcomes => each entry nearly fills a chapter, so the next entry
+        # seals it; enough iterations to exceed the 20-chapter cap.
+        big = "x" * (MAX_NARRATIVE - 60)
+        for i in range(MAX_CHAPTERS + 6):
+            idm.update_narrative("a1", f"goal-{i}", big)
+        ident = idm.load("a1")
+        assert ident is not None
+        assert len(ident.chapters) == MAX_CHAPTERS  # capped; oldest dropped
+        assert ident.chapters[0].index > 1  # earliest chapters were trimmed
+        assert [c.index for c in ident.chapters] == sorted(c.index for c in ident.chapters)
+
 
 class TestFullNarrative:
     def test_full_narrative_includes_chapters_and_open(self, tmp_path: Path) -> None:
