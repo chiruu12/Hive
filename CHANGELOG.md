@@ -2,10 +2,22 @@
 
 ## [0.5.4] — 2026-06-01
 
-Durability & dependency-hardening release. All changes are additive and
-backward compatible; existing databases upgrade automatically on first open.
+Durability, simulation, and hardening release. All changes are additive and
+backward compatible; existing databases and identities upgrade automatically.
 
 ### Added
+- **Derived mood model** — a `CircumplexMood` maps an agent's `happiness` and
+  `suffering` onto a valence/arousal circumplex and names the mood (content,
+  motivated, steady, restless, discouraged, anxious, overwhelmed). Pure/derived
+  (no persisted state), swappable via `MoodRegistry`, and surfaced in the
+  goal-pursuit prompt.
+- **Chaptered narrative** — instead of FIFO-dropping its oldest lines, an
+  agent's narrative seals into compact `Chapter` summaries (date span + entry
+  count + goal theme) on overflow, and the preamble shows a "Story so far"
+  section. `AgentIdentity.full_narrative()` exposes the complete history.
+- **Identity narrative in the runtime prompt** — the agent *pursuing* a goal
+  now sees its persistent self (name + accumulated narrative), not just the
+  goal-generation path.
 - **Event-log fsync durability (C5)** — `EventLog(fsync=True)` flushes and
   `os.fsync()`s every append so a power/OS crash cannot lose an acknowledged
   event. Gated by the new `event_log_fsync` config option (env
@@ -13,6 +25,20 @@ backward compatible; existing databases upgrade automatically on first open.
   the daemon honors it. Reads now tolerate a torn/partial last line.
 - **`HiveStore.delete_agent()`** — deletes an agent and, via the new cascade,
   all of its child rows in one call.
+- **Test coverage (F1)** — first tests for the CLI, the MCP server protocol,
+  and the structured logging writer/reader.
+
+### Fixed
+- **Event log no longer shreds records with Unicode line separators** —
+  `replay()`/`stream()` split on `\n` only (not `str.splitlines()`, which also
+  breaks on `\r`/`\f`/NEL/`U+2028`/`U+2029` — all legal unescaped in JSON), so
+  an event whose text carried one is no longer mis-parsed as corruption.
+- **Nudge delivery race** — `get_pending_nudges` marks only the nudges it
+  actually read as delivered, so one inserted concurrently isn't lost.
+- Dropped dead `HIVE_MAX_TURNS`/`HIVE_SESSION_TIMEOUT` env mappings (no backing
+  fields); checkpoints now snapshot the freshly-saved identity; the crisis
+  directive is no longer duplicated in the pursuit prompt; event-log fsync also
+  fsyncs the parent directory on file creation.
 
 ### Changed
 - **FK cascades (C3)** — every child table's foreign key to `agents`
