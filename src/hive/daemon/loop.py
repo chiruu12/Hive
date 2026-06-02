@@ -9,6 +9,7 @@ from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
 from hive.agents.goal_strategy import GoalContext, GoalStrategy
 from hive.agents.identity import IdentityManager
+from hive.agents.mood import MoodRegistry
 from hive.agents.profile import AgentProfile
 from hive.agents.specialization import SpecializationTracker
 from hive.agents.state import AgentState, AgentStatus
@@ -448,9 +449,20 @@ class HiveDaemon:
             # Give the pursuing agent its persistent self -- name and accumulated
             # narrative/opinions -- which the persona/profile system prompt alone
             # doesn't carry. Same context channel the suffering fragment uses.
+            # A derived mood (from happiness + suffering) colours the framing.
+            mood_line = ""
+            if persona is not None:
+                mood = MoodRegistry.default().derive(
+                    persona.happiness, suffering.cumulative_load, suffering.in_crisis
+                )
+                mood_line = mood.prompt_line()
             pursuit_context = "\n\n".join(
                 p
-                for p in (self._identity.render_preamble(identity), suffering.prompt_fragment())
+                for p in (
+                    self._identity.render_preamble(identity),
+                    mood_line,
+                    suffering.prompt_fragment(),
+                )
                 if p
             )
             outcome = await adapter.pursue_goal(
