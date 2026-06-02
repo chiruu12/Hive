@@ -67,6 +67,13 @@ MAX_QUESTIONS = 12
 MAX_CHAPTERS = 20
 
 
+def _entry_date(line: str) -> str:
+    """Extract the ``mm-dd`` prefix from a ``[mm-dd] ...`` narrative line."""
+    if line.startswith("[") and "]" in line:
+        return line[1 : line.index("]")]
+    return ""
+
+
 class Chapter(BaseModel):
     """A sealed span of an agent's narrative.
 
@@ -159,18 +166,48 @@ class IdentityManager:
         tmp.rename(path)
 
     def update_narrative(self, agent_id: str, goal_text: str, outcome: str) -> None:
-        """Append goal outcome to the agent's narrative."""
+        """Append a goal outcome to the agent's narrative.
+
+        When the open narrative would overflow ``MAX_NARRATIVE``, it is sealed
+        into a Chapter first (preserving the history as a summary) and the new
+        entry starts a fresh chapter -- rather than FIFO-dropping old lines.
+        """
         identity = self.load(agent_id)
         if not identity:
             return
         entry = f"[{datetime.now(UTC).strftime('%m-%d')}] {goal_text}: {outcome}"
+        if identity.narrative and len(identity.narrative) + len(entry) + 1 > MAX_NARRATIVE:
+            self._seal_chapter(identity)
         identity.narrative = (identity.narrative + "\n" + entry).strip()
-        if len(identity.narrative) > MAX_NARRATIVE:
-            lines = identity.narrative.splitlines()
-            while len(identity.narrative) > MAX_NARRATIVE and len(lines) > 1:
-                lines.pop(0)
-                identity.narrative = "\n".join(lines)
         self.save(identity)
+
+    @staticmethod
+    def _seal_chapter(identity: AgentIdentity) -> None:
+        """Roll the open narrative into a sealed Chapter and clear it."""
+        lines = [ln for ln in identity.narrative.splitlines() if ln.strip()]
+        if not lines:
+            return
+        started = _entry_date(lines[0])
+        ended = _entry_date(lines[-1])
+        index = identity.chapters[-1].index + 1 if identity.chapters else 1
+        if started and ended and started != ended:
+            span = f" ({started}–{ended})"
+        elif started:
+            span = f" ({started})"
+        else:
+            span = ""
+        identity.chapters.append(
+            Chapter(
+                index=index,
+                summary=f"Ch{index}{span}: {len(lines)} entries",
+                entry_count=len(lines),
+                started=started,
+                ended=ended,
+            )
+        )
+        if len(identity.chapters) > MAX_CHAPTERS:
+            identity.chapters = identity.chapters[-MAX_CHAPTERS:]
+        identity.narrative = ""
 
     def add_opinion(self, agent_id: str, domain: str, opinion: str) -> None:
         """Record an opinion the agent has formed."""

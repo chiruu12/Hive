@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hive.agents.identity import AgentIdentity, Chapter, IdentityManager
+from hive.agents.identity import (
+    MAX_CHAPTERS,
+    MAX_NARRATIVE,
+    AgentIdentity,
+    Chapter,
+    IdentityManager,
+)
 
 
 class TestChapterModel:
@@ -41,3 +47,50 @@ class TestChapterModel:
         loaded = idm.load("a1")
         assert loaded is not None
         assert len(loaded.chapters) == 1
+
+
+class TestSealing:
+    def _idm_with_agent(self, tmp_path: Path) -> IdentityManager:
+        idm = IdentityManager(tmp_path)
+        idm.save(AgentIdentity(agent_id="a1", display_name="Atlas"))
+        return idm
+
+    def test_no_chapter_below_threshold(self, tmp_path: Path) -> None:
+        idm = self._idm_with_agent(tmp_path)
+        idm.update_narrative("a1", "small goal", "done")
+        ident = idm.load("a1")
+        assert ident is not None
+        assert ident.chapters == []
+        assert "small goal" in ident.narrative
+
+    def test_overflow_seals_chapter_and_preserves_count(self, tmp_path: Path) -> None:
+        idm = self._idm_with_agent(tmp_path)
+        # Many entries; each ~40 chars, so we cross MAX_NARRATIVE (800) and seal.
+        for i in range(40):
+            idm.update_narrative("a1", f"goal number {i}", "completed ok")
+        ident = idm.load("a1")
+        assert ident is not None
+        assert len(ident.chapters) >= 1, "no chapter sealed despite overflow"
+        # Total entries are conserved across sealed chapters + the open narrative.
+        sealed = sum(c.entry_count for c in ident.chapters)
+        open_lines = len([ln for ln in ident.narrative.splitlines() if ln.strip()])
+        assert sealed + open_lines == 40
+
+    def test_open_narrative_stays_bounded(self, tmp_path: Path) -> None:
+        idm = self._idm_with_agent(tmp_path)
+        for i in range(60):
+            idm.update_narrative("a1", f"goal {i}", "done")
+        ident = idm.load("a1")
+        assert ident is not None
+        # Open narrative never far exceeds the seal threshold.
+        assert len(ident.narrative) <= MAX_NARRATIVE + 80
+
+    def test_chapter_indices_monotonic(self, tmp_path: Path) -> None:
+        idm = self._idm_with_agent(tmp_path)
+        for i in range(80):
+            idm.update_narrative("a1", f"goal {i}", "done")
+        ident = idm.load("a1")
+        assert ident is not None
+        indices = [c.index for c in ident.chapters]
+        assert indices == sorted(indices)
+        assert len(ident.chapters) <= MAX_CHAPTERS
