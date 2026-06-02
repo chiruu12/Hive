@@ -227,6 +227,22 @@ class TestConcurrencySettings:
         # No exception == no "database is locked". Spot-check a couple landed.
         assert await store.get_pending_nudges("agent-0")
 
+    @pytest.mark.asyncio
+    async def test_get_pending_nudges_only_marks_returned(self, tmp_path: Path) -> None:
+        """A nudge added after a read isn't marked delivered, so it isn't lost."""
+        store = HiveStore(tmp_path / "state.db")
+        await store.initialize()
+        await store.save_nudge("n1", "a1", "first")
+        await store.save_nudge("n2", "a1", "second")
+
+        first = await store.get_pending_nudges("a1")
+        assert sorted(first) == ["first", "second"]
+
+        # A nudge that arrives later must still be delivered exactly once.
+        await store.save_nudge("n3", "a1", "third")
+        assert await store.get_pending_nudges("a1") == ["third"]
+        assert await store.get_pending_nudges("a1") == []
+
 
 class TestCascades:
     @pytest.mark.asyncio
