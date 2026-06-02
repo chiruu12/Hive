@@ -68,10 +68,16 @@ MAX_CHAPTERS = 20
 
 
 def _entry_date(line: str) -> str:
-    """Extract the ``mm-dd`` prefix from a ``[mm-dd] ...`` narrative line."""
+    """Extract the bracketed date prefix from a ``[date] ...`` narrative line."""
     if line.startswith("[") and "]" in line:
         return line[1 : line.index("]")]
     return ""
+
+
+def _entry_goal(line: str) -> str:
+    """Extract the goal text from a ``[date] goal: outcome`` narrative line."""
+    body = line.split("] ", 1)[-1]
+    return body.rsplit(": ", 1)[0].strip()[:48]
 
 
 class Chapter(BaseModel):
@@ -188,7 +194,8 @@ class IdentityManager:
         identity = self.load(agent_id)
         if not identity:
             return
-        entry = f"[{datetime.now(UTC).strftime('%m-%d')}] {goal_text}: {outcome}"
+        # Full date (%Y-%m-%d) so chapter spans are unambiguous across year boundaries.
+        entry = f"[{datetime.now(UTC).strftime('%Y-%m-%d')}] {goal_text}: {outcome}"
         # Cap a single pathological entry so the open narrative can never exceed
         # MAX_NARRATIVE (a lone over-long entry would otherwise bypass sealing).
         if len(entry) > MAX_NARRATIVE:
@@ -213,10 +220,16 @@ class IdentityManager:
             span = f" ({started})"
         else:
             span = ""
+        # Carry goal text so the summary is semantically useful, not just a count:
+        # the first goal (theme) and, if different, the last (arc).
+        first_goal = _entry_goal(lines[0])
+        last_goal = _entry_goal(lines[-1])
+        theme = first_goal if first_goal == last_goal else f"{first_goal} → {last_goal}"
+        suffix = f" — {theme}" if theme else ""
         identity.chapters.append(
             Chapter(
                 index=index,
-                summary=f"Ch{index}{span}: {len(lines)} entries",
+                summary=f"Ch{index}{span}: {len(lines)} entries{suffix}",
                 entry_count=len(lines),
                 started=started,
                 ended=ended,
