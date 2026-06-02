@@ -120,9 +120,9 @@ async def test_pursuit_prompt_includes_mood(hive_dir: Path) -> None:
     from hive.runtime.persona import Persona
 
     # Isolate the global MoodRegistry so a model swapped by another test can't
-    # change the derived label this test asserts on.
-    MoodRegistry._reset()
+    # change the derived label this test asserts on (reset before and after).
     try:
+        MoodRegistry._reset()
         store = HiveStore(hive_dir / "hive.db")
         await store.initialize()
         agent = AgentState(

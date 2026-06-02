@@ -82,10 +82,12 @@ class MoodRegistry:
         self._model: MoodModel = CircumplexMood()
 
     def set_model(self, model: MoodModel) -> None:
-        # MoodModel is runtime-checkable, so this catches a misconfigured model
-        # at swap time rather than with an AttributeError on the next derive().
-        if not isinstance(model, MoodModel):
-            raise TypeError("mood model must implement MoodModel (a derive(...) method)")
+        # MoodModel is runtime-checkable but only checks that a `derive` attribute
+        # exists (pre-3.12 doesn't even check callability), so also require it be
+        # callable -- catching a misconfigured model at swap time rather than with
+        # an error on the next derive(). Signature validation is left to runtime.
+        if not isinstance(model, MoodModel) or not callable(model.derive):
+            raise TypeError("mood model must implement MoodModel (a callable derive(...) method)")
         self._model = model
 
     def derive(self, happiness: float, suffering_load: float, in_crisis: bool) -> MoodState:
