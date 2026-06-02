@@ -450,8 +450,10 @@ class HiveDaemon:
             # narrative/opinions -- which the persona/profile system prompt alone
             # doesn't carry. Same context channel the suffering fragment uses.
             # A derived mood (from happiness + suffering) colours the framing.
+            # Skip it in a crisis: the suffering fragment already states the
+            # crisis directive, so the "overwhelmed" mood line would duplicate it.
             mood_line = ""
-            if persona is not None:
+            if persona is not None and not suffering.in_crisis:
                 mood = MoodRegistry.default().derive(
                     persona.happiness, suffering.cumulative_load, suffering.in_crisis
                 )
@@ -510,6 +512,9 @@ class HiveDaemon:
                     metadata={"type": "goal_completed", "goal_id": active_goal["goal_id"]},
                 )
                 goals_snap = await self._store.list_agent_goals(agent.agent_id, limit=10)
+                # Reload so the snapshot reflects the narrative entry/chapter that
+                # update_narrative just wrote (it persists its own reloaded copy).
+                identity = self._identity.load(agent.agent_id) or identity
                 self._checkpoint.save(
                     agent.agent_id,
                     "goal_completed",
