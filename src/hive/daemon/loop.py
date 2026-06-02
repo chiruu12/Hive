@@ -174,9 +174,11 @@ class HiveDaemon:
                 toolkits.append(plugin_tk)
             except Exception as e:
                 logger.warning(
-                    "Plugin toolkit %s failed: %s",
+                    "Plugin toolkit %s failed for agent %s; skipping it: %s",
                     tk_cls.__name__,
+                    agent_id,
                     e,
+                    exc_info=True,
                 )
 
         import shutil
@@ -429,12 +431,14 @@ class HiveDaemon:
 
         if active_goal:
             await self._store.update_agent_status(agent.agent_id, AgentStatus.WORKING)
+            tool_timeout = get_config().daemon.tool_timeout
             if persona is not None:
                 runtime_agent = Agent(
                     name=agent.name,
                     model=runtime_provider,
                     persona=persona,
                     toolkits=self._build_toolkits(agent.agent_id),
+                    tool_timeout=tool_timeout,
                 )
             else:
                 runtime_agent = Agent(
@@ -444,6 +448,7 @@ class HiveDaemon:
                         economy_enabled=self._economy_enabled,
                     ),
                     toolkits=self._build_toolkits(agent.agent_id),
+                    tool_timeout=tool_timeout,
                 )
             adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
             # Give the pursuing agent its persistent self -- name and accumulated
@@ -929,13 +934,28 @@ class HiveDaemon:
                         restored.cumulative_load * 100,
                     )
                 except Exception:
-                    logger.warning("Could not restore suffering for %s", agent.agent_id)
+                    # Corrupt/incompatible snapshot: start this agent from a clean
+                    # suffering state rather than silently leaving it unset.
+                    self._suffering[agent.agent_id] = SufferingState(agent_id=agent.agent_id)
+                    logger.warning(
+                        "Could not restore suffering for %s; using a fresh state",
+                        agent.agent_id,
+                        exc_info=True,
+                    )
                 persona_snap = cps[0].persona_snapshot
                 if persona_snap:
                     profile = self._load_profile(agent.name)
                     persona = self._get_persona(agent.agent_id, profile)
                     if persona is not None:
-                        persona.restore_dynamic(persona_snap)
+                        try:
+                            persona.restore_dynamic(persona_snap)
+                        except Exception:
+                            logger.warning(
+                                "Could not restore persona for %s; "
+                                "keeping the freshly built persona",
+                                agent.agent_id,
+                                exc_info=True,
+                            )
             active = await self._store.get_active_goal(agent.agent_id)
             if active:
                 await self._store.abandon_goal(active["goal_id"])

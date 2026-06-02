@@ -124,6 +124,20 @@ def test_heartbeat_one_valid():
     assert cfg.heartbeat == 1
 
 
+def test_tool_timeout_negative_invalid():
+    with pytest.raises(ValidationError, match="tool_timeout"):
+        DaemonConfig(tool_timeout=-1.0)
+
+
+def test_tool_timeout_zero_valid():
+    cfg = DaemonConfig(tool_timeout=0.0)
+    assert cfg.tool_timeout == 0.0
+
+
+def test_tool_timeout_default():
+    assert DaemonConfig().tool_timeout == 60.0
+
+
 # --- Starting balance validation ---
 
 

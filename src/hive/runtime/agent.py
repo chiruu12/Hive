@@ -75,10 +75,14 @@ class Agent:
         persona: Persona | None = None,
         conversation_log_dir: Path | str | None = None,
         on_text: Callable[[str], None] | None = None,
+        tool_timeout: float = 0.0,
     ):
         self.name = name
         self._model = model
         self._on_text = on_text
+        # Per-tool wall-clock limit (seconds); 0 disables. A tool that exceeds it
+        # becomes a tool-error result so one hung tool can't stall the whole cycle.
+        self._tool_timeout = tool_timeout
         self._toolkits = toolkits or []
         self._extra_tools = _coerce_tools(tools or [])
         self._memory = memory
@@ -194,7 +198,14 @@ class Agent:
                         Message.system("Relevant memories:\n" + "\n".join(context_lines))
                     )
             except Exception:
-                logger.debug("Failed to recall persistent memory", exc_info=True)
+                logger.warning(
+                    "Agent %r: persistent memory recall failed for task %s; "
+                    "continuing without recalled memories (instruction: %.80s)",
+                    self.name,
+                    task.id,
+                    task.instruction,
+                    exc_info=True,
+                )
 
         if task.context:
             context_str = "\n".join(f"{k}: {v}" for k, v in task.context.items())
@@ -242,13 +253,36 @@ class Agent:
 
             tool_t0 = time.time()
             try:
-                result_text = await tool.call(**(tc.arguments or {}))
+                if self._tool_timeout > 0:
+                    result_text = await asyncio.wait_for(
+                        tool.call(**(tc.arguments or {})), timeout=self._tool_timeout
+                    )
+                else:
+                    result_text = await tool.call(**(tc.arguments or {}))
                 return {
                     "tc": tc,
                     "ok": True,
                     "result_text": result_text,
                     "log_result": result_text[:500],
                     "error": None,
+                    "duration_ms": int((time.time() - tool_t0) * 1000),
+                }
+            except TimeoutError:
+                logger.warning(
+                    "Agent %r: tool %r timed out after %.1fs (args %s)",
+                    self.name,
+                    tc.name,
+                    self._tool_timeout,
+                    tc.arguments,
+                )
+                return {
+                    "tc": tc,
+                    "ok": False,
+                    "result_text": (
+                        f"Error: tool '{tc.name}' timed out after {self._tool_timeout:g}s"
+                    ),
+                    "log_result": "",
+                    "error": "timeout",
                     "duration_ms": int((time.time() - tool_t0) * 1000),
                 }
             except Exception as e:

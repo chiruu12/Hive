@@ -563,3 +563,82 @@ class TestConversationMemory:
         messages = mem.get_messages()
         assert len(messages) == 1
         assert messages[0].role == Role.USER
+
+
+class SlowToolkit(Toolkit):
+    """Toolkit with a hanging tool and a fast tool, for timeout tests."""
+
+    @tool()
+    async def slow(self) -> str:
+        """Sleep far longer than any test timeout."""
+        await asyncio.sleep(10)
+        return "slow-done"
+
+    @tool()
+    async def fast(self) -> str:
+        """Return immediately."""
+        return "fast-done"
+
+
+class _BoomMemory:
+    """Persistent-memory stand-in whose recall always fails."""
+
+    async def recall(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("recall exploded")
+
+
+class TestPerToolTimeout:
+    @pytest.mark.asyncio
+    async def test_hung_tool_times_out_others_succeed(self) -> None:
+        provider = MockProvider(
+            [
+                Message.assistant(
+                    "",
+                    tool_calls=[
+                        ToolCall(id="1", name="slow", arguments={}),
+                        ToolCall(id="2", name="fast", arguments={}),
+                    ],
+                ),
+                Message.assistant("all done"),
+            ]
+        )
+        agent = Agent(
+            name="t",
+            model=provider,
+            toolkits=[SlowToolkit()],
+            tool_timeout=0.05,
+        )
+        result = await agent.run(Task(instruction="go"))
+
+        assert result.status == TaskStatus.COMPLETED
+        # The follow-up generation sees the tool results: slow timed out, fast ok.
+        followup_messages = provider.calls[1]["messages"]
+        tool_results = {m.tool_call_id: m for m in followup_messages if m.role == Role.TOOL}
+        assert "timed out" in tool_results["1"].content
+        assert tool_results["1"].is_error is True
+        assert tool_results["2"].content == "fast-done"
+
+    @pytest.mark.asyncio
+    async def test_no_timeout_when_disabled(self) -> None:
+        provider = MockProvider(
+            [
+                Message.assistant("", tool_calls=[ToolCall(id="1", name="fast", arguments={})]),
+                Message.assistant("done"),
+            ]
+        )
+        agent = Agent(name="t", model=provider, toolkits=[SlowToolkit()], tool_timeout=0.0)
+        result = await agent.run(Task(instruction="go"))
+        assert result.status == TaskStatus.COMPLETED
+
+
+class TestMemoryRecallFailure:
+    @pytest.mark.asyncio
+    async def test_recall_failure_is_warned_and_run_completes(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        provider = MockProvider([Message.assistant("hello")])
+        agent = Agent(name="m", model=provider, memory=_BoomMemory())  # type: ignore[arg-type]
+        with caplog.at_level("WARNING"):
+            result = await agent.run(Task(instruction="do the thing"))
+        assert result.status == TaskStatus.COMPLETED
+        assert any("memory recall failed" in r.message for r in caplog.records)

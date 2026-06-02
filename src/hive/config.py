@@ -129,6 +129,9 @@ class DaemonConfig(BaseModel):
     cycle_timeout: int = 300
     # Max agents whose cycles run concurrently per heartbeat (1 = sequential).
     max_concurrent_agents: int = 8
+    # Per-tool wall-clock limit (seconds); 0 disables. Stops one hung tool from
+    # consuming the whole (coarser) cycle_timeout and abandoning the goal.
+    tool_timeout: float = 60.0
 
     @field_validator("heartbeat")
     @classmethod
@@ -149,6 +152,13 @@ class DaemonConfig(BaseModel):
     def _timeout_non_negative(cls, v: int) -> int:
         if v < 0:
             raise ValueError(f"cycle_timeout must be >= 0, got {v}")
+        return v
+
+    @field_validator("tool_timeout")
+    @classmethod
+    def _tool_timeout_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError(f"tool_timeout must be >= 0, got {v}")
         return v
 
 
