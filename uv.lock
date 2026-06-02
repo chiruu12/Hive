@@ -996,6 +996,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+anthropic = [
+    { name = "anthropic" },
+]
 audio = [
     { name = "numpy" },
     { name = "scipy" },
@@ -1004,6 +1007,9 @@ audio = [
 chromadb = [
     { name = "chromadb" },
     { name = "sentence-transformers" },
+]
+cli = [
+    { name = "typer" },
 ]
 dev = [
     { name = "mypy" },
@@ -1015,6 +1021,12 @@ dev = [
 ]
 hotkeys = [
     { name = "pynput" },
+]
+mcp = [
+    { name = "mcp" },
+]
+openai = [
+    { name = "openai" },
 ]
 voice = [
     { name = "numpy" },
@@ -1039,14 +1051,17 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "anthropic", specifier = ">=0.40,<1" },
+    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40,<1" },
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "chromadb", marker = "extra == 'chromadb'", specifier = ">=0.5" },
     { name = "hive-agent", extras = ["audio", "hotkeys"], marker = "extra == 'voice'" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "mcp", specifier = ">=1.27,<2" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.27,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "numpy", marker = "extra == 'audio'", specifier = ">=1.24" },
     { name = "openai", specifier = ">=1.30,<3" },
+    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.30,<3" },
     { name = "pydantic", specifier = ">=2.5,<3" },
     { name = "pynput", marker = "extra == 'hotkeys'", specifier = ">=1.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -1061,10 +1076,11 @@ requires-dist = [
     { name = "sounddevice", marker = "extra == 'audio'", specifier = ">=0.5" },
     { name = "tqdm", specifier = ">=4.67.3" },
     { name = "typer", specifier = ">=0.12" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12" },
     { name = "types-python-dateutil", marker = "extra == 'dev'", specifier = ">=2.8" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
 ]
-provides-extras = ["dev", "chromadb", "audio", "hotkeys", "voice"]
+provides-extras = ["dev", "chromadb", "audio", "hotkeys", "voice", "anthropic", "openai", "mcp", "cli"]
 
 [package.metadata.requires-dev]
 dev = [

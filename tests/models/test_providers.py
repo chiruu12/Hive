@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import patch
 
+import pytest
+
+from hive.errors import MissingDependencyError
 from hive.models.anthropic import Anthropic
 from hive.models.base import BaseProvider
 from hive.models.factory import create_runtime_provider
@@ -272,3 +276,31 @@ class TestRepr:
         with _patch_env():
             a = Anthropic.lite()
             assert str(a) == "Anthropic(claude-haiku-4-5)"
+
+
+class TestOptionalDependencies:
+    """Provider SDKs are imported lazily; a missing one raises a clear error."""
+
+    def test_top_level_import_needs_no_provider_sdk(self) -> None:
+        # `import hive` must succeed even if no provider SDK is installed: the
+        # SDKs are imported lazily inside provider __init__, never at module load.
+        import importlib
+
+        mod = importlib.import_module("hive")
+        assert hasattr(mod, "Agent")
+
+    def test_missing_openai_raises_with_extras_hint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "openai", None)
+        with pytest.raises(MissingDependencyError, match=r"hive-agent\[openai\]"):
+            with _patch_env():
+                OpenAI()
+
+    def test_missing_anthropic_raises_with_extras_hint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "anthropic", None)
+        with pytest.raises(MissingDependencyError, match=r"hive-agent\[anthropic\]"):
+            with _patch_env():
+                Anthropic()

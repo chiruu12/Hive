@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from hive.config import get_env
+from hive.errors import require_dependency
 from hive.models.base import Availability, BaseProvider, Capability
 from hive.models.conversion import (
     messages_to_openai,
@@ -100,7 +101,7 @@ class OpenAI(BaseProvider):
         api_key: str | None = None,
         base_url: str | None = None,
     ):
-        import openai
+        openai = require_dependency("openai", "openai")
 
         key = api_key or get_env("OPENAI_API_KEY") or None
         super().__init__(model, key)

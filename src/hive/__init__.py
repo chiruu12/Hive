@@ -14,7 +14,13 @@ from hive.context import ExecutionContext
 from hive.daemon.hooks import HookRegistry
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import initialize_hive
-from hive.errors import AgentNotFoundError, HiveError, ProfileNotFoundError
+from hive.errors import (
+    AgentNotFoundError,
+    HiveError,
+    MissingDependencyError,
+    ProfileNotFoundError,
+    StructuredParseError,
+)
 from hive.interactions.registry import PatternRegistry
 from hive.memory.backend import MemoryBackend
 from hive.memory.events import EventLog, EventType, HiveEvent
@@ -120,7 +126,9 @@ __all__ = [
     "HookRegistry",
     "HiveEvent",
     "HiveStore",
+    "MissingDependencyError",
     "ProfileNotFoundError",
+    "StructuredParseError",
     "KnowledgeToolkit",
     "LinkToolkit",
     "LMStudio",
