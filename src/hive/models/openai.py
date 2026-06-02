@@ -1,4 +1,11 @@
-"""OpenAI provider (also base for OpenAI-compatible APIs)."""
+"""OpenAI provider (also base for OpenAI-compatible APIs).
+
+Retry policy: non-streaming calls go through ``_retry_with_backoff``. Streaming
+(``generate_stream``) is intentionally NOT retried -- partial output already
+yielded to the caller cannot be safely replayed, so a mid-stream failure is
+surfaced rather than retried (the runtime falls back to a non-streaming call
+when a stream ends without a terminal event).
+"""
 
 from __future__ import annotations
 
@@ -53,6 +60,29 @@ def _is_tool_use_failed(error: Exception) -> bool:
             return True
     msg = str(getattr(error, "message", "") or error).lower()
     return "model called a tool" in msg
+
+
+def _is_response_format_unsupported(error: Exception) -> bool:
+    """True when a provider rejected the ``response_format`` / ``json_schema`` arg.
+
+    Structured-first: checks the exception's ``code`` / ``body['error']`` for a
+    param-related code before falling back to a message substring match (which
+    varies by SDK version and region) as a last resort.
+    """
+    param = getattr(error, "param", None)
+    if isinstance(param, str) and "response_format" in param:
+        return True
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            if err.get("param") == "response_format" or err.get("code") in {
+                "unsupported_parameter",
+                "unsupported_value",
+            }:
+                return True
+    msg = str(getattr(error, "message", "") or error).lower()
+    return "response format" in msg or "json_schema" in msg
 
 
 class OpenAI(BaseProvider):
@@ -360,6 +390,11 @@ class OpenAI(BaseProvider):
             try:
                 args = json.loads(slot["args"]) if slot["args"] else {}
             except json.JSONDecodeError:
+                logger.warning(
+                    "Malformed streamed JSON arguments for tool %r; treating as no args. Raw: %r",
+                    slot["name"],
+                    slot["args"],
+                )
                 args = {}
             tool_calls.append(ToolCall(id=slot["id"], name=slot["name"], arguments=args))
 
@@ -408,7 +443,7 @@ class OpenAI(BaseProvider):
                 self._client.chat.completions.create, **kwargs
             )
         except Exception as e:
-            if "response format" in str(e).lower() or "json_schema" in str(e).lower():
+            if _is_response_format_unsupported(e):
                 logger.info(
                     "Model %s doesn't support json_schema, using fallback",
                     self._model,

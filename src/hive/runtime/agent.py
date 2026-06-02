@@ -458,7 +458,7 @@ class Agent:
                 error=str(e),
                 steps_taken=1,
                 duration_seconds=time.time() - t0,
-                parsed=output_type.model_construct(),
+                parsed=None,
             )
 
     async def run_once(

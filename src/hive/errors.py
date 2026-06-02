@@ -19,3 +19,15 @@ class AgentNotFoundError(HiveError, ValueError):
 
 class ProfileNotFoundError(HiveError, FileNotFoundError):
     """A requested agent preset/profile does not exist."""
+
+
+class StructuredParseError(HiveError, ValueError):
+    """A model response could not be parsed/validated into the requested type.
+
+    Carries the raw model text on :attr:`raw` so callers can inspect or log what
+    the model actually returned.
+    """
+
+    def __init__(self, message: str, raw: str = ""):
+        super().__init__(message)
+        self.raw = raw
