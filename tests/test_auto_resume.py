@@ -243,9 +243,7 @@ class TestResumeOnStart:
         await _seed_agent(store, "agent-corrupt")
 
         suffering = SufferingState(agent_id="agent-corrupt")
-        suffering.add_stressor(
-            StressorType.FUTILITY, "stuck", "finish", initial_severity=0.5
-        )
+        suffering.add_stressor(StressorType.FUTILITY, "stuck", "finish", initial_severity=0.5)
         cp_mgr = CheckpointManager(hive_dir)
         ctx = ExecutionContext(
             store=store,

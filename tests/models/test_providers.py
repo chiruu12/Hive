@@ -289,9 +289,7 @@ class TestOptionalDependencies:
         mod = importlib.import_module("hive")
         assert hasattr(mod, "Agent")
 
-    def test_missing_openai_raises_with_extras_hint(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_openai_raises_with_extras_hint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(sys.modules, "openai", None)
         with pytest.raises(MissingDependencyError, match=r"hive-agent\[openai\]"):
             with _patch_env():

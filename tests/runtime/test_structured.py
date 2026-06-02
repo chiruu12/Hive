@@ -144,8 +144,7 @@ class TestParseStructuredResponse:
 
     def test_nested_object(self) -> None:
         content = (
-            'prefix {"title": "T", "author": '
-            '{"name": "Ann", "age": 9, "active": true}} suffix'
+            'prefix {"title": "T", "author": {"name": "Ann", "age": 9, "active": true}} suffix'
         )
         result = parse_structured_response(content, NestedModel)
         assert result.author.name == "Ann"

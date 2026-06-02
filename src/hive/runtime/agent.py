@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
+from hive.models.registry import estimate_cost
 from hive.runtime.instructions import InstructionLike, Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.persona import Persona
@@ -408,11 +409,20 @@ class Agent:
     def _synthesize_stream_result(self, text: str) -> GenerateResult:
         """Build a GenerateResult from text already streamed to ``on_text``.
 
-        Used when a stream is interrupted after emitting text but before a DONE
-        event -- the partial text can't be replayed, so we return it as the turn's
-        result (no tool calls; usage/cost unknown).
+        Used when a stream is interrupted after emitting text but before the DONE
+        event that carries usage. The partial text can't be replayed, so we return
+        it as the turn's result (no tool calls). Real usage is unknown, so output
+        tokens and cost are *estimated* from the streamed text (~4 chars/token) --
+        otherwise the generation would be invisible to budget tracking and a
+        near-limit agent could overshoot by a whole interrupted generation.
         """
-        return GenerateResult(message=Message.assistant(text), model=self._model.model)
+        output_est = max(1, len(text) // 4) if text else 0
+        return GenerateResult(
+            message=Message.assistant(text),
+            model=self._model.model,
+            output_tokens=output_est,
+            cost_usd=estimate_cost(self._model.model, 0, output_est),
+        )
 
     async def run(self, task: Task) -> TaskResult:
         """Execute a task using the ReAct loop."""

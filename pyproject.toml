@@ -63,21 +63,14 @@ voice = [
     "hive-agent[audio,hotkeys]",
 ]
 # Provider/CLI extras. These SDKs ship in core `dependencies` today (so existing
-# installs are unchanged), but the extras let you pin/opt into individual pieces
-# and pave the way for a slimmer core later. Missing ones raise a clear
-# MissingDependencyError pointing at the matching extra.
-anthropic = [
-    "anthropic>=0.40,<1",
-]
-openai = [
-    "openai>=1.30,<3",
-]
-mcp = [
-    "mcp>=1.27,<2",
-]
-cli = [
-    "typer>=0.12",
-]
+# installs are unchanged) -- the extras are unversioned aliases that name the
+# grouping without duplicating (and risking drift from) the version pins in
+# `dependencies`, which stays authoritative. They pave the way for a slimmer core
+# later; a missing one raises a clear MissingDependencyError naming the extra.
+anthropic = ["anthropic"]
+openai = ["openai"]
+mcp = ["mcp"]
+cli = ["typer"]
 
 [project.scripts]
 hive = "hive.cli.main:app"
