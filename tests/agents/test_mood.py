@@ -76,3 +76,7 @@ class TestRegistry:
 
         MoodRegistry.default().set_model(AlwaysCalm())
         assert MoodRegistry.default().derive(0.0, 1.0, True).label == "zen"
+
+    def test_set_model_rejects_invalid_object(self) -> None:
+        with pytest.raises(TypeError):
+            MoodRegistry.default().set_model(object())  # no derive() method
