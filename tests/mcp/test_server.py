@@ -13,7 +13,16 @@ from hive.mcp.server import HiveMCPServer
 
 
 @pytest.fixture
-def server(tmp_path: Path) -> HiveMCPServer:
+def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> HiveMCPServer:
+    # Run in an isolated cwd with its own profiles/ so the spawn path resolves
+    # `default_profiles_dir()` deterministically (it checks Path.cwd()/profiles
+    # first) instead of depending on the ambient working directory.
+    monkeypatch.chdir(tmp_path)
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    (profiles / "coder.yaml").write_text(
+        'name: coder\nrole: "Test agent"\nmodel: claude-haiku-4-5\nautonomy: high\nmax_steps: 5\n'
+    )
     hive_dir = tmp_path / ".hive"
     hive_dir.mkdir(parents=True)  # so the store's hive.db parent exists
     return HiveMCPServer(hive_dir=hive_dir)

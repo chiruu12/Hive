@@ -128,7 +128,7 @@ class TestReaderMissingData:
 
 class TestConcurrentWrites:
     def test_concurrent_tool_logs_all_land(self, tmp_path: Path) -> None:
-        """The threading.Lock in the writer keeps concurrent appends intact."""
+        """The module-level threading.Lock guarding writes keeps concurrent appends intact."""
         writer = LogWriter(tmp_path)
         run_id = _start_run(writer)
 
