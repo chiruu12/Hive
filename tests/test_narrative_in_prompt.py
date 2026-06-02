@@ -111,3 +111,36 @@ async def test_pursuit_prompt_includes_identity_narrative(hive_dir: Path) -> Non
     assert provider.prompts, "provider was never called during pursuit"
     joined = "\n".join(provider.prompts)
     assert _MARKER in joined, "identity narrative was not present in the pursuit prompt"
+
+
+@pytest.mark.asyncio
+async def test_pursuit_prompt_includes_mood(hive_dir: Path) -> None:
+    """When the agent has a persona, a derived mood descriptor reaches the prompt."""
+    from hive.runtime.persona import Persona
+
+    store = HiveStore(hive_dir / "hive.db")
+    await store.initialize()
+    agent = AgentState(
+        agent_id="coder-test0001",
+        name="coder",
+        role="developer",
+        model="mock-model",
+        status=AgentStatus.IDLE,
+        workspace=".",
+    )
+    await store.save_agent(agent)
+    await store.save_goal("g-1", agent.agent_id, "Refactor the parser")
+
+    provider = CapturingProvider()
+    daemon = HiveDaemon(
+        hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs", profiles=["coder"]
+    )
+    # Force the persona path (mood only renders with a persona). High happiness +
+    # no suffering => a "content" mood.
+    daemon._personas[agent.agent_id] = Persona(name="coder", happiness=0.9)
+
+    with patch("hive.daemon.loop.create_runtime_provider", return_value=provider):
+        await daemon._run_agent_cycle(agent)
+
+    joined = "\n".join(provider.prompts)
+    assert "Current mood:" in joined and "content" in joined

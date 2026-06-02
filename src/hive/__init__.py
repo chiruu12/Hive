@@ -4,6 +4,7 @@ __version__ = "0.5.4"
 
 from hive.agents.existence import ExistenceLoop
 from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
+from hive.agents.mood import CircumplexMood, MoodModel, MoodRegistry, MoodState
 from hive.agents.profile import AgentProfile
 from hive.agents.state import AgentState, AgentStatus
 from hive.agents.suffering import StressorRegistry, StressorType, SufferingState
@@ -128,6 +129,10 @@ __all__ = [
     "MemoryBackend",
     "MemoryToolkit",
     "Message",
+    "CircumplexMood",
+    "MoodModel",
+    "MoodRegistry",
+    "MoodState",
     "Ollama",
     "OpenAI",
     "OpenRouter",

@@ -53,6 +53,36 @@ state = SufferingState(agent_id="agent-1")
 state.add_stressor("burnout", "Worked 50 cycles straight", "Take a rest cycle")
 ```
 
+## Mood
+
+An agent's **mood** is a *derived* emotional state -- no extra stored state. The default
+`CircumplexMood` maps the agent's positive signal (`happiness`) and aversive load
+(`suffering`) onto a valence/arousal circumplex and names the result. During goal pursuit
+the mood descriptor is added to the agent's prompt, so its emotional state colours how it
+works.
+
+| Mood | When | Cue |
+|------|------|-----|
+| **content** | positive, calm | satisfied; open to exploration |
+| **motivated** | positive, activated | energized; take initiative |
+| **steady** | neutral, calm | balanced and focused |
+| **restless** | neutral, activated | unsettled; pick a concrete next step |
+| **discouraged** | negative, calm | low energy; favour small wins |
+| **anxious** | negative, activated | on edge; resolve stressors first |
+| **overwhelmed** | in crisis | focus inward on relief |
+
+Swap the model via `MoodRegistry` (see EXTENDING.md → Custom Mood Model):
+
+```python
+from hive import MoodRegistry, MoodState
+
+class StoicMood:
+    def derive(self, happiness, suffering_load, in_crisis):
+        return MoodState("stoic", 0.0, 0.0, "unmoved; proceed steadily")
+
+MoodRegistry.default().set_model(StoicMood())
+```
+
 ## Observing Suffering
 
 In the TUI (`hive watch`), suffering appears as:
