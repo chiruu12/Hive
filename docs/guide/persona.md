@@ -99,6 +99,15 @@ Each daemon cycle, `persona.apply_suffering_effects()` reads the agent's sufferi
 
 These changes are **not prompt text** -- they're actual parameter values that affect goal generation, tool selection, and decision-making.
 
+## Narrative & chapters
+
+Alongside the persona, each agent keeps an `AgentIdentity` with an evolving **narrative** --
+a dated log of goal outcomes. When the open narrative grows past its size limit it is
+**sealed into a chapter** (a compact summary with a date span and entry count) rather than
+dropping the oldest lines, so long-run history survives as a story arc. During goal pursuit
+the agent's prompt includes a "Story so far" section (recent chapter summaries) plus the
+current "Recent history", so the agent's own past informs its work.
+
 ## Checkpointing
 
 Persona state is included in checkpoints:
