@@ -91,9 +91,15 @@ class EventLog:
         # final line on a newline-terminated file) must parse -- a failure there
         # is real corruption and is surfaced, not silently dropped.
         ends_clean = text.endswith("\n")
-        lines = text.splitlines()
+        # Split ONLY on "\n" -- str.splitlines() also breaks on \r, \v, \f, NEL
+        # and Unicode  / , which are legal (unescaped) inside JSON
+        # strings, so a single record carrying one in its text would be shredded.
+        lines = text.split("\n")
+        if ends_clean and lines and lines[-1] == "":
+            lines = lines[:-1]  # drop the empty element after a trailing newline
         events = []
-        for idx, line in enumerate(lines):
+        for idx, raw in enumerate(lines):
+            line = raw.rstrip("\r")  # tolerate CRLF
             if not line.strip():
                 continue
             try:
@@ -126,7 +132,10 @@ class EventLog:
             nl = chunk.rfind("\n")
             if nl != -1:
                 complete = chunk[: nl + 1]
-                for line in complete.splitlines():
+                # Split only on "\n" (see replay): splitlines() would shred a
+                # record containing a Unicode line separator in its text.
+                for raw in complete.split("\n"):
+                    line = raw.rstrip("\r")
                     if not line.strip():
                         continue
                     # These are complete (newline-terminated) lines, so a parse
