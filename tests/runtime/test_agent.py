@@ -436,23 +436,93 @@ class NoDoneProvider(BaseProvider):
         return True
 
     async def generate_with_metadata(self, *args: Any, **kwargs: Any) -> GenerateResult:
-        return GenerateResult(message=Message.assistant("x"), model="nodone")
+        return GenerateResult(message=Message.assistant("fallback"), model="nodone")
 
     async def generate_stream(self, *args: Any, **kwargs: Any):
         yield StreamEvent(type=StreamEventType.TEXT, text="partial")
         # intentionally no DONE event
 
 
+class EmptyStreamProvider(BaseProvider):
+    """Streams nothing at all (no TEXT, no DONE)."""
+
+    def __init__(self) -> None:
+        super().__init__("empty")
+        self.fallback_called = False
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def generate_with_metadata(self, *args: Any, **kwargs: Any) -> GenerateResult:
+        self.fallback_called = True
+        return GenerateResult(message=Message.assistant("non-streamed fallback"), model="empty")
+
+    async def generate_stream(self, *args: Any, **kwargs: Any):
+        return
+        yield  # pragma: no cover -- makes this an async generator
+
+
+class HangingStreamProvider(BaseProvider):
+    """Yields text then blocks, with a try/finally so we can assert it's closed."""
+
+    def __init__(self) -> None:
+        super().__init__("hang")
+        self.closed = False
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def generate_with_metadata(self, *args: Any, **kwargs: Any) -> GenerateResult:
+        return GenerateResult(message=Message.assistant("x"), model="hang")
+
+    async def generate_stream(self, *args: Any, **kwargs: Any):
+        try:
+            yield StreamEvent(type=StreamEventType.TEXT, text="hi")
+            await asyncio.sleep(100)
+            yield StreamEvent(
+                type=StreamEventType.DONE,
+                result=GenerateResult(message=Message.assistant("hi"), model="hang"),
+            )
+        finally:
+            self.closed = True
+
+
 class TestStreaming:
-    """A2: the agent's optional on_text path forwards streamed text deltas."""
+    """A1: the on_text path falls back gracefully when a stream is interrupted."""
 
     @pytest.mark.asyncio
-    async def test_stream_without_done_event_fails_cleanly(self):
-        """A stream missing the terminal DONE event surfaces a clear failure."""
-        agent = Agent(name="x", model=NoDoneProvider("nodone"), on_text=lambda t: None)
+    async def test_stream_without_done_uses_partial_text(self):
+        """A stream missing the terminal DONE event keeps the text already shown."""
+        seen: list[str] = []
+        agent = Agent(name="x", model=NoDoneProvider("nodone"), on_text=seen.append)
         result = await agent.run(Task(instruction="hi"))
-        assert result.status == TaskStatus.FAILED
-        assert "DONE" in (result.error or "")
+        assert result.status == TaskStatus.COMPLETED
+        assert result.output == "partial"
+        assert seen == ["partial"]
+
+    @pytest.mark.asyncio
+    async def test_empty_stream_falls_back_to_non_streaming(self):
+        """A stream that yields nothing falls back to a non-streaming generation."""
+        provider = EmptyStreamProvider()
+        agent = Agent(name="x", model=provider, on_text=lambda t: None)
+        result = await agent.run(Task(instruction="hi"))
+        assert result.status == TaskStatus.COMPLETED
+        assert result.output == "non-streamed fallback"
+        assert provider.fallback_called is True
+
+    @pytest.mark.asyncio
+    async def test_stream_closed_on_cancel(self):
+        """Cancelling mid-stream closes the underlying stream."""
+        provider = HangingStreamProvider()
+        agent = Agent(name="x", model=provider, on_text=lambda t: None)
+        run_task = asyncio.create_task(agent.run(Task(instruction="hi")))
+        await asyncio.sleep(0.05)  # let it start streaming and block
+        run_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run_task
+        assert provider.closed is True
 
     @pytest.mark.asyncio
     async def test_on_text_via_base_default(self):
@@ -563,3 +633,82 @@ class TestConversationMemory:
         messages = mem.get_messages()
         assert len(messages) == 1
         assert messages[0].role == Role.USER
+
+
+class SlowToolkit(Toolkit):
+    """Toolkit with a hanging tool and a fast tool, for timeout tests."""
+
+    @tool()
+    async def slow(self) -> str:
+        """Sleep far longer than any test timeout."""
+        await asyncio.sleep(10)
+        return "slow-done"
+
+    @tool()
+    async def fast(self) -> str:
+        """Return immediately."""
+        return "fast-done"
+
+
+class _BoomMemory:
+    """Persistent-memory stand-in whose recall always fails."""
+
+    async def recall(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("recall exploded")
+
+
+class TestPerToolTimeout:
+    @pytest.mark.asyncio
+    async def test_hung_tool_times_out_others_succeed(self) -> None:
+        provider = MockProvider(
+            [
+                Message.assistant(
+                    "",
+                    tool_calls=[
+                        ToolCall(id="1", name="slow", arguments={}),
+                        ToolCall(id="2", name="fast", arguments={}),
+                    ],
+                ),
+                Message.assistant("all done"),
+            ]
+        )
+        agent = Agent(
+            name="t",
+            model=provider,
+            toolkits=[SlowToolkit()],
+            tool_timeout=0.05,
+        )
+        result = await agent.run(Task(instruction="go"))
+
+        assert result.status == TaskStatus.COMPLETED
+        # The follow-up generation sees the tool results: slow timed out, fast ok.
+        followup_messages = provider.calls[1]["messages"]
+        tool_results = {m.tool_call_id: m for m in followup_messages if m.role == Role.TOOL}
+        assert "timed out" in tool_results["1"].content
+        assert tool_results["1"].is_error is True
+        assert tool_results["2"].content == "fast-done"
+
+    @pytest.mark.asyncio
+    async def test_no_timeout_when_disabled(self) -> None:
+        provider = MockProvider(
+            [
+                Message.assistant("", tool_calls=[ToolCall(id="1", name="fast", arguments={})]),
+                Message.assistant("done"),
+            ]
+        )
+        agent = Agent(name="t", model=provider, toolkits=[SlowToolkit()], tool_timeout=0.0)
+        result = await agent.run(Task(instruction="go"))
+        assert result.status == TaskStatus.COMPLETED
+
+
+class TestMemoryRecallFailure:
+    @pytest.mark.asyncio
+    async def test_recall_failure_is_warned_and_run_completes(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        provider = MockProvider([Message.assistant("hello")])
+        agent = Agent(name="m", model=provider, memory=_BoomMemory())  # type: ignore[arg-type]
+        with caplog.at_level("WARNING"):
+            result = await agent.run(Task(instruction="do the thing"))
+        assert result.status == TaskStatus.COMPLETED
+        assert any("memory recall failed" in r.message for r in caplog.records)

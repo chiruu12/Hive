@@ -17,6 +17,20 @@ Or with [uv](https://docs.astral.sh/uv/):
 uv add hive-agent
 ```
 
+The default install includes the Anthropic, OpenAI, and MCP SDKs plus the CLI.
+Optional extras let you pin or opt into individual pieces:
+
+```bash
+pip install 'hive-agent[anthropic]'   # Anthropic SDK
+pip install 'hive-agent[openai]'      # OpenAI SDK (also Groq/Fireworks/Ollama/LM Studio)
+pip install 'hive-agent[mcp]'         # MCP client/server
+pip install 'hive-agent[cli]'         # Typer CLI
+pip install 'hive-agent[voice]'       # audio + hotkeys (speech)
+```
+
+If a provider's SDK is missing, constructing it raises a clear
+`MissingDependencyError` naming the extra to install.
+
 ## Development Install
 
 For contributing or running from source:

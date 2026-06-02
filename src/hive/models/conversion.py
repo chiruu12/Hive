@@ -8,9 +8,12 @@ Ollama, LM Studio, OpenRouter) all reuse the OpenAI helpers.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from hive.runtime.types import Message, Role, ToolCall
+
+logger = logging.getLogger(__name__)
 
 
 def messages_to_openai(messages: list[Message]) -> list[dict[str, Any]]:
@@ -80,6 +83,11 @@ def openai_response_to_message(response: Any) -> Message:
             try:
                 args = json.loads(tc.function.arguments)
             except json.JSONDecodeError:
+                logger.warning(
+                    "Malformed JSON arguments for tool %r; treating as no args. Raw: %r",
+                    tc.function.name,
+                    tc.function.arguments,
+                )
                 args = {}
             tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=args))
 

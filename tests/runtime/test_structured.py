@@ -131,6 +131,31 @@ class TestParseStructuredResponse:
         with pytest.raises(Exception):
             parse_structured_response('{"name": 123, "age": "old"}', SimpleModel)
 
+    def test_trailing_prose_with_brace(self) -> None:
+        # A naive rfind('}') slice would swallow the trailing lone brace and fail.
+        content = '{"name": "Eve", "age": 28, "active": true}. Note: use {braces} sparingly.'
+        result = parse_structured_response(content, SimpleModel)
+        assert result.name == "Eve"
+
+    def test_string_field_contains_braces(self) -> None:
+        content = '{"name": "use } and { carefully", "age": 1, "active": true}'
+        result = parse_structured_response(content, SimpleModel)
+        assert result.name == "use } and { carefully"
+
+    def test_nested_object(self) -> None:
+        content = (
+            'prefix {"title": "T", "author": {"name": "Ann", "age": 9, "active": true}} suffix'
+        )
+        result = parse_structured_response(content, NestedModel)
+        assert result.author.name == "Ann"
+
+    def test_raises_structured_parse_error_with_raw(self) -> None:
+        from hive.errors import StructuredParseError
+
+        with pytest.raises(StructuredParseError) as exc:
+            parse_structured_response('{"name": 123, "age": "old"}', SimpleModel)
+        assert '{"name": 123' in exc.value.raw
+
 
 class MockStructuredProvider(BaseProvider):
     """Provider that returns structured JSON content."""

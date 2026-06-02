@@ -95,6 +95,37 @@ class TestHiveInit:
         assert (hive_root / ".hive" / "hive.db").exists()
 
 
+class TestHiveLazyInit:
+    def test_spawn_without_init_scaffolds_lazily(self, hive_root: Path) -> None:
+        h = Hive(hive_root)
+        aid = h.spawn("coder")  # no h.init() call
+        assert aid.startswith("coder-")
+        assert (hive_root / ".hive" / "hive.db").exists()
+
+    def test_init_still_idempotent(self, hive_root: Path) -> None:
+        h = Hive(hive_root)
+        h.init()
+        h.init()  # second call must not raise
+        assert (hive_root / ".hive").exists()
+
+
+class TestHiveContextManager:
+    def test_sync_context_manager(self, hive_root: Path) -> None:
+        with Hive(hive_root) as h:
+            aid = h.spawn("coder")
+        assert aid.startswith("coder-")
+        assert (hive_root / ".hive" / "hive.db").exists()
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager(self, hive_root: Path) -> None:
+        async with Hive(hive_root) as h:
+            aid = h.spawn("coder")
+            agents = h.status()
+        assert aid.startswith("coder-")
+        assert len(agents) == 1
+        assert (hive_root / ".hive" / "hive.db").exists()
+
+
 class TestHiveSpawn:
     def test_spawn_returns_agent_id(self, hive_root: Path) -> None:
         h = Hive(hive_root)

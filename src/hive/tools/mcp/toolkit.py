@@ -7,6 +7,7 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
+from hive.errors import require_dependency
 from hive.tools.base import Tool, Toolkit
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class MCPToolkit(Toolkit):
         cwd: str | Path | None = None,
     ) -> MCPToolkit:
         """Connect to an MCP server via stdio transport."""
+        require_dependency("mcp", "mcp")
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
 

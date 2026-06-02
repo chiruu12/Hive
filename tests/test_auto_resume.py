@@ -234,6 +234,46 @@ class TestResumeOnStart:
             assert restored.cumulative_load == 0.0
 
     @pytest.mark.asyncio
+    async def test_corrupt_suffering_snapshot_falls_back_to_fresh(
+        self, hive_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A snapshot that can't be validated must not leave suffering unset."""
+        store = HiveStore(hive_dir / "hive.db")
+        await store.initialize()
+        await _seed_agent(store, "agent-corrupt")
+
+        suffering = SufferingState(agent_id="agent-corrupt")
+        suffering.add_stressor(StressorType.FUTILITY, "stuck", "finish", initial_severity=0.5)
+        cp_mgr = CheckpointManager(hive_dir)
+        ctx = ExecutionContext(
+            store=store,
+            comms_dir=hive_dir / "comms",
+            memory_dir=hive_dir / "agent_memory",
+        )
+        cp_mgr.save("agent-corrupt", "daemon_shutdown", suffering, None, ctx, [])
+
+        daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs", fresh=False)
+
+        async def _no_run(max_cycles: int | None = None) -> None:
+            daemon._running = False
+
+        daemon._run = _no_run  # type: ignore[assignment]
+
+        with (
+            patch("hive.daemon.loop.create_runtime_provider", side_effect=_mock_provider),
+            patch.object(
+                SufferingState, "model_validate", side_effect=ValueError("corrupt snapshot")
+            ),
+            caplog.at_level("WARNING"),
+        ):
+            await daemon.start()
+
+        restored = daemon._suffering.get("agent-corrupt")
+        assert restored is not None  # not left unset
+        assert restored.cumulative_load == 0.0  # fresh state
+        assert any("Could not restore suffering" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
     async def test_resume_abandons_stale_goals(self, hive_dir: Path) -> None:
         """Stale active goals are abandoned on resume."""
         store = HiveStore(hive_dir / "hive.db")

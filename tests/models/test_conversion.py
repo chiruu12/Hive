@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 from types import SimpleNamespace
+from typing import Any
 
 from hive.models.conversion import (
     anthropic_response_to_message,
@@ -66,7 +68,7 @@ class TestOpenAIConversion:
         assert msg.tool_calls[0].name == "add"
         assert msg.tool_calls[0].arguments == {"a": 1}
 
-    def test_response_to_message_bad_json_args(self) -> None:
+    def test_response_to_message_bad_json_args(self, caplog: Any) -> None:
         response = SimpleNamespace(
             choices=[
                 SimpleNamespace(
@@ -81,8 +83,10 @@ class TestOpenAIConversion:
                 )
             ]
         )
-        msg = openai_response_to_message(response)
+        with caplog.at_level(logging.WARNING):
+            msg = openai_response_to_message(response)
         assert msg.tool_calls[0].arguments == {}
+        assert any("Malformed JSON arguments" in r.message for r in caplog.records)
 
 
 class TestAnthropicConversion:

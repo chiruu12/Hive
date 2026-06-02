@@ -14,7 +14,12 @@ from typing import Any
 
 import pytest
 
-from hive.models.openai import _TEXT_ONLY_NUDGE, OpenAI, _is_tool_use_failed
+from hive.models.openai import (
+    _TEXT_ONLY_NUDGE,
+    OpenAI,
+    _is_response_format_unsupported,
+    _is_tool_use_failed,
+)
 from hive.runtime.types import Message, StreamEventType
 
 
@@ -67,6 +72,26 @@ class TestDetector:
         err = Exception("invalid request: bad parameter")
         err.code = "invalid_request_error"  # type: ignore[attr-defined]
         assert not _is_tool_use_failed(err)
+
+
+class TestResponseFormatUnsupportedDetector:
+    def test_matches_body_param(self) -> None:
+        err = Exception("nope")
+        err.body = {"error": {"param": "response_format"}}  # type: ignore[attr-defined]
+        assert _is_response_format_unsupported(err)
+
+    def test_matches_body_unsupported_code(self) -> None:
+        err = Exception("nope")
+        err.body = {"error": {"code": "unsupported_parameter"}}  # type: ignore[attr-defined]
+        assert _is_response_format_unsupported(err)
+
+    def test_matches_message_substring(self) -> None:
+        assert _is_response_format_unsupported(Exception("json_schema not supported here"))
+
+    def test_unrelated_error_does_not_match(self) -> None:
+        err = Exception("rate limited")
+        err.body = {"error": {"code": "rate_limit_exceeded"}}  # type: ignore[attr-defined]
+        assert not _is_response_format_unsupported(err)
 
 
 class TestGenerateWithMetadataRecovery:

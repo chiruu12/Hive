@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from hive.config import get_env
+from hive.errors import require_dependency
 from hive.models.base import Availability, BaseProvider, Capability
 from hive.models.conversion import anthropic_response_to_message, messages_to_anthropic
 from hive.models.registry import estimate_cost
@@ -29,7 +30,7 @@ class Anthropic(BaseProvider):
     CAPABILITIES = BaseProvider.CAPABILITIES | {Capability.STREAMING}
 
     def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
-        import anthropic
+        anthropic = require_dependency("anthropic", "anthropic")
 
         key = api_key or get_env("ANTHROPIC_API_KEY") or None
         super().__init__(model, key)

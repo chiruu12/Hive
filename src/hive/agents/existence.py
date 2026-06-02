@@ -132,6 +132,16 @@ class ExistenceLoop:
             logger.info("Goal rejected for %s: %s", self._agent_id, rejection)
             return None
 
+        # Re-check immediately before saving: a goal may have appeared since the
+        # idle check that triggered this generation (a concurrent cycle, a
+        # delegation, or a fired schedule). Skip rather than pile up a duplicate.
+        if await self._store.get_active_goal(self._agent_id) is not None:
+            logger.info(
+                "Skipping generated goal for %s: an active goal already exists",
+                self._agent_id,
+            )
+            return None
+
         goal_id = f"goal-{uuid4().hex[:8]}"
         await self._store.save_goal(goal_id, self._agent_id, goal_text)
 

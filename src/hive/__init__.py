@@ -1,6 +1,6 @@
 """Hive - Autonomous agent OS."""
 
-__version__ = "0.5.4"
+__version__ = "0.6.0"
 
 from hive.agents.existence import ExistenceLoop
 from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
@@ -13,8 +13,14 @@ from hive.config import HiveConfig, load_config
 from hive.context import ExecutionContext
 from hive.daemon.hooks import HookRegistry
 from hive.daemon.loop import HiveDaemon
-from hive.daemon.setup import initialize_hive
-from hive.errors import AgentNotFoundError, HiveError, ProfileNotFoundError
+from hive.daemon.setup import ensure_hive_dirs, initialize_hive
+from hive.errors import (
+    AgentNotFoundError,
+    HiveError,
+    MissingDependencyError,
+    ProfileNotFoundError,
+    StructuredParseError,
+)
 from hive.interactions.registry import PatternRegistry
 from hive.memory.backend import MemoryBackend
 from hive.memory.events import EventLog, EventType, HiveEvent
@@ -120,7 +126,9 @@ __all__ = [
     "HookRegistry",
     "HiveEvent",
     "HiveStore",
+    "MissingDependencyError",
     "ProfileNotFoundError",
+    "StructuredParseError",
     "KnowledgeToolkit",
     "LinkToolkit",
     "LMStudio",
@@ -175,6 +183,7 @@ __all__ = [
     "HotkeyTrigger",
     "Trigger",
     "WebhookTrigger",
+    "ensure_hive_dirs",
     "initialize_hive",
     "load_config",
     "tool",

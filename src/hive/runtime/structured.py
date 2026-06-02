@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from hive.runtime.types import GenerateResult
 
@@ -51,11 +51,50 @@ def pydantic_to_response_format(model_class: type[BaseModel]) -> dict[str, Any]:
     }
 
 
+def _extract_json_object(text: str) -> str | None:
+    """Return the first balanced top-level ``{...}`` object in ``text``.
+
+    Walks the string tracking brace depth while respecting string literals and
+    escapes, so braces inside quoted strings (e.g. ``"use } carefully"``) don't
+    throw off the match -- unlike a naive ``find('{')`` / ``rfind('}')`` slice.
+    Returns ``None`` if no balanced object is found.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def parse_structured_response(content: str, output_type: type[T]) -> T:
     """Parse and validate a JSON string against a Pydantic model.
 
-    Handles markdown code fences and thinking tokens.
+    Handles markdown code fences and thinking tokens. Raises
+    :class:`~hive.errors.StructuredParseError` (carrying the raw text) when no
+    JSON object can be extracted or validation fails.
     """
+    from hive.errors import StructuredParseError
+
     text = content.strip()
     if text.startswith("```"):
         lines = text.splitlines()
@@ -63,11 +102,16 @@ def parse_structured_response(content: str, output_type: type[T]) -> T:
     think_match = re.search(r"</think>\s*(.*)", text, re.DOTALL)
     if think_match:
         text = think_match.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end > start:
-        text = text[start : end + 1]
-    return output_type.model_validate_json(text)
+    extracted = _extract_json_object(text)
+    if extracted is not None:
+        text = extracted
+    try:
+        return output_type.model_validate_json(text)
+    except ValidationError as e:
+        raise StructuredParseError(
+            f"Could not validate response as {output_type.__name__}: {e}",
+            raw=content,
+        ) from e
 
 
 def _resolve_refs(node: Any, defs: dict[str, Any]) -> Any:

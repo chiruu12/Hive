@@ -142,6 +142,10 @@ class TaskResult(BaseModel):
 
 
 class StructuredTaskResult(TaskResult, Generic[T]):
-    """TaskResult with a parsed structured output."""
+    """TaskResult with a parsed structured output.
 
-    parsed: T
+    ``parsed`` is ``None`` when ``status`` is ``FAILED`` (generation or parsing
+    failed); it is a validated instance on ``COMPLETED``.
+    """
+
+    parsed: T | None = None

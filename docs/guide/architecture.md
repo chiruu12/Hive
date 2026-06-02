@@ -202,6 +202,7 @@ All config lives in `.hive/config.yaml` and env vars.
 | `daemon` | `max_retries` | `int` | `2` | Retries on agent failure |
 | `daemon` | `cycle_timeout` | `int` | `300` | Per-agent cycle timeout in seconds (0 = none) |
 | `daemon` | `max_concurrent_agents` | `int` | `8` | Max agent cycles run concurrently per heartbeat |
+| `daemon` | `tool_timeout` | `float` | `60.0` | Per-tool wall-clock limit in seconds (0 = none); a hung tool becomes a tool-error instead of stalling the cycle |
 | `model` | `default_model` | `str` | `claude-haiku-4-5` | Default LLM model |
 | `model` | `planning_model` | `str` | `claude-sonnet-4-6` | Model for planning tasks |
 | `model` | `max_tokens` | `int` | `4096` | Max generation tokens |
