@@ -243,6 +243,62 @@ class TestConcurrencySettings:
         assert await store.get_pending_nudges("a1") == ["third"]
         assert await store.get_pending_nudges("a1") == []
 
+    @pytest.mark.asyncio
+    async def test_get_pending_nudges_survives_concurrent_insert(self, tmp_path: Path) -> None:
+        """A nudge committed by another connection *between* the SELECT and the
+        UPDATE must not be marked delivered. This is the actual race the by-id
+        UPDATE fixes -- the old `WHERE delivered = 0` sweep would have lost it."""
+        from contextlib import asynccontextmanager
+
+        db_path = tmp_path / "state.db"
+        store = HiveStore(db_path)
+        await store.initialize()
+        await store.save_nudge("n1", "a1", "first")
+
+        real_connect = store._connect
+        state = {"injected": False}
+
+        @asynccontextmanager
+        async def connect_with_injection(foreign_keys: bool = False):  # type: ignore[no-untyped-def]
+            async with real_connect(foreign_keys=foreign_keys) as db:
+                real_execute = db.execute
+
+                # Sync wrapper preserves aiosqlite's `await`/`async with` duality.
+                # Just before the UPDATE runs (rows already SELECTed), a *separate*
+                # connection commits a new nudge -- the exact race window where the
+                # old `WHERE delivered = 0` sweep would have marked it delivered.
+                def execute(*args, **kwargs):  # type: ignore[no-untyped-def]
+                    sql = args[0] if args else kwargs.get("sql", "")
+                    if (
+                        not state["injected"]
+                        and sql.lstrip().upper().startswith("UPDATE")
+                        and "nudges" in sql
+                    ):
+                        state["injected"] = True
+
+                        async def _inject_then_update():  # type: ignore[no-untyped-def]
+                            async with aiosqlite.connect(db_path) as other:
+                                await other.execute(
+                                    "INSERT INTO nudges (nudge_id, agent_id, message, "
+                                    "delivered, created_at) VALUES ('n2','a1','second',0,'t')"
+                                )
+                                await other.commit()
+                            return await real_execute(*args, **kwargs)
+
+                        return _inject_then_update()
+                    return real_execute(*args, **kwargs)
+
+                db.execute = execute  # type: ignore[method-assign]
+                yield db
+
+        store._connect = connect_with_injection  # type: ignore[assignment,method-assign]
+        returned = await store.get_pending_nudges("a1")
+        store._connect = real_connect  # type: ignore[method-assign]
+
+        assert returned == ["first"]
+        # n2 raced in mid-call; it must survive as still-pending, not be lost.
+        assert await store.get_pending_nudges("a1") == ["second"]
+
 
 class TestCascades:
     @pytest.mark.asyncio
