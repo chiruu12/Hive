@@ -114,7 +114,7 @@ class LifeDirectoryWriter:
             peak_happiness_cycle=stats.cycles_alive,
             lowest_happiness=stats.happiness,
             lowest_happiness_cycle=0,
-            narrative=identity.narrative if identity else "",
+            narrative=identity.full_narrative() if identity else "",
         )
 
         return summary

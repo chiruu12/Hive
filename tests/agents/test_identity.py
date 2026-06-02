@@ -82,8 +82,16 @@ class TestSealing:
             idm.update_narrative("a1", f"goal {i}", "done")
         ident = idm.load("a1")
         assert ident is not None
-        # Open narrative never far exceeds the seal threshold.
-        assert len(ident.narrative) <= MAX_NARRATIVE + 80
+        # Strict bound: the open narrative never exceeds MAX_NARRATIVE.
+        assert len(ident.narrative) <= MAX_NARRATIVE
+
+    def test_single_oversized_entry_is_bounded(self, tmp_path: Path) -> None:
+        """A lone entry longer than MAX_NARRATIVE must not bypass the bound."""
+        idm = self._idm_with_agent(tmp_path)
+        idm.update_narrative("a1", "x" * (MAX_NARRATIVE * 2), "done")
+        ident = idm.load("a1")
+        assert ident is not None
+        assert len(ident.narrative) <= MAX_NARRATIVE
 
     def test_chapter_indices_monotonic(self, tmp_path: Path) -> None:
         idm = self._idm_with_agent(tmp_path)
@@ -94,6 +102,23 @@ class TestSealing:
         indices = [c.index for c in ident.chapters]
         assert indices == sorted(indices)
         assert len(ident.chapters) <= MAX_CHAPTERS
+
+
+class TestFullNarrative:
+    def test_full_narrative_includes_chapters_and_open(self, tmp_path: Path) -> None:
+        idm = IdentityManager(tmp_path)
+        idm.save(AgentIdentity(agent_id="a1", display_name="Atlas"))
+        for i in range(40):
+            idm.update_narrative("a1", f"goal {i}", "done")
+        ident = idm.load("a1")
+        assert ident is not None and ident.chapters  # at least one sealed chapter
+        full = ident.full_narrative()
+        # Both the sealed chapter summary and a current open line are present.
+        assert ident.chapters[-1].summary in full
+        assert ident.narrative in full
+
+    def test_full_narrative_empty_identity(self) -> None:
+        assert AgentIdentity(agent_id="a1", display_name="Atlas").full_narrative() == ""
 
 
 class TestRenderPreamble:
