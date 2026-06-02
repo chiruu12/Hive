@@ -188,8 +188,6 @@ class HiveConfig(BaseModel):
             "HIVE_HEARTBEAT": ("daemon", "heartbeat", int),
             "HIVE_MAX_RETRIES": ("daemon", "max_retries", int),
             "HIVE_DEFAULT_MODEL": ("model", "default_model", str),
-            "HIVE_MAX_TURNS": ("model", "max_turns", int),
-            "HIVE_SESSION_TIMEOUT": ("model", "session_timeout", int),
             "HIVE_STARTING_BALANCE": ("economy", "starting_balance", float),
             "HIVE_PROFILES_DIR": ("profiles_dir", None, str),
             "HIVE_LOGS_DIR": ("logs_dir", None, str),

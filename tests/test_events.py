@@ -123,6 +123,40 @@ def test_replay_tolerates_partial_last_line(tmp_dir):
     asyncio.run(_run())
 
 
+def test_replay_handles_unicode_line_separators(tmp_dir):
+    """A record whose text contains U+2028/U+2029/NEL must not be shredded.
+
+    These are legal (unescaped) inside JSON strings and have no '\\n', so the
+    record is one physical line -- but str.splitlines() would break it apart.
+    """
+    log = EventLog(tmp_dir)
+
+    async def _run():
+        tricky = "before middle after\x85end"
+        await log.append(
+            HiveEvent(
+                event_type=EventType.ASSISTANT_MESSAGE,
+                agent_id="agent-1",
+                session_id="sess-1",
+                data={"text": tricky},
+            )
+        )
+        await log.append(
+            HiveEvent(
+                event_type=EventType.TOOL_USED,
+                agent_id="agent-1",
+                session_id="sess-1",
+                data={"tool": "x"},
+            )
+        )
+        events = await log.replay("agent-1", "sess-1")
+        assert len(events) == 2  # not shredded into extra/broken lines
+        assert events[0].data["text"] == tricky
+        assert events[1].data["tool"] == "x"
+
+    asyncio.run(_run())
+
+
 def test_replay_raises_on_mid_log_corruption(tmp_dir):
     """A malformed line that is NOT the torn final line is real corruption -- surface it."""
     import pytest

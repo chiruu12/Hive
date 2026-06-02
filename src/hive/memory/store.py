@@ -593,16 +593,22 @@ class HiveStore:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT message FROM nudges WHERE agent_id = ? AND delivered = 0",
+                "SELECT nudge_id, message FROM nudges WHERE agent_id = ? AND delivered = 0",
                 (agent_id,),
             ) as cursor:
-                messages = [row["message"] async for row in cursor]
-            await db.execute(
-                "UPDATE nudges SET delivered = 1 WHERE agent_id = ? AND delivered = 0",
-                (agent_id,),
-            )
-            await db.commit()
-            return messages
+                rows = [(row["nudge_id"], row["message"]) async for row in cursor]
+            if rows:
+                # Mark delivered only the rows just read, by id -- so a nudge
+                # inserted (e.g. by another process) between the SELECT and the
+                # UPDATE isn't marked delivered without ever being returned.
+                ids = [r[0] for r in rows]
+                placeholders = ",".join("?" * len(ids))
+                await db.execute(
+                    f"UPDATE nudges SET delivered = 1 WHERE nudge_id IN ({placeholders})",
+                    ids,
+                )
+                await db.commit()
+            return [r[1] for r in rows]
 
     async def save_schedule(
         self,

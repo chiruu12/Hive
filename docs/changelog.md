@@ -2,11 +2,20 @@
 
 ## [0.5.4] -- 2026-06-01
 
-Durability & dependency-hardening release. All changes are additive and backward compatible; existing databases upgrade automatically on first open.
+Durability, simulation, and hardening release. All changes are additive and backward compatible; existing databases and identities upgrade automatically.
 
 ### Added
+- **Derived mood model**: a `CircumplexMood` maps `happiness` + `suffering` onto a valence/arousal circumplex and names the mood (content/motivated/steady/restless/discouraged/anxious/overwhelmed). Pure/derived, swappable via `MoodRegistry`, surfaced in the goal-pursuit prompt.
+- **Chaptered narrative**: the narrative seals into compact `Chapter` summaries (date span + entry count + goal theme) on overflow instead of FIFO-dropping; the preamble shows a "Story so far" section; `AgentIdentity.full_narrative()` exposes the full history.
+- **Identity narrative in the runtime prompt**: the goal-*pursuing* agent now sees its persistent self (name + accumulated narrative), not just goal generation.
 - **Event-log fsync durability (C5)**: `EventLog(fsync=True)` flushes and `os.fsync()`s every append so a power/OS crash can't lose an acknowledged event. Gated by the `event_log_fsync` config option (env `HIVE_EVENT_LOG_FSYNC`), default off to protect the hot heartbeat write path; the daemon honors it. Reads tolerate a torn/partial last line.
 - **`HiveStore.delete_agent()`**: deletes an agent and, via cascade, all of its child rows in one call.
+- **Test coverage (F1)**: first tests for the CLI, the MCP server protocol, and the structured logging writer/reader.
+
+### Fixed
+- **Event log no longer shreds records with Unicode line separators**: `replay()`/`stream()` split on `\n` only (not `str.splitlines()`, which also breaks on `\r`/`\f`/NEL/`U+2028`/`U+2029`, all legal unescaped in JSON).
+- **Nudge delivery race**: `get_pending_nudges` marks only the nudges it actually read as delivered, so one inserted concurrently isn't lost.
+- Dropped dead `HIVE_MAX_TURNS`/`HIVE_SESSION_TIMEOUT` env mappings; checkpoints snapshot the freshly-saved identity; the crisis directive isn't duplicated in the pursuit prompt; event-log fsync also fsyncs the parent directory on file creation.
 
 ### Changed
 - **FK cascades (C3)**: every child table's foreign key to `agents` (`sessions`, `goals`, `nudges`, `schedules`, `sub_agents`, `tasks`, `alarms`) now declares `ON DELETE CASCADE`; a `user_version` 1->2 migration rebuilds existing tables to add it (data preserved). FK enforcement is opt-in per operation, so writing child rows for not-yet-persisted agents keeps working.
