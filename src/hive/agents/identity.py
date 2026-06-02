@@ -64,6 +64,22 @@ _NAME_POOL = [
 MAX_NARRATIVE = 800
 MAX_OPINIONS = 20
 MAX_QUESTIONS = 12
+MAX_CHAPTERS = 20
+
+
+class Chapter(BaseModel):
+    """A sealed span of an agent's narrative.
+
+    When the open narrative grows past ``MAX_NARRATIVE`` it is sealed into a
+    Chapter (a compact summary) rather than FIFO-dropping its oldest lines, so
+    long-run history is preserved as a story arc instead of being lost.
+    """
+
+    index: int
+    summary: str
+    entry_count: int
+    started: str = ""
+    ended: str = ""
 
 
 class AgentIdentity(BaseModel):
@@ -72,6 +88,7 @@ class AgentIdentity(BaseModel):
     traits: list[str] = []
     domains: list[str] = []
     narrative: str = ""
+    chapters: list[Chapter] = Field(default_factory=list)
     worldview: str = ""
     opinions: list[dict[str, Any]] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
