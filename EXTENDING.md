@@ -126,6 +126,39 @@ def test_custom_stressor():
     assert s.active[0].escalation_per_day == 0.05
 ```
 
+## 3b. Custom Mood Model
+
+An agent's mood is *derived* from its `happiness` and `suffering` (no stored state) and
+surfaces in the goal-pursuit prompt. Swap the default circumplex model via `MoodRegistry`.
+
+```python
+from hive import MoodRegistry, MoodState
+
+class StoicMood:
+    """Always calm, regardless of signals."""
+    def derive(self, happiness: float, suffering_load: float, in_crisis: bool) -> MoodState:
+        return MoodState("stoic", valence=0.0, arousal=0.0, note="unmoved; proceed steadily")
+
+MoodRegistry.default().set_model(StoicMood())
+```
+
+```python
+# Test
+def test_custom_mood_model():
+    from hive import CircumplexMood, MoodRegistry, MoodState
+
+    class StoicMood:
+        def derive(self, happiness, suffering_load, in_crisis):
+            return MoodState("stoic", 0.0, 0.0, "unmoved")
+
+    reg = MoodRegistry.default()
+    try:
+        reg.set_model(StoicMood())
+        assert reg.derive(0.1, 0.9, True).label == "stoic"
+    finally:
+        reg.set_model(CircumplexMood())  # restore the default (public API)
+```
+
 ## 4. Custom A2A Pattern
 
 Subclass `A2APattern` and register it with `PatternRegistry`.
