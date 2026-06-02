@@ -94,3 +94,24 @@ class TestSealing:
         indices = [c.index for c in ident.chapters]
         assert indices == sorted(indices)
         assert len(ident.chapters) <= MAX_CHAPTERS
+
+
+class TestRenderPreamble:
+    def test_no_story_section_without_chapters(self, tmp_path: Path) -> None:
+        idm = IdentityManager(tmp_path)
+        idm.save(AgentIdentity(agent_id="a1", display_name="Atlas", narrative="[01-01] x: y"))
+        preamble = idm.build_preamble("a1")
+        assert "Story so far" not in preamble
+        assert "Recent history" in preamble
+
+    def test_chapters_render_as_story_so_far(self, tmp_path: Path) -> None:
+        idm = IdentityManager(tmp_path)
+        idm.save(AgentIdentity(agent_id="a1", display_name="Atlas"))
+        for i in range(40):
+            idm.update_narrative("a1", f"goal {i}", "done")
+        preamble = idm.build_preamble("a1")
+        assert "Story so far" in preamble
+        # The most recent sealed chapter's summary appears.
+        ident = idm.load("a1")
+        assert ident is not None and ident.chapters
+        assert ident.chapters[-1].summary in preamble

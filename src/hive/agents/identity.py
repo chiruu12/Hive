@@ -257,6 +257,11 @@ class IdentityManager:
         if identity.domains:
             parts.append(f"Expertise: {', '.join(identity.domains)}")
 
+        if identity.chapters:
+            recent_chapters = identity.chapters[-5:]
+            chapter_lines = "\n".join(f"  - {c.summary}" for c in recent_chapters)
+            parts.append(f"\nStory so far:\n{chapter_lines}")
+
         if identity.narrative:
             recent = identity.narrative[-400:]
             parts.append(f"\nRecent history:\n{recent}")
