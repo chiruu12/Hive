@@ -101,6 +101,19 @@ class AgentIdentity(BaseModel):
     open_questions: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    def full_narrative(self) -> str:
+        """The whole story: sealed chapter summaries + the current open narrative.
+
+        ``narrative`` alone holds only the current (unsealed) chapter, so callers
+        that want the agent's complete history (e.g. life summaries) must use this.
+        """
+        parts: list[str] = []
+        if self.chapters:
+            parts.append("\n".join(f"- {c.summary}" for c in self.chapters))
+        if self.narrative:
+            parts.append(self.narrative)
+        return "\n\n".join(parts)
+
 
 class IdentityManager:
     """Creates, loads, saves, and builds LLM preambles from agent identities."""
@@ -176,6 +189,10 @@ class IdentityManager:
         if not identity:
             return
         entry = f"[{datetime.now(UTC).strftime('%m-%d')}] {goal_text}: {outcome}"
+        # Cap a single pathological entry so the open narrative can never exceed
+        # MAX_NARRATIVE (a lone over-long entry would otherwise bypass sealing).
+        if len(entry) > MAX_NARRATIVE:
+            entry = entry[: MAX_NARRATIVE - 1] + "…"
         if identity.narrative and len(identity.narrative) + len(entry) + 1 > MAX_NARRATIVE:
             self._seal_chapter(identity)
         identity.narrative = (identity.narrative + "\n" + entry).strip()
