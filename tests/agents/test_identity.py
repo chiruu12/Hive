@@ -103,6 +103,16 @@ class TestSealing:
         assert indices == sorted(indices)
         assert len(ident.chapters) <= MAX_CHAPTERS
 
+    def test_chapter_summary_carries_goal_text(self, tmp_path: Path) -> None:
+        """Summaries include goal text (theme/arc), not just a count + dates."""
+        idm = self._idm_with_agent(tmp_path)
+        for i in range(40):
+            idm.update_narrative("a1", f"objective-{i}", "done")
+        ident = idm.load("a1")
+        assert ident is not None and ident.chapters
+        # The first sealed chapter began with objective-0.
+        assert "objective-0" in ident.chapters[0].summary
+
 
 class TestFullNarrative:
     def test_full_narrative_includes_chapters_and_open(self, tmp_path: Path) -> None:
