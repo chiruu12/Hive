@@ -82,6 +82,10 @@ class MoodRegistry:
         self._model: MoodModel = CircumplexMood()
 
     def set_model(self, model: MoodModel) -> None:
+        # MoodModel is runtime-checkable, so this catches a misconfigured model
+        # at swap time rather than with an AttributeError on the next derive().
+        if not isinstance(model, MoodModel):
+            raise TypeError("mood model must implement MoodModel (a derive(...) method)")
         self._model = model
 
     def derive(self, happiness: float, suffering_load: float, in_crisis: bool) -> MoodState:

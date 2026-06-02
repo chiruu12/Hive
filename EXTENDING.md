@@ -145,16 +145,18 @@ MoodRegistry.default().set_model(StoicMood())
 ```python
 # Test
 def test_custom_mood_model():
-    from hive import MoodRegistry, MoodState
+    from hive import CircumplexMood, MoodRegistry, MoodState
 
     class StoicMood:
         def derive(self, happiness, suffering_load, in_crisis):
             return MoodState("stoic", 0.0, 0.0, "unmoved")
 
-    MoodRegistry._reset()
-    MoodRegistry.default().set_model(StoicMood())
-    assert MoodRegistry.default().derive(0.1, 0.9, True).label == "stoic"
-    MoodRegistry._reset()
+    reg = MoodRegistry.default()
+    try:
+        reg.set_model(StoicMood())
+        assert reg.derive(0.1, 0.9, True).label == "stoic"
+    finally:
+        reg.set_model(CircumplexMood())  # restore the default (public API)
 ```
 
 ## 4. Custom A2A Pattern
