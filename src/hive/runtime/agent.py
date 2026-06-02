@@ -347,19 +347,72 @@ class Agent:
             )
 
         final: GenerateResult | None = None
-        async for event in self._model.generate_stream(
+        accumulated: list[str] = []
+        stream = self._model.generate_stream(
             messages=messages,
             tools=tool_schemas,
             temperature=self._temperature,
             max_tokens=self._gen_max_tokens,
-        ):
-            if event.type == StreamEventType.TEXT and event.text:
-                self._on_text(event.text)
-            elif event.type == StreamEventType.DONE and event.result is not None:
-                final = event.result
-        if final is None:
-            raise RuntimeError("Streaming generation ended without a DONE event")
-        return final
+        )
+        try:
+            async for event in stream:
+                if event.type == StreamEventType.TEXT and event.text:
+                    accumulated.append(event.text)
+                    self._on_text(event.text)
+                elif event.type == StreamEventType.DONE and event.result is not None:
+                    final = event.result
+        except Exception as e:
+            # Mid-stream failure. Text already shown can't be replayed, so surface
+            # what streamed; if nothing streamed yet, fall back to a (retried)
+            # non-streaming call. CancelledError is BaseException, so it is not
+            # caught here -- it propagates after the stream is closed in finally.
+            if accumulated:
+                logger.warning(
+                    "Agent %r: stream failed after partial text; using it: %s", self.name, e
+                )
+                return self._synthesize_stream_result("".join(accumulated))
+            logger.warning(
+                "Agent %r: stream failed before any text; falling back to non-streaming: %s",
+                self.name,
+                e,
+            )
+            return await self._model.generate_with_metadata(
+                messages=messages,
+                tools=tool_schemas,
+                temperature=self._temperature,
+                max_tokens=self._gen_max_tokens,
+            )
+        finally:
+            aclose = getattr(stream, "aclose", None)
+            if aclose is not None:
+                await aclose()
+
+        if final is not None:
+            return final
+        # Stream ended without a terminal DONE event.
+        if accumulated:
+            logger.warning(
+                "Agent %r: stream ended without a DONE event; using accumulated text", self.name
+            )
+            return self._synthesize_stream_result("".join(accumulated))
+        logger.warning(
+            "Agent %r: stream produced no events; falling back to non-streaming", self.name
+        )
+        return await self._model.generate_with_metadata(
+            messages=messages,
+            tools=tool_schemas,
+            temperature=self._temperature,
+            max_tokens=self._gen_max_tokens,
+        )
+
+    def _synthesize_stream_result(self, text: str) -> GenerateResult:
+        """Build a GenerateResult from text already streamed to ``on_text``.
+
+        Used when a stream is interrupted after emitting text but before a DONE
+        event -- the partial text can't be replayed, so we return it as the turn's
+        result (no tool calls; usage/cost unknown).
+        """
+        return GenerateResult(message=Message.assistant(text), model=self._model.model)
 
     async def run(self, task: Task) -> TaskResult:
         """Execute a task using the ReAct loop."""
@@ -567,6 +620,14 @@ class Agent:
                     output = f"Unknown tool: {tc.name}"
                 messages.append(Message.tool_result(tc.id, output))
 
+        # Enforce the budget before the wrap-up generation too -- otherwise an
+        # agent that exhausts its tool rounds near the limit would still spend one
+        # more (previously unguarded) call.
+        budget_msg = self._check_budget()
+        if budget_msg:
+            self._write_conversation_log("run_once", messages, "budget_exceeded")
+            return budget_msg
+
         # Tool budget exhausted: nudge toward a plain-text wrap-up so the model doesn't
         # emit another tool call on this no-tools request (which strict providers reject).
         # The nudge is a user-role message (mid-thread system messages are rejected by some
@@ -705,7 +766,14 @@ class Agent:
             logger.debug("Failed to write conversation log", exc_info=True)
 
     def _check_budget(self) -> str | None:
-        """Return an error message if budget exceeded, None otherwise."""
+        """Return an error message if budget exceeded, None otherwise.
+
+        Checked after each generation. A budget can therefore overshoot by at
+        most one generation (cost/tokens are only known once a call returns); a
+        projected pre-stop was evaluated but rejected because estimating with the
+        full output cap falsely refuses small-budget agents that emit short
+        replies.
+        """
         if self._max_cost_usd and self._total_cost >= self._max_cost_usd:
             return f"Cost budget exceeded: ${self._total_cost:.4f} >= ${self._max_cost_usd:.4f}"
         if self._max_tokens and self._total_tokens >= self._max_tokens:
