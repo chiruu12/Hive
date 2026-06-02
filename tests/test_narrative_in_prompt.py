@@ -63,7 +63,11 @@ class CapturingProvider(BaseProvider):
 
 
 @pytest.fixture
-def hive_dir(tmp_path: Path) -> Path:
+def hive_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # chdir into the tmp dir: driving _run_agent_cycle directly uses a LogWriter
+    # whose run dir isn't set (no start_run), so it would otherwise write
+    # agents/<id>/*.jsonl relative to the repo cwd. Keep that inside tmp.
+    monkeypatch.chdir(tmp_path)
     hive = tmp_path / ".hive"
     for sub in ("sessions", "workspaces", "comms", "agent_memory"):
         (hive / sub).mkdir(parents=True)
