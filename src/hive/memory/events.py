@@ -73,11 +73,23 @@ class EventLog:
         await asyncio.to_thread(self._write_line, path, line)
 
     def _write_line(self, path: Path, line: str) -> None:
+        is_new = not path.exists()
         with open(path, "a") as f:
             f.write(line)
             if self._fsync:
                 f.flush()
                 os.fsync(f.fileno())
+        if self._fsync and is_new:
+            # fsync the parent dir so a freshly-created file's directory entry
+            # is durably linked (content fsync alone doesn't guarantee this).
+            try:
+                dir_fd = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass  # some platforms/filesystems don't support directory fsync
 
     async def replay(self, agent_id: str, session_id: str) -> list[HiveEvent]:
         path = self._session_path(agent_id, session_id)
