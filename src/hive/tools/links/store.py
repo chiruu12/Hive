@@ -121,8 +121,7 @@ class NamedLinkStore:
         (normalized-key) order."""
         self._load()
         return [
-            {"name": entry["name"], "url": entry["url"]}
-            for _, entry in sorted(self._links.items())
+            {"name": entry["name"], "url": entry["url"]} for _, entry in sorted(self._links.items())
         ]
 
     def remove(self, name: str) -> bool:
