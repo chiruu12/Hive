@@ -1,6 +1,6 @@
 [project]
 name = "hive-agent"
-version = "0.6.0"
+version = "0.6.1"
 description = "Local-first agent OS. Spawn persistent AI agents that collaborate, write code, and use tools autonomously."
 authors = [{ name = "chiruu12" }]
 license = { text = "MIT" }

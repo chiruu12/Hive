@@ -15,7 +15,7 @@ hive = Hive(path=Path("."))  # defaults to current directory
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `init()` | | `None` | Initialize `.hive/` directory |
+| `init()` | | `None` | Optional. Scaffold the `.hive/` directory eagerly. Idempotent -- the directory is also created lazily on first use, so calling `init()` is no longer required. |
 | `spawn(preset, model=None)` | preset name, optional model override | `str` (agent_id) | Spawn an agent |
 | `start(cycles, heartbeat, profiles, fresh)` | cycles (None=forever), heartbeat seconds, profile list, fresh start | `None` | Start daemon (blocks) |
 | `stop()` | | `None` | Signal daemon to stop |
@@ -29,8 +29,7 @@ hive = Hive(path=Path("."))  # defaults to current directory
 ```python
 from hive import Hive
 
-hive = Hive()
-hive.init()
+hive = Hive()  # .hive/ is scaffolded lazily; calling init() is optional
 
 hive.spawn("coder")
 hive.spawn("gambler")
@@ -38,6 +37,27 @@ hive.spawn("philosopher")
 
 # Run 50 cycles with 5-second heartbeat
 hive.start(cycles=50, heartbeat=5)
+```
+
+### Context manager
+
+`Hive` works as a sync or async context manager and stops the daemon on exit:
+
+```python
+with Hive() as hive:
+    hive.spawn("coder")
+    hive.start(cycles=50, heartbeat=5)
+```
+
+Use `async with` when you are already inside an event loop -- setup and teardown run
+without a thread-pool hop. (`start()` runs its own loop and blocks, so drive the daemon
+directly via `HiveDaemon` in async contexts; the facade's store-backed methods --
+`spawn`, `status`, `nudge`, `kill` -- are loop-safe.)
+
+```python
+async with Hive() as hive:
+    hive.spawn("coder")
+    print(hive.status())
 ```
 
 ## Agent
@@ -54,8 +74,13 @@ agent = Agent(
     model=Anthropic.lite(),
     persona=Persona(name="Coder", personality=["methodical"]),
     toolkits=[FileToolkit(), ShellToolkit()],
+    tool_timeout=60.0,  # per-tool wall-clock limit in seconds; 0.0 (default) disables
 )
 ```
+
+`tool_timeout` bounds each tool call: a tool that runs longer becomes a tool-error
+result rather than stalling the whole cycle. It defaults to `0.0` (disabled) for a
+standalone `Agent`; the daemon sets it from `DaemonConfig.tool_timeout` (60s).
 
 The `instructions` argument accepts a plain `str` or any **`InstructionLike`** object --
 anything implementing `build_system_prompt(toolkit_instructions=None, response_model=None)`.

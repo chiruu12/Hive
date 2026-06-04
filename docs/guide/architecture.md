@@ -128,6 +128,13 @@ src/hive/
   every append so an acknowledged event survives a power/OS crash; it defaults to off
   because that is one `fsync` per event on the hot write path. Readers tolerate a torn
   last line from an interrupted append.
+- **Deterministic mode.** Setting `seed` (env `HIVE_SEED`) gives the stochastic world
+  layer reproducible RNG streams: the daemon injects a seeded `random.Random` into
+  `EventEngine` (event rolls, luck, follow-ups) and a separately-derived one into
+  `WorldState` (gambling), so one subsystem's draws don't perturb the other. Each run
+  writes a `manifest.json` (`logs/runs/<run-id>/`) with the hive version, seed, model
+  config, and spawned agents. The seed governs the world RNG only -- LLM outputs are not
+  deterministic -- so the manifest, not bit-for-bit replay, is what makes a run reproducible.
 
 ## Extension Points
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.1] -- 2026-06-03
+
+### Added
+- **First-class named-link store**: a stable, exact, enumerable `name -> URL` map alongside the existing search-based link tools. A new `NamedLinkStore` library class (JSON-backed, atomic writes, corrupt-file recovery, name normalization) plus four `LinkToolkit` tools (`save_named_link`, `get_named_link`, `list_named_links`, `remove_named_link`). A host can point the store at its own path (`LinkToolkit(..., named_links_path=...)`) and read/write it directly via the library API, so an agent and a host UI share one source of truth. `NamedLinkStore`, `NamedLink`, and `normalize_name` are exported from the package; `SemanticMemory.storage_dir` exposes the agent's memory directory.
+- **Deterministic mode for reproducible runs**: a `seed` config option (and `HIVE_SEED` env var) seeds the stochastic world layer (life-event rolls, luck, gambling) via per-subsystem `random.Random` streams injected into `EventEngine` and `WorldState`. Every run also writes a `manifest.json` (`logs/runs/<run-id>/`) capturing the hive version, seed, model config, and spawned agents. The seed governs the world RNG, not LLM outputs.
+
 ## [0.6.0] -- 2026-06-02
 
 Framework-hardening release: the agent runtime is more robust under streaming interruptions, hung tools, and corrupt state, and the package is friendlier to import and embed. All changes are backward compatible; existing databases upgrade automatically.

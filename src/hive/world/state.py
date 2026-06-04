@@ -60,10 +60,14 @@ def _eco() -> Any:
 class WorldState:
     """Manages the economy, jobs, skills, and agent finances."""
 
-    def __init__(self, hive_dir: Path):
+    def __init__(self, hive_dir: Path, rng: random.Random | None = None):
         # Local import: registry imports Job/AVAILABLE_JOBS from this module.
         from hive.world.registry import JobRegistry
 
+        # Seedable RNG for gambling outcomes. Defaults to an unseeded instance so
+        # standalone use matches prior (system-entropy) behavior; the daemon
+        # injects a seeded one when config.seed is set.
+        self._rng = rng or random.Random()
         self._state_path = hive_dir / "world_state.json"
         self._finances: dict[str, AgentFinances] = {}
         self._jobs: list[Job] = [j.model_copy() for j in JobRegistry.default().all()]
@@ -201,10 +205,10 @@ class WorldState:
         fin.total_spent += wager
 
         if game == "lottery":
-            won = random.random() < _eco().lottery_win_chance
+            won = self._rng.random() < _eco().lottery_win_chance
             payout = _eco().lottery_payout if won else 0
         else:
-            won = random.random() < _eco().blackjack_win_rate
+            won = self._rng.random() < _eco().blackjack_win_rate
             payout = wager * 2 if won else 0
 
         if won:

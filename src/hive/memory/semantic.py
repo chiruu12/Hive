@@ -41,6 +41,15 @@ class SemanticMemory:
 
             self._backend = TFIDFBackend(hive_dir, agent_id)
 
+    @property
+    def storage_dir(self) -> Path:
+        """Directory where this agent's memory artifacts live.
+
+        Matches the backend layout (``<hive_dir>/memory/<agent_id>``) so other
+        per-agent files (e.g. a named-link store) can be co-located.
+        """
+        return self._hive_dir / "memory" / self._agent_id
+
     async def store(self, thought: str, metadata: dict[str, Any] | None = None) -> str:
         result: str = await self._backend.store(thought, metadata or {})
         return result

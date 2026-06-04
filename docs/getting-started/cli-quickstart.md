@@ -113,6 +113,15 @@ suffering:
   max_stressors: 5
 
 event_log_fsync: false  # fsync every event-log append (crash-durable, slower)
+seed: null              # int for a reproducible world RNG; null = system entropy
 ```
 
-Override with environment variables: `HIVE_HEARTBEAT`, `HIVE_DEFAULT_MODEL`, `HIVE_STARTING_BALANCE`, `HIVE_EVENT_LOG_FSYNC`.
+Override with environment variables: `HIVE_HEARTBEAT`, `HIVE_DEFAULT_MODEL`, `HIVE_STARTING_BALANCE`, `HIVE_EVENT_LOG_FSYNC`, `HIVE_SEED`.
+
+### Reproducible runs
+
+Set `seed` (or `HIVE_SEED=42 hive start ...`) to make the stochastic world layer --
+life-event rolls, luck, and gambling outcomes -- draw from a reproducible stream. Each run
+also writes a `manifest.json` (under `logs/runs/<run-id>/`) capturing the hive version, the
+seed, the model config, and the spawned agents, so an experiment's setup is fully recorded.
+Note: the seed governs the *world* RNG, not LLM outputs, which are not deterministic.

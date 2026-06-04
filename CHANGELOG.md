@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.1] — 2026-06-03
+
+### Added
+- **Deterministic mode for reproducible runs** — a `seed` config option (and
+  `HIVE_SEED` env var) seeds the stochastic world layer (life-event rolls, luck,
+  gambling) via per-subsystem `random.Random` streams injected into `EventEngine`
+  and `WorldState`. Every run now also writes a `manifest.json`
+  (`logs/runs/<run-id>/`) capturing the hive version, seed, model config, and
+  spawned agents, so an experiment's setup is fully recorded. The seed governs the
+  world RNG, not LLM outputs.
+- **First-class named-link store** — a stable, exact, enumerable `name -> URL`
+  map alongside the existing search-based link tools. New `NamedLinkStore`
+  library class (JSON-backed, atomic writes, corrupt-file recovery, name
+  normalization) and four `LinkToolkit` tools (`save_named_link`,
+  `get_named_link`, `list_named_links`, `remove_named_link`). A host can point
+  the store at its own path (`LinkToolkit(..., named_links_path=...)`) and
+  read/write it directly via the library API, so an agent and a host UI share one
+  source of truth. `NamedLinkStore`, `NamedLink`, and `normalize_name` are
+  exported from the package; `SemanticMemory.storage_dir` exposes the agent's
+  memory directory for co-locating per-agent files.
+
 ## [0.6.0] — 2026-06-02
 
 Framework-hardening release: the agent runtime is more robust under streaming

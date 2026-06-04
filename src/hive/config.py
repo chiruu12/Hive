@@ -181,6 +181,11 @@ class HiveConfig(BaseModel):
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).
     event_log_fsync: bool = False
+    # Seed for the world-simulation RNG (life-event rolls, luck, gambling). None
+    # draws from system entropy (the default). Set an int for reproducible runs;
+    # the value is recorded in each run's manifest.json. Note: this seeds the
+    # stochastic *world* layer, not LLM outputs (which are not deterministic).
+    seed: int | None = None
 
     @classmethod
     def load(cls, hive_dir: Path | None = None) -> "HiveConfig":
@@ -202,6 +207,7 @@ class HiveConfig(BaseModel):
             "HIVE_PROFILES_DIR": ("profiles_dir", None, str),
             "HIVE_LOGS_DIR": ("logs_dir", None, str),
             "HIVE_EVENT_LOG_FSYNC": ("event_log_fsync", None, _parse_bool),
+            "HIVE_SEED": ("seed", None, int),
         }
 
         for env_key, (section, field, cast) in env_map.items():
