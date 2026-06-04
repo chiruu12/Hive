@@ -30,10 +30,15 @@ class EventEngine:
         world: WorldState,
         hive_dir: Path | None = None,
         events: EventRegistry | None = None,
+        rng: random.Random | None = None,
     ):
         self._stats = stats
         self._world = world
         self._events = events or EventRegistry.default()
+        # Seedable RNG for event rolls, luck, and follow-up triggers. Defaults to
+        # an unseeded instance (system entropy); the daemon injects a seeded one
+        # when config.seed is set, making the world layer reproducible.
+        self._rng = rng or random.Random()
         self._pending: list[PendingFollowUp] = []
         self._history: list[EventOutcome] = []
         self._history_path = (hive_dir / "event_history.jsonl") if hive_dir else None
@@ -66,11 +71,11 @@ class EventEngine:
                 events_to_fire.append(ev)
             self._pending.remove(p)
 
-        if random.random() < EVENT_PROBABILITY:
+        if self._rng.random() < EVENT_PROBABILITY:
             agent_stats = self._stats.get(agent_id)
             eligible = self._get_eligible(agent_id, agent_stats)
             if eligible:
-                events_to_fire.append(random.choice(eligible))
+                events_to_fire.append(self._rng.choice(eligible))
 
         return events_to_fire
 
@@ -86,7 +91,7 @@ class EventEngine:
         if not choice:
             choice = event.choices[0]
 
-        luck = random.gauss(1.0, 0.25)
+        luck = self._rng.gauss(1.0, 0.25)
         luck = max(0.3, min(2.0, luck))
 
         stat_changes: dict[str, float] = {}
@@ -107,7 +112,7 @@ class EventEngine:
 
         follow_ups: list[str] = []
         for fu in choice.follow_up_events:
-            if random.random() < fu.probability:
+            if self._rng.random() < fu.probability:
                 delay = max(fu.delay_cycles, 1)
                 self._pending.append(
                     PendingFollowUp(

@@ -257,7 +257,8 @@ async with await MCPToolkit.from_stdio("npx", ["-y", "@modelcontextprotocol/serv
 
 ## LinkToolkit
 
-Save, search, and scrape web links. Uses SemanticMemory for storage with metadata filtering.
+Save, search, and scrape web links, plus a first-class **named-link** store. The
+search-based tools use SemanticMemory; the named-link tools use a small JSON store.
 
 ```python
 from hive.tools.links import LinkToolkit
@@ -268,6 +269,9 @@ tk = LinkToolkit(memory=semantic_memory)
 # Standalone mode:
 tk = LinkToolkit(memory_dir=".hive")
 tk.bind("my-agent")
+
+# Point the named-link store at a host-owned path (single source of truth):
+tk = LinkToolkit(memory=semantic_memory, named_links_path="~/.nudge/data/links.json")
 ```
 
 | Tool | Parameters | Description |
@@ -276,8 +280,30 @@ tk.bind("my-agent")
 | `search_links` | `query`, `limit=5` | Search saved links by content or tags |
 | `list_links` | `limit=10` | List recently saved links |
 | `scrape_link` | `url` | Fetch and return page content as markdown (4000 char limit) |
+| `save_named_link` | `name`, `url` | Upsert a named link (validates http(s); name normalized) |
+| `get_named_link` | `name` | Exact lookup of a named link by name |
+| `list_named_links` | | List all named links, deterministic order |
+| `remove_named_link` | `name` | Remove a named link by name |
 
-Links are stored in SemanticMemory with `metadata.type = "link"`, so they coexist with knowledge notes without interference.
+Search-based links are stored in SemanticMemory with `metadata.type = "link"`, so they
+coexist with knowledge notes. Named links are a stable, exact, enumerable `name -> URL`
+map -- the model a host app wants for "save my github as X" / "open my github". They are
+kept in a JSON file (atomic writes, corrupt-file recovery) that a host can also read and
+write directly via the library API, so an agent and the host's UI share one source of truth:
+
+```python
+from hive.tools.links import NamedLinkStore
+
+store = NamedLinkStore("~/.nudge/data/links.json")
+store.save("GitHub", "https://github.com/me")   # upsert
+store.get("github")                              # "https://github.com/me"
+store.list()                                     # [{"name": "GitHub", "url": "..."}]
+store.remove("github")                           # True
+```
+
+By default the store lives next to the agent's memory
+(`<hive_dir>/memory/<agent_id>/named_links.json`); pass `named_links_path` to point it
+elsewhere.
 
 ## TaskToolkit
 

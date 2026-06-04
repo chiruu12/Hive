@@ -1,6 +1,6 @@
 """Hive - Autonomous agent OS."""
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 from hive.agents.existence import ExistenceLoop
 from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
@@ -82,7 +82,7 @@ from hive.tools.alarms import AlarmChecker, AlarmToolkit
 from hive.tools.clipboard import ClipboardToolkit
 from hive.tools.comms import CommsToolkit
 from hive.tools.knowledge import KnowledgeToolkit
-from hive.tools.links import LinkToolkit
+from hive.tools.links import LinkToolkit, NamedLink, NamedLinkStore, normalize_name
 from hive.tools.mcp import MCPToolkit
 from hive.tools.memory import MemoryToolkit
 from hive.tools.tasks import TaskToolkit
@@ -133,6 +133,9 @@ __all__ = [
     "LinkToolkit",
     "LMStudio",
     "make_tool",
+    "NamedLink",
+    "NamedLinkStore",
+    "normalize_name",
     "MCPToolkit",
     "MemoryBackend",
     "MemoryToolkit",

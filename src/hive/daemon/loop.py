@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import random
 from pathlib import Path
 from typing import Any
 
@@ -71,11 +72,19 @@ class HiveDaemon:
         self._store = HiveStore(hive_dir / "hive.db")
         self._events = EventLog(hive_dir, fsync=cfg.event_log_fsync)
 
+        # Deterministic mode: when cfg.seed is set, the stochastic world layer
+        # (life events, luck, gambling) draws from reproducible streams. Each
+        # subsystem gets its own derived stream so one's draws don't perturb the
+        # other. seed=None keeps system-entropy behavior. Recorded in manifest.
+        self._seed = cfg.seed
+        self._event_rng = random.Random(cfg.seed)
+        self._world_rng = random.Random(None if cfg.seed is None else cfg.seed + 1)
+
         world = None
         if self._economy_enabled:
             from hive.world.state import WorldState
 
-            world = WorldState(hive_dir)
+            world = WorldState(hive_dir, rng=self._world_rng)
 
         self._ctx = ExecutionContext(
             store=self._store,
@@ -105,7 +114,9 @@ class HiveDaemon:
 
             assert self._ctx.world is not None
             self._stats = StatsManager(hive_dir)
-            self._event_engine = EventEngine(self._stats, self._ctx.world, hive_dir)
+            self._event_engine = EventEngine(
+                self._stats, self._ctx.world, hive_dir, rng=self._event_rng
+            )
             self._life_writer = LifeDirectoryWriter(hive_dir)
 
         self._memories: dict[str, SemanticMemory] = {}
@@ -224,11 +235,20 @@ class HiveDaemon:
         agents = await self._store.list_agents()
         agent_ids = [a.agent_id for a in agents if a.is_alive()]
         tool_names = self._get_tool_names()
+        cfg = get_config()
         self._log.start_run(
             heartbeat=self._heartbeat,
             profiles=self._profiles,
             agents=agent_ids,
             tools=tool_names,
+            seed=self._seed,
+            economy_enabled=self._economy_enabled,
+            model={
+                "default_model": cfg.model.default_model,
+                "planning_model": cfg.model.planning_model,
+                "temperature": cfg.model.temperature,
+                "max_tokens": cfg.model.max_tokens,
+            },
         )
 
         logger.info(
