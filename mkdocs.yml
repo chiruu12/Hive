@@ -65,6 +65,7 @@ nav:
     - Persona System: guide/persona.md
     - CLI Reference: guide/cli-reference.md
     - REST API: guide/rest-api.md
+    - Evals: guide/evals.md
     - Architecture: guide/architecture.md
   - Extending:
     - Extension Points: extending/index.md

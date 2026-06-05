@@ -99,6 +99,7 @@ src/hive/
 | Custom tool | Subclass `Toolkit`, `@tool()` methods | `src/hive/tools/base.py` |
 | Gated tool (HITL) | `@tool(requires_approval=True)` or `ApprovalGate` protocol | `src/hive/runtime/approval.py` |
 | Custom guardrail | `Guardrail` protocol, `GuardrailRegistry.default().register(...)` | `src/hive/runtime/guardrails.py` |
+| Custom evaluator | `Evaluator` protocol, add to `EvalSuite` | `src/hive/evals/types.py` |
 | Custom model provider | Subclass `BaseProvider` | `src/hive/models/base.py` |
 | Custom stressor | `StressorRegistry.default().register(name, rate, desc)` | `src/hive/agents/suffering.py` |
 | Custom A2A pattern | Subclass `A2APattern`, `PatternRegistry.default().register(name, instance)` | `src/hive/interactions/registry.py` |

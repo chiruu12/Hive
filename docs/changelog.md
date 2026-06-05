@@ -24,6 +24,12 @@
   jailbreak phrasing). Config-driven (`guardrails.enabled`, per-guardrail `flag`/
   `redact`/`block` actions); `GuardrailRegistry` and `GuardrailPipeline` compose custom
   guardrails. Off by default. `Agent(guardrails=...)`.
+- **Evals harness** (`hive.evals`): score agent runs for **accuracy** (LLM-as-judge
+  vs an expected answer), **reliability** (asserts expected tool calls fired), and
+  **performance** (latency/cost SLOs). `EvalCase`/`EvalSuite`/`AgentEvalRunner` run
+  each case once and score it with every evaluator; `Evaluator` protocol for custom
+  checks. `Agent.observe_tools(...)` captures tool-call traces; `TaskResult` now
+  carries `cost_usd`/`total_tokens`.
 
 ## [0.6.1] -- 2026-06-03
 
