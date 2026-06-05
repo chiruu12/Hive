@@ -3,7 +3,7 @@
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from dotenv import dotenv_values
@@ -186,6 +186,21 @@ class ApprovalConfig(BaseModel):
         return v
 
 
+class GuardrailConfig(BaseModel):
+    """Content guardrails on model input/output.
+
+    Disabled by default. When enabled, a PII guardrail (redacts output by default)
+    and a prompt-injection guardrail (blocks input by default) run around the model.
+    Actions are ``flag`` (log only), ``redact`` (mask matches), or ``block``.
+    """
+
+    enabled: bool = False
+    pii: bool = True
+    prompt_injection: bool = True
+    pii_action: Literal["flag", "redact", "block"] = "redact"
+    injection_action: Literal["flag", "redact", "block"] = "block"
+
+
 class ModelConfig(BaseModel):
     default_model: str = "claude-haiku-4-5"
     planning_model: str = "claude-sonnet-4-6"
@@ -202,6 +217,7 @@ class HiveConfig(BaseModel):
     daemon: DaemonConfig = DaemonConfig()
     model: ModelConfig = ModelConfig()
     approval: ApprovalConfig = ApprovalConfig()
+    guardrails: GuardrailConfig = GuardrailConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).

@@ -30,6 +30,7 @@ from hive.memory.store import HiveStore
 from hive.models.base import BaseProvider
 from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent, DaemonAgentAdapter, Message
+from hive.runtime.guardrails import build_guardrail_pipeline
 from hive.runtime.persona import Persona
 from hive.tools.a2a import A2AToolkit
 from hive.tools.alarms import AlarmToolkit, fire_notification
@@ -479,6 +480,7 @@ class HiveDaemon:
                     session_id=session_id,
                     goal_id=active_goal["goal_id"],
                 )
+            guardrails = build_guardrail_pipeline(get_config().guardrails)
             if persona is not None:
                 runtime_agent = Agent(
                     name=agent.name,
@@ -487,6 +489,7 @@ class HiveDaemon:
                     toolkits=self._build_toolkits(agent.agent_id),
                     tool_timeout=tool_timeout,
                     approval_gate=approval_gate,
+                    guardrails=guardrails,
                 )
             else:
                 runtime_agent = Agent(
@@ -498,6 +501,7 @@ class HiveDaemon:
                     toolkits=self._build_toolkits(agent.agent_id),
                     tool_timeout=tool_timeout,
                     approval_gate=approval_gate,
+                    guardrails=guardrails,
                 )
             adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
             # Give the pursuing agent its persistent self -- name and accumulated

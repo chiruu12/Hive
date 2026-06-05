@@ -15,6 +15,7 @@ from hive.agents.profile import AgentProfile, default_profiles_dir
 from hive.agents.state import AgentState
 from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent
+from hive.runtime.guardrails import build_guardrail_pipeline
 from hive.runtime.persona import Persona
 from hive.tools.comms import CommsToolkit
 from hive.tools.memory import MemoryToolkit
@@ -52,6 +53,7 @@ def build_oneshot_agent(
             agent.agent_id,
             session_id=session_id,
         )
+    guardrails = build_guardrail_pipeline(ctx.config.guardrails)
 
     try:
         profile = AgentProfile.from_preset(agent.name, default_profiles_dir())
@@ -67,6 +69,7 @@ def build_oneshot_agent(
             agent_id=agent.agent_id,
             on_text=on_text,
             approval_gate=approval_gate,
+            guardrails=guardrails,
             tool_timeout=ctx.config.daemon.tool_timeout,
         )
 
@@ -83,5 +86,6 @@ def build_oneshot_agent(
         agent_id=agent.agent_id,
         on_text=on_text,
         approval_gate=approval_gate,
+        guardrails=guardrails,
         tool_timeout=ctx.config.daemon.tool_timeout,
     )

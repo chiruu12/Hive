@@ -592,3 +592,32 @@ agent = Agent(name="releaser", model=provider, toolkits=[DeployToolkit()],
 
 The built-in `StoreApprovalGate` persists pending approvals so they survive the
 daemon's heartbeat cycles. See [Human-in-the-Loop Approvals](../guide/daemon-mode.md#human-in-the-loop-approvals).
+
+## 10. Custom Guardrail
+
+A guardrail inspects text entering or leaving the model. Implement the `Guardrail`
+protocol and register it so it composes with the built-in PII and prompt-injection
+guardrails.
+
+```python
+from hive.runtime.guardrails import (
+    Guardrail, GuardrailAction, GuardrailFinding, GuardrailStage, GuardrailRegistry,
+)
+
+class ProfanityGuardrail:
+    name = "profanity"
+    action = GuardrailAction.REDACT
+
+    def inspect(self, text: str, stage: GuardrailStage) -> GuardrailFinding:
+        if stage is GuardrailStage.OUTPUT and "badword" in text.lower():
+            cleaned = text.replace("badword", "[REDACTED]")
+            return GuardrailFinding(True, self.action, cleaned, ["profanity"])
+        return GuardrailFinding(False, self.action, text)
+
+# Compose directly into a pipeline:
+from hive.runtime.guardrails import GuardrailPipeline, PIIGuardrail
+pipeline = GuardrailPipeline([ProfanityGuardrail(), PIIGuardrail()])
+agent = Agent(name="writer", model=provider, guardrails=pipeline)
+```
+
+See [Guardrails](../guide/daemon-mode.md#guardrails).

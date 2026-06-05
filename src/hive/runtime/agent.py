@@ -14,6 +14,7 @@ from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
 from hive.models.registry import estimate_cost
 from hive.runtime.approval import ApprovalDecision, ApprovalGate, AwaitingApprovalSignal
+from hive.runtime.guardrails import GuardrailAction, GuardrailPipeline, GuardrailStage
 from hive.runtime.instructions import InstructionLike, Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.persona import Persona
@@ -79,6 +80,7 @@ class Agent:
         on_text: Callable[[str], None] | None = None,
         tool_timeout: float = 0.0,
         approval_gate: ApprovalGate | None = None,
+        guardrails: GuardrailPipeline | None = None,
     ):
         self.name = name
         self._model = model
@@ -86,6 +88,9 @@ class Agent:
         # Optional human-in-the-loop gate. When set, tools it flags are paused for
         # approval instead of executing (see _execute_tool_calls). None = no gating.
         self._approval_gate = approval_gate
+        # Optional content guardrails. When set, the task input is checked before the
+        # model runs (pre-hook) and the final output before it is returned (post-hook).
+        self._guardrails = guardrails
         # Per-tool wall-clock limit (seconds); 0 disables. A tool that exceeds it
         # becomes a tool-error result so one hung tool can't stall the whole cycle.
         self._tool_timeout = tool_timeout
@@ -473,6 +478,29 @@ class Agent:
         self._tokens_warned = False
         t0 = time.time()
 
+        # Pre-hook: inspect the task input before the model sees it. A blocking
+        # guardrail (e.g. prompt injection) refuses the run; a redacting one rewrites
+        # the instruction the model receives.
+        if self._guardrails:
+            finding = self._guardrails.run(task.instruction, GuardrailStage.INPUT)
+            if finding.triggered:
+                logger.warning(
+                    "Agent %r: input guardrail %s (%s)",
+                    self.name,
+                    finding.action.value,
+                    "; ".join(finding.reasons),
+                )
+                if finding.blocked:
+                    return TaskResult(
+                        task_id=task.id,
+                        status=TaskStatus.FAILED,
+                        output="",
+                        error=f"blocked by guardrail: {'; '.join(finding.reasons)}",
+                        duration_seconds=time.time() - t0,
+                    )
+                if finding.action is GuardrailAction.REDACT:
+                    task = task.model_copy(update={"instruction": finding.text})
+
         tools = self.get_tools()
         tool_map = {t.name: t for t in tools}
         tool_schemas = [t.to_schema() for t in tools] if tools else None
@@ -529,11 +557,33 @@ class Agent:
             conversation.add(response)
 
             if not response.tool_calls:
-                self._write_conversation_log(task.id, conversation.get_messages(), "completed")
+                # Post-hook: inspect the final output before returning it. A blocking
+                # guardrail withholds it; a redacting one masks matched spans (e.g. PII).
+                output = response.content
+                if self._guardrails:
+                    finding = self._guardrails.run(output, GuardrailStage.OUTPUT)
+                    if finding.triggered:
+                        logger.warning(
+                            "Agent %r: output guardrail %s (%s)",
+                            self.name,
+                            finding.action.value,
+                            "; ".join(finding.reasons),
+                        )
+                        if finding.blocked:
+                            output = "[output withheld by guardrail]"
+                        elif finding.action is GuardrailAction.REDACT:
+                            output = finding.text
+                # The raw assistant message is already in the conversation; replace it
+                # with the sanitized output for the on-disk log too, so a redacting
+                # guardrail doesn't leak the unredacted content into the JSON log file.
+                log_messages = conversation.get_messages()
+                if output != response.content:
+                    log_messages = [*log_messages[:-1], Message.assistant(output)]
+                self._write_conversation_log(task.id, log_messages, "completed")
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.COMPLETED,
-                    output=response.content,
+                    output=output,
                     steps_taken=steps,
                     tool_calls_made=tool_calls_total,
                     duration_seconds=time.time() - t0,
