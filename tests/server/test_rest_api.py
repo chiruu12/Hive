@@ -77,6 +77,20 @@ def test_healthz_ok_when_db_reachable(client: TestClient) -> None:
     assert resp.json() == {"status": "ok", "database": True}
 
 
+def test_healthz_503_when_db_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Make the readiness probe's DB call fail; the endpoint must report 503 so a
+    # container HEALTHCHECK detects the degraded instance.
+    async def boom() -> list[object]:
+        raise RuntimeError("database is unreachable")
+
+    monkeypatch.setattr(client.app.state.ctx.store, "list_agents", boom)
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "degraded", "database": False}
+
+
 def test_nudge(client: TestClient) -> None:
     agent_id = client.post("/agents", json={"preset": "coder"}).json()["agent_id"]
     resp = client.post(f"/agents/{agent_id}/nudge", json={"message": "hi"})

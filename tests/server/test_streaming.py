@@ -48,6 +48,8 @@ async def test_tokens_suppressed_when_guardrails_enabled(monkeypatch: pytest.Mon
 
     assert captured["on_text"] is None  # no raw token deltas forwarded
     assert [e for e in events if e["event"] == "token"] == []
+    # An up-front info event signals the intentional suppression to the client.
+    assert events[0]["event"] == "info" and "suppressed" in events[0]["data"]
     done = next(e for e in events if e["event"] == "done")
     assert "leak@corp.com" not in done["data"]  # only the redacted final output
 
@@ -62,3 +64,4 @@ async def test_tokens_streamed_when_guardrails_disabled(monkeypatch: pytest.Monk
 
     assert captured["on_text"] is not None  # streaming preserved when no guardrails
     assert any(e["event"] == "token" for e in events)
+    assert not any(e["event"] == "info" for e in events)  # no suppression notice
