@@ -143,3 +143,22 @@ async def test_daemon_stays_parked_while_pending(hive_dir: Path) -> None:
         assert len(await store.get_pending_approvals(agent_id)) == 1
         agent = await store.get_agent(agent_id)
         assert agent is not None and agent.status == AgentStatus.WAITING
+
+
+@pytest.mark.asyncio
+async def test_resume_preserves_parked_agent(hive_dir: Path) -> None:
+    """A WAITING agent with a pending approval keeps WAITING + its goal on restart."""
+    with patch("hive.daemon.loop.create_runtime_provider", side_effect=_mock_provider):
+        daemon, store, agent_id = await _make_ready_daemon(hive_dir)
+        # Park it (cycle 1 creates a pending approval and sets WAITING).
+        assert await _cycle(daemon, store, agent_id) == "waiting_approval"
+
+        # Simulate a restart: a fresh daemon resumes from the persisted DB.
+        daemon2 = HiveDaemon(hive_dir, heartbeat=1)
+        await daemon2._store.initialize()
+        await daemon2._resume_agents()
+
+        agent = await store.get_agent(agent_id)
+        assert agent is not None and agent.status == AgentStatus.WAITING  # not reset to IDLE
+        assert await store.get_active_goal(agent_id) is not None  # goal not abandoned
+        assert len(await store.get_pending_approvals(agent_id)) == 1

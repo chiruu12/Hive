@@ -286,6 +286,20 @@ class TestMigrationV3:
         assert await store.find_active_approval("a1", "shell_exec", "h1") is None
 
     @pytest.mark.asyncio
+    async def test_expire_approvals_uses_created_at(self, tmp_path: Path) -> None:
+        """Timeout is keyed on persisted created_at, so it survives a counter reset."""
+        store = HiveStore(tmp_path / "state.db")
+        await store.initialize()
+        await store.create_approval("ap1", "a1", "shell", "{}", "h", cycle_created=9999)
+
+        # Cutoff in the past: the approval is newer, so it does NOT expire.
+        assert await store.expire_approvals("a1", "2000-01-01T00:00:00+00:00") == 0
+        # Cutoff in the future: it is older than the cutoff, so it expires (denied).
+        assert await store.expire_approvals("a1", "2999-01-01T00:00:00+00:00") == 1
+        row = await store.get_approval("ap1")
+        assert row is not None and row["status"] == "denied" and row["resolved_by"] == "system"
+
+    @pytest.mark.asyncio
     async def test_session_resolution(self, tmp_path: Path) -> None:
         store = HiveStore(tmp_path / "state.db")
         await store.initialize()

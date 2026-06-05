@@ -1184,8 +1184,12 @@ class HiveStore:
             await db.commit()
             return cursor.rowcount > 0
 
-    async def expire_approvals(self, agent_id: str, before_cycle: int) -> int:
-        """Auto-deny pending approvals created before ``before_cycle`` (timeout policy).
+    async def expire_approvals(self, agent_id: str, before_created_at: str) -> int:
+        """Auto-deny pending approvals created before ``before_created_at`` (ISO ts).
+
+        Keyed on the persisted wall-clock ``created_at`` rather than the in-process
+        cycle counter, so the timeout is honored across a daemon restart (the counter
+        resets to 0 on restart; ``created_at`` is absolute).
 
         Modelled as a denial (not a distinct ``expired`` state) so the gate surfaces
         it to the agent exactly once and consumes it -- a separate terminal state the
@@ -1196,9 +1200,8 @@ class HiveStore:
                 """UPDATE approvals
                    SET status = 'denied', reason = 'approval request timed out',
                        resolved_by = 'system', resolved_at = ?
-                   WHERE agent_id = ? AND status = 'pending'
-                   AND cycle_created IS NOT NULL AND cycle_created < ?""",
-                (datetime.now(UTC).isoformat(), agent_id, before_cycle),
+                   WHERE agent_id = ? AND status = 'pending' AND created_at < ?""",
+                (datetime.now(UTC).isoformat(), agent_id, before_created_at),
             )
             await db.commit()
             return cursor.rowcount

@@ -26,9 +26,13 @@ async def stream_task(
     from hive.server.runner import build_oneshot_agent
 
     queue: asyncio.Queue[str | None] = asyncio.Queue()
-    runtime_agent = build_oneshot_agent(
-        ctx, agent, session_id, on_text=lambda t: queue.put_nowait(t)
-    )
+    # Output guardrails (e.g. PII redaction) only run on the final result, but token
+    # deltas are raw. Streaming them would leak the unredacted content the
+    # non-streaming path masks. So when guardrails are enabled, don't forward token
+    # deltas -- the terminal `done` event still carries the redacted final output.
+    stream_tokens = not ctx.config.guardrails.enabled
+    on_text = (lambda t: queue.put_nowait(t)) if stream_tokens else None
+    runtime_agent = build_oneshot_agent(ctx, agent, session_id, on_text=on_text)
 
     async def _run() -> None:
         try:
