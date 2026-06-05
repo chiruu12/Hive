@@ -1144,19 +1144,32 @@ class HiveStore:
         status: str,
         resolved_by: str | None = None,
         reason: str | None = None,
+        agent_id: str | None = None,
     ) -> bool:
         """Transition a pending approval to ``approved`` or ``denied``.
 
         Only acts on rows still ``pending``; the rowcount guard makes
         double-resolution races (two reviewers, or API + CLI) a no-op for the loser.
+        When ``agent_id`` is given, the row must also belong to that agent -- so a
+        request routed under ``/agents/{a}/approvals/{id}`` can't resolve an approval
+        that actually belongs to a different agent.
         """
+        sql = (
+            "UPDATE approvals SET status = ?, resolved_at = ?, resolved_by = ?, reason = ? "
+            "WHERE approval_id = ? AND status = 'pending'"
+        )
+        params: list[Any] = [
+            status,
+            datetime.now(UTC).isoformat(),
+            resolved_by,
+            reason,
+            approval_id,
+        ]
+        if agent_id is not None:
+            sql += " AND agent_id = ?"
+            params.append(agent_id)
         async with self._connect() as db:
-            cursor = await db.execute(
-                """UPDATE approvals
-                   SET status = ?, resolved_at = ?, resolved_by = ?, reason = ?
-                   WHERE approval_id = ? AND status = 'pending'""",
-                (status, datetime.now(UTC).isoformat(), resolved_by, reason, approval_id),
-            )
+            cursor = await db.execute(sql, tuple(params))
             await db.commit()
             return cursor.rowcount > 0
 

@@ -98,9 +98,14 @@ def test_approval_queue_and_resolution(client: TestClient, tmp_path: Path) -> No
     queue = client.get("/approvals").json()
     assert any(a["approval_id"] == "ap-1" for a in queue)
 
-    resp = client.post(
-        f"/agents/{agent_id}/approvals/ap-1", json={"decision": "approve"}
+    # Resolving under a different agent's path must NOT succeed (cross-agent guard).
+    other = client.post("/agents", json={"preset": "coder"}).json()["agent_id"]
+    assert (
+        client.post(f"/agents/{other}/approvals/ap-1", json={"decision": "approve"}).status_code
+        == 409
     )
+    # Correct agent succeeds.
+    resp = client.post(f"/agents/{agent_id}/approvals/ap-1", json={"decision": "approve"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "approved"
     # Second resolution is a conflict.
