@@ -573,7 +573,13 @@ class Agent:
                             output = "[output withheld by guardrail]"
                         elif finding.action is GuardrailAction.REDACT:
                             output = finding.text
-                self._write_conversation_log(task.id, conversation.get_messages(), "completed")
+                # The raw assistant message is already in the conversation; replace it
+                # with the sanitized output for the on-disk log too, so a redacting
+                # guardrail doesn't leak the unredacted content into the JSON log file.
+                log_messages = conversation.get_messages()
+                if output != response.content:
+                    log_messages = [*log_messages[:-1], Message.assistant(output)]
+                self._write_conversation_log(task.id, log_messages, "completed")
                 return TaskResult(
                     task_id=task.id,
                     status=TaskStatus.COMPLETED,
