@@ -23,6 +23,11 @@ EXPECTED_INDEXES = {
     "idx_tasks_status",
     "idx_alarms_agent_status",
     "idx_alarms_status_fire",
+    "idx_sessions_user",
+    "idx_sessions_user_key",
+    "idx_approvals_agent_status",
+    "idx_approvals_status",
+    "idx_approvals_lookup",
 }
 
 # agents table as it existed before the spawned_by/max_cycles/cycles_lived columns.
@@ -198,6 +203,98 @@ async def _insert_agent_with_children(db_path: Path) -> None:
             "VALUES ('t1', 'a1', 'desc', 't')"
         )
         await db.commit()
+
+
+# A version-2 database: sessions WITHOUT the multi-tenant columns and no approvals
+# table, as they existed before migration 3.
+_V2_SCHEMA_PRE_TENANT = """
+CREATE TABLE agents (
+    agent_id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,
+    model TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'idle', current_task TEXT,
+    steps_completed INTEGER DEFAULT 0, steps_total INTEGER DEFAULT 0,
+    workspace TEXT DEFAULT '', spawned_at TEXT NOT NULL, last_active TEXT NOT NULL,
+    error TEXT, spawned_by TEXT, max_cycles INTEGER, cycles_lived INTEGER DEFAULT 0
+);
+CREATE TABLE sessions (
+    session_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, task TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running', started_at TEXT NOT NULL,
+    completed_at TEXT, input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0,
+    duration_ms INTEGER DEFAULT 0,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+);
+"""
+
+
+class TestMigrationV3:
+    @pytest.mark.asyncio
+    async def test_v2_to_v3_adds_session_columns_and_approvals(self, tmp_path: Path) -> None:
+        """A v2 DB gains the tenant session columns and approvals table, data intact."""
+        db_path = tmp_path / "state.db"
+        async with aiosqlite.connect(db_path) as db:
+            await db.executescript(_V2_SCHEMA_PRE_TENANT)
+            await db.execute(
+                "INSERT INTO agents (agent_id, name, role, model, spawned_at, last_active) "
+                "VALUES ('a1', 'Ada', 'coder', 'claude', 't', 't')"
+            )
+            await db.execute(
+                "INSERT INTO sessions (session_id, agent_id, task, started_at) "
+                "VALUES ('s1', 'a1', 'do work', 't')"
+            )
+            await db.execute("PRAGMA user_version = 2")
+            await db.commit()
+
+        await HiveStore(db_path).initialize()  # runs migration 3
+
+        async with aiosqlite.connect(db_path) as db:
+            version = (await (await db.execute("PRAGMA user_version")).fetchone())[0]
+            cursor = await db.execute("PRAGMA table_info(sessions)")
+            cols = {row[1] for row in await cursor.fetchall()}
+            cursor = await db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='approvals'"
+            )
+            approvals_exists = await cursor.fetchone() is not None
+            cursor = await db.execute("SELECT task FROM sessions WHERE session_id = 's1'")
+            session_row = await cursor.fetchone()
+
+        assert version == LATEST_SCHEMA_VERSION
+        assert {"user_id", "session_key", "created_at", "last_active", "metadata"} <= cols
+        assert approvals_exists
+        assert session_row is not None and session_row[0] == "do work"  # data survived
+
+    @pytest.mark.asyncio
+    async def test_approval_lifecycle(self, tmp_path: Path) -> None:
+        """create -> find_active(pending) -> resolve(approved) -> consume."""
+        store = HiveStore(tmp_path / "state.db")
+        await store.initialize()
+        await store.create_approval("ap1", "a1", "shell_exec", '{"cmd": "ls"}', "h1")
+
+        pending = await store.get_pending_approvals("a1")
+        assert len(pending) == 1 and pending[0]["approval_id"] == "ap1"
+
+        active = await store.find_active_approval("a1", "shell_exec", "h1")
+        assert active is not None and active["status"] == "pending"
+
+        assert await store.resolve_approval("ap1", "approved", resolved_by="user") is True
+        # Double-resolution is a no-op (rowcount guard).
+        assert await store.resolve_approval("ap1", "denied", resolved_by="user") is False
+
+        active = await store.find_active_approval("a1", "shell_exec", "h1")
+        assert active is not None and active["status"] == "approved"
+
+        assert await store.consume_approval("ap1") is True
+        # Consumed approvals no longer match, so a re-call would re-prompt.
+        assert await store.find_active_approval("a1", "shell_exec", "h1") is None
+
+    @pytest.mark.asyncio
+    async def test_session_resolution(self, tmp_path: Path) -> None:
+        store = HiveStore(tmp_path / "state.db")
+        await store.initialize()
+        await store.create_session("s1", "a1", "task", user_id="alice", session_key="chat-1")
+
+        resolved = await store.resolve_session("alice", "chat-1")
+        assert resolved is not None and resolved["session_id"] == "s1"
+        assert await store.resolve_session("bob", "chat-1") is None
+        assert [s["session_id"] for s in await store.list_sessions(user_id="alice")] == ["s1"]
 
 
 class TestConcurrencySettings:

@@ -118,6 +118,7 @@ class TaskStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     MAX_STEPS = "max_steps"
+    WAITING_APPROVAL = "waiting_approval"
 
 
 class Task(BaseModel):

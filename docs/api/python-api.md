@@ -82,6 +82,11 @@ agent = Agent(
 result rather than stalling the whole cycle. It defaults to `0.0` (disabled) for a
 standalone `Agent`; the daemon sets it from `DaemonConfig.tool_timeout` (60s).
 
+Pass `approval_gate=...` (an `ApprovalGate`) to require human approval before
+selected tools run. A gated call pauses the run, which returns a `TaskResult` with
+`status=TaskStatus.WAITING_APPROVAL`; resolving the approval lets a later run execute
+the tool. See [Gate a Tool Behind Human Approval](../extending/index.md#9-gate-a-tool-behind-human-approval).
+
 The `instructions` argument accepts a plain `str` or any **`InstructionLike`** object --
 anything implementing `build_system_prompt(toolkit_instructions=None, response_model=None)`.
 `Instructions` and `Persona` both satisfy it, and you can supply your own. The agent never

@@ -104,6 +104,39 @@ daemon.hooks.on("suffering_changed", on_suffering)
 daemon.hooks.off("suffering_changed", on_suffering)
 ```
 
+## Human-in-the-Loop Approvals
+
+Some tools should not run without a human's say-so. Enable approvals in
+`.hive/config.yaml` and mark which tools are gated:
+
+```yaml
+approval:
+  enabled: true
+  require_for: ["shell_exec", "git_commit"]   # tool names always gated
+  auto_approve: []                             # names never gated (overrides flags)
+  timeout_cycles: 0                            # auto-deny after N heartbeats (0 = never)
+```
+
+A tool can also opt in at definition time with `@tool(requires_approval=True)`.
+
+When a gated tool is called, the agent **parks**: it does not run the tool, an
+approval record is persisted, and its status becomes `waiting_approval`. Because
+agents are heartbeat-driven records (not live coroutines), the pause survives across
+cycles -- each heartbeat the park gate holds the agent cheaply (no model call) until
+the request is resolved. The goal stays active throughout.
+
+Resolve from the CLI or the [REST API](rest-api.md#human-in-the-loop-approvals):
+
+```bash
+hive approvals                 # list pending requests
+hive approve ap-1a2b3c         # let the tool run next cycle
+hive deny ap-1a2b3c --reason "too risky"   # agent sees the denial and re-plans
+```
+
+An approval is granted for a specific `(tool, arguments)` pair and is single-use:
+re-running the same call later prompts again. `timeout_cycles` auto-denies a request
+that sits unresolved too long.
+
 ## Life Events
 
 The event engine rolls random events each cycle (30% probability). Events force agents to make decisions that affect their stats and suffering.

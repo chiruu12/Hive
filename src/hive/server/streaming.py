@@ -1,0 +1,57 @@
+"""SSE bridge: turn an Agent's push-style on_text callback into an async stream."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
+
+from hive.runtime.types import Task
+
+if TYPE_CHECKING:
+    from hive.agents.state import AgentState
+    from hive.server.deps import ServerContext
+
+
+async def stream_task(
+    ctx: ServerContext, agent: AgentState, instruction: str, session_id: str, max_steps: int
+) -> AsyncIterator[dict[str, str]]:
+    """Yield SSE events (``token`` deltas, then a terminal ``done``/``error``).
+
+    The Agent pushes text via ``on_text``; we funnel it through a queue so the
+    coroutine running the task and the response stream stay decoupled. A sentinel
+    closes the stream when the run finishes.
+    """
+    from hive.server.runner import build_oneshot_agent
+
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    runtime_agent = build_oneshot_agent(
+        ctx, agent, session_id, on_text=lambda t: queue.put_nowait(t)
+    )
+
+    async def _run() -> None:
+        try:
+            result = await runtime_agent.run(Task(instruction=instruction, max_steps=max_steps))
+            payload = json.dumps({"status": result.status, "output": result.output})
+            queue.put_nowait("\x00" + payload)
+        except Exception as exc:  # surfaced as an SSE error event
+            queue.put_nowait("\x01" + str(exc))
+        finally:
+            queue.put_nowait(None)
+
+    task = asyncio.create_task(_run())
+    try:
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            if item.startswith("\x00"):
+                yield {"event": "done", "data": item[1:]}
+            elif item.startswith("\x01"):
+                yield {"event": "error", "data": item[1:]}
+            else:
+                yield {"event": "token", "data": item}
+    finally:
+        if not task.done():
+            task.cancel()

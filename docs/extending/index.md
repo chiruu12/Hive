@@ -550,3 +550,45 @@ def test_custom_event_registered():
 An `EventEngine(stats, world, events=my_registry)` fires only the events in
 `my_registry`; a `WorldState` seeds its jobs from `JobRegistry.default()` at
 construction, so register custom jobs before creating it.
+
+## 9. Gate a Tool Behind Human Approval
+
+Mark a tool so it pauses for human approval before running. The agent must be
+constructed with an `ApprovalGate` (the daemon wires one when `approval.enabled`
+is set in config) for the flag to take effect.
+
+```python
+from hive import Toolkit, tool
+
+class DeployToolkit(Toolkit):
+    @tool(requires_approval=True)
+    def deploy(self, target: str) -> str:
+        """Deploy to an environment.
+
+        Args:
+            target: Environment name (e.g. "prod").
+        """
+        return f"deployed to {target}"
+```
+
+Custom gate via the `ApprovalGate` protocol:
+
+```python
+from hive.runtime.approval import ApprovalGate, ApprovalResult, ApprovalDecision
+from hive.tools.base import Tool
+
+class AllowlistGate:
+    def requires_approval(self, tool: Tool) -> bool:
+        return tool.name == "deploy"
+
+    async def check(self, tool_name: str, arguments: dict) -> ApprovalResult:
+        if arguments.get("target") == "staging":
+            return ApprovalResult(ApprovalDecision.APPROVED, "auto")
+        return ApprovalResult(ApprovalDecision.PENDING, "needs-review")
+
+agent = Agent(name="releaser", model=provider, toolkits=[DeployToolkit()],
+              approval_gate=AllowlistGate())
+```
+
+The built-in `StoreApprovalGate` persists pending approvals so they survive the
+daemon's heartbeat cycles. See [Human-in-the-Loop Approvals](../guide/daemon-mode.md#human-in-the-loop-approvals).

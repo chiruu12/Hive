@@ -215,3 +215,44 @@ Run an agent from a YAML config file.
 ```bash
 hive agent run examples/06_cli_agent.yaml
 ```
+
+## REST API Server
+
+### `hive serve`
+
+Serve the REST API (requires the `api` extra: `pip install 'hive-agent[api]'`).
+See the [REST API guide](rest-api.md) for endpoints.
+
+```bash
+hive serve
+hive serve --port 9000 --with-daemon
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--host` | `127.0.0.1` | Bind address |
+| `--port` / `-p` | `8000` | Port |
+| `--with-daemon` | `false` | Run the heartbeat loop in-process |
+| `--reload` | `false` | Auto-reload on code changes (dev) |
+
+## Human-in-the-Loop Approvals
+
+### `hive approvals`
+
+List all pending tool approvals across agents.
+
+```bash
+hive approvals
+```
+
+### `hive approve` / `hive deny`
+
+Resolve a pending approval. After `approve` the agent runs the tool next cycle;
+after `deny` it sees the denial and re-plans.
+
+```bash
+hive approve ap-1a2b3c
+hive deny ap-1a2b3c --reason "too risky"
+```
+
+See [Human-in-the-Loop Approvals](daemon-mode.md#human-in-the-loop-approvals) for setup.
