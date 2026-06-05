@@ -3,6 +3,14 @@
 Hive can expose its agents over HTTP -- a FastAPI control-plane surface for
 spawning, running, streaming, and approving agents from any client.
 
+!!! warning "No built-in authentication"
+    The REST API ships **without authentication**, binds to `127.0.0.1` by default,
+    and treats `X-Hive-User` as a tenant *routing hint*, not a security boundary.
+    Agents are a single shared pool in this release, so the agents and approval
+    endpoints are a shared operator surface. For multi-user or networked
+    deployments, run it behind your own authentication/TLS proxy. Per-request session
+    rows are isolated by user; agent ownership / RBAC is on the roadmap.
+
 ## Install and run
 
 The server lives behind the optional `api` extra:

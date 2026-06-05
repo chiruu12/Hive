@@ -42,14 +42,13 @@ class DaemonAgentAdapter:
         result = await self._agent.run(task)
 
         if result.status == TaskStatus.WAITING_APPROVAL:
-            approval_ids = result.output.replace("Awaiting human approval:", "").strip()
             return GoalOutcome(
                 steps_done=result.tool_calls_made or result.steps_taken,
                 steps_failed=0,
                 success=False,
                 summary=result.output[:500] if result.output else str(result.status),
                 waiting_approval=True,
-                approval_ids=[a.strip() for a in approval_ids.split(",") if a.strip()],
+                approval_ids=list(result.approval_ids),
             )
 
         return GoalOutcome(

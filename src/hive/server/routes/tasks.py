@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
-from hive.runtime.types import Task, TaskStatus
+from hive.runtime.types import Task
 from hive.server.deps import ServerContext, get_context, get_user, resolve_agent_id
 from hive.server.runner import build_oneshot_agent
 from hive.server.schemas import TaskRequest, TaskResponse
@@ -33,13 +33,6 @@ async def run_task(
     runtime_agent = build_oneshot_agent(ctx, agent, session_id)
     result = await runtime_agent.run(Task(instruction=body.instruction, max_steps=body.max_steps))
 
-    approval_ids: list[str] = []
-    if result.status == TaskStatus.WAITING_APPROVAL:
-        approval_ids = [
-            a.strip()
-            for a in result.output.replace("Awaiting human approval:", "").split(",")
-            if a.strip()
-        ]
     return TaskResponse(
         task_id=result.task_id,
         status=result.status.value,
@@ -47,7 +40,7 @@ async def run_task(
         steps_taken=result.steps_taken,
         tool_calls_made=result.tool_calls_made,
         session_id=session_id,
-        approval_ids=approval_ids,
+        approval_ids=list(result.approval_ids),
     )
 
 
