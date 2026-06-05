@@ -38,8 +38,13 @@ reports = await suite.run([
 
 for name, report in reports.items():
     print(report.summary())
-    # {'evaluator': 'accuracy', 'total': 1, 'passed': 1, 'pass_rate': 1.0, 'mean_score': 0.9}
+    # {'evaluator': 'accuracy', 'total': 1, 'scored': 1, 'skipped': 0,
+    #  'passed': 1, 'pass_rate': 1.0, 'mean_score': 0.9}
 ```
+
+Cases an evaluator can't judge (e.g. accuracy with no `expected_answer`) are marked
+**skipped** and excluded from `pass_rate` / `mean_score`, so they never inflate the
+metrics; `summary()` reports the `scored` and `skipped` counts separately.
 
 ## Cases
 

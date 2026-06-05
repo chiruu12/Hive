@@ -68,10 +68,15 @@ _HTML = """<!DOCTYPE html>
 <script>
 const $ = id => document.getElementById(id);
 const userHdr = () => ({ "X-Hive-User": $("user").value || "default" });
-const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+// Escape for HTML text AND attribute contexts (includes quotes), so untrusted
+// fields (ids, status, args) can't break out of an attribute or inject markup.
+const ESC = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ESC[c]);
 
-async function api(path, opts) {
-  const r = await fetch(path, { headers: userHdr(), ...opts });
+async function api(path, opts = {}) {
+  // Merge headers so a caller-supplied `headers` can't drop X-Hive-User.
+  const { headers, ...rest } = opts;
+  const r = await fetch(path, { headers: { ...userHdr(), ...headers }, ...rest });
   if (!r.ok) throw new Error(r.status + " " + path);
   return r.status === 204 ? null : r.json();
 }
@@ -85,12 +90,18 @@ function table(rows, cols) {
 
 async function decide(agentId, approvalId, decision) {
   try {
-    await api(`/agents/${agentId}/approvals/${approvalId}`,
-      { method: "POST", headers: { ...userHdr(), "Content-Type": "application/json" },
+    await api(`/agents/${encodeURIComponent(agentId)}/approvals/${encodeURIComponent(approvalId)}`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision }) });
     refresh();
   } catch (e) { alert("Failed: " + e.message); }
 }
+
+// Delegated click handler: ids come from dataset (never from interpolated markup).
+$("approvals").addEventListener("click", e => {
+  const btn = e.target.closest("button.act");
+  if (btn) decide(btn.dataset.agent, btn.dataset.id, btn.dataset.decision);
+});
 
 async function refresh() {
   try {
@@ -101,15 +112,20 @@ async function refresh() {
       { h: "Name", f: a => esc(a.name) },
       { h: "Role", f: a => esc(a.role) },
       { h: "Model", f: a => "<code>" + esc(a.model) + "</code>" },
-      { h: "Status", f: a => `<span class="badge ${a.status}">${esc(a.status)}</span>` },
+      { h: "Status", f: a => `<span class="badge ${esc(a.status)}">${esc(a.status)}</span>` },
       { h: "Goal", f: a => esc(a.goal) || "<span class='empty'>-</span>" },
     ]);
+    // Buttons carry ids in escaped data-* attributes; a single delegated listener
+    // (below) handles clicks, so no untrusted value is ever interpolated into JS.
     $("approvals").innerHTML = table(approvals, [
       { h: "Tool", f: a => "<code>" + esc(a.tool_name) + "</code>" },
       { h: "Agent", f: a => esc(a.agent_id) },
       { h: "Arguments", f: a => "<code>" + esc((a.arguments || "").slice(0, 80)) + "</code>" },
-      { h: "", f: a => `<button onclick="decide('${a.agent_id}','${a.approval_id}','approve')">Approve</button>
-                        <button class="deny" onclick="decide('${a.agent_id}','${a.approval_id}','deny')">Deny</button>` },
+      { h: "", f: a => {
+          const attrs = `data-agent="${esc(a.agent_id)}" data-id="${esc(a.approval_id)}"`;
+          return `<button class="act" data-decision="approve" ${attrs}>Approve</button>
+                  <button class="act deny" data-decision="deny" ${attrs}>Deny</button>`;
+      } },
     ]);
     $("sessions").innerHTML = table(sessions, [
       { h: "Session", f: s => "<code>" + esc(s.session_id) + "</code>" },

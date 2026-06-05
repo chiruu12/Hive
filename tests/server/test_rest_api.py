@@ -40,6 +40,9 @@ def test_control_plane_ui_served(client: TestClient) -> None:
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "Hive" in resp.text and "Pending Approvals" in resp.text
+    # XSS hardening: ids are not interpolated into inline JS; clicks are delegated.
+    assert 'onclick="decide(' not in resp.text
+    assert "data-decision" in resp.text
 
 
 def test_spawn_list_get_kill(client: TestClient) -> None:
@@ -105,9 +108,14 @@ def test_approval_queue_and_resolution(client: TestClient, tmp_path: Path) -> No
     queue = client.get("/approvals").json()
     assert any(a["approval_id"] == "ap-1" for a in queue)
 
-    resp = client.post(
-        f"/agents/{agent_id}/approvals/ap-1", json={"decision": "approve"}
+    # Resolving under a different agent's path must NOT succeed (cross-agent guard).
+    other = client.post("/agents", json={"preset": "coder"}).json()["agent_id"]
+    assert (
+        client.post(f"/agents/{other}/approvals/ap-1", json={"decision": "approve"}).status_code
+        == 409
     )
+    # Correct agent succeeds.
+    resp = client.post(f"/agents/{agent_id}/approvals/ap-1", json={"decision": "approve"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "approved"
     # Second resolution is a conflict.

@@ -30,8 +30,10 @@ class MockProvider:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> GenerateResult:
-        resp = self._responses[self._i] if self._i < len(self._responses) else Message.assistant(
-            "done"
+        resp = (
+            self._responses[self._i]
+            if self._i < len(self._responses)
+            else Message.assistant("done")
         )
         self._i += 1
         return GenerateResult(message=resp, model="mock", input_tokens=1, output_tokens=1)

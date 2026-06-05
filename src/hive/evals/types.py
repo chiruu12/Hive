@@ -40,11 +40,17 @@ class CaseResult:
     score: float  # 0.0 .. 1.0
     detail: str
     run: EvalRun
+    # True when the evaluator had nothing to check for this case; excluded from the
+    # report's pass-rate and mean-score so skipped cases don't inflate the metrics.
+    skipped: bool = False
 
 
 @dataclass
 class EvalReport:
-    """Aggregate results for one evaluator across all cases."""
+    """Aggregate results for one evaluator across all cases.
+
+    Rates and means are computed over *scored* (non-skipped) results only.
+    """
 
     evaluator: str
     results: list[CaseResult] = field(default_factory=list)
@@ -54,21 +60,33 @@ class EvalReport:
         return len(self.results)
 
     @property
+    def _scored(self) -> list[CaseResult]:
+        return [r for r in self.results if not r.skipped]
+
+    @property
+    def skipped(self) -> int:
+        return sum(1 for r in self.results if r.skipped)
+
+    @property
     def passed(self) -> int:
-        return sum(1 for r in self.results if r.passed)
+        return sum(1 for r in self._scored if r.passed)
 
     @property
     def pass_rate(self) -> float:
-        return self.passed / self.total if self.total else 0.0
+        scored = len(self._scored)
+        return self.passed / scored if scored else 0.0
 
     @property
     def mean_score(self) -> float:
-        return sum(r.score for r in self.results) / self.total if self.total else 0.0
+        scored = self._scored
+        return sum(r.score for r in scored) / len(scored) if scored else 0.0
 
     def summary(self) -> dict[str, Any]:
         return {
             "evaluator": self.evaluator,
             "total": self.total,
+            "scored": len(self._scored),
+            "skipped": self.skipped,
             "passed": self.passed,
             "pass_rate": round(self.pass_rate, 3),
             "mean_score": round(self.mean_score, 3),
