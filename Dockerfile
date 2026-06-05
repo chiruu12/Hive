@@ -6,8 +6,9 @@
 
 FROM python:3.12-slim AS build
 
-# uv for a fast, reproducible install.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# uv for a fast, reproducible install. Pinned so builds don't drift with uv releases
+# (keep in sync with the uv that resolved uv.lock).
+COPY --from=ghcr.io/astral-sh/uv:0.9.3 /uv /usr/local/bin/uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
@@ -36,6 +37,13 @@ WORKDIR /data
 
 EXPOSE 8000
 
+# Report container health via the API's readiness endpoint (urllib ships with the
+# slim base, so no extra dependency). Enables `docker ps` health + service_healthy.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" \
+    || exit 1
+
 # The API server, with the heartbeat loop in-process. `hive init` is idempotent and
-# scaffolds .hive/ in the mounted /data volume on first run.
-ENTRYPOINT ["sh", "-c", "hive init >/dev/null 2>&1 || true; exec hive serve --host 0.0.0.0 --port 8000 --with-daemon"]
+# scaffolds .hive/ in the mounted /data volume on first run. Its stderr is kept (not
+# silenced) so a real init failure -- bad /data permissions, disk full -- is visible.
+ENTRYPOINT ["sh", "-c", "hive init 2>&1 || true; exec hive serve --host 0.0.0.0 --port 8000 --with-daemon"]

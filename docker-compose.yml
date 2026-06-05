@@ -9,7 +9,9 @@ services:
     build: .
     image: hive-agentos
     ports:
-      - "8000:8000"
+      # Bind to loopback only -- matches the local-dev / reverse-proxy posture. Use
+      # "8000:8000" (or put a proxy in front) to expose it on the network.
+      - "127.0.0.1:8000:8000"
     environment:
       # Pass through provider keys from your shell / .env (only what you use).
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
