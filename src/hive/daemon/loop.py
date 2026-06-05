@@ -6,6 +6,7 @@ import random
 from pathlib import Path
 from typing import Any
 
+from hive.agents.approval import ApprovalPolicy, StoreApprovalGate
 from hive.agents.delegation import DelegationEngine
 from hive.agents.existence import ExistenceLoop
 from hive.agents.goal_strategy import GoalContext, GoalStrategy
@@ -424,6 +425,20 @@ class HiveDaemon:
         return result
 
     async def _run_agent_cycle_inner(self, agent: AgentState, suffering: SufferingState) -> str:
+        # Park gate: an agent waiting on human approval is re-driven every heartbeat
+        # (it is alive), but must not do any LLM work or re-request approval while
+        # its decision is pending. Return immediately and cheaply. Once the approval
+        # is resolved (or timed out) there is nothing pending, so we fall through and
+        # re-pursue the still-active goal -- this time the gate lets the tool run.
+        approval_cfg = get_config().approval
+        if approval_cfg.enabled and agent.status == AgentStatus.WAITING:
+            if approval_cfg.timeout_cycles > 0:
+                await self._store.expire_approvals(
+                    agent.agent_id, self._cycle_count - approval_cfg.timeout_cycles
+                )
+            if await self._store.get_pending_approvals(agent.agent_id):
+                return "waiting_approval"
+
         prev_stressors = {s.type for s in suffering.active}
         suffering.escalate_all()
         result = "idle"
@@ -452,6 +467,18 @@ class HiveDaemon:
         if active_goal:
             await self._store.update_agent_status(agent.agent_id, AgentStatus.WORKING)
             tool_timeout = get_config().daemon.tool_timeout
+            # Wire the human-in-the-loop gate only when approvals are enabled. It is
+            # bound to this agent + goal so pending approvals carry that context.
+            approval_gate = None
+            if approval_cfg.enabled:
+                approval_gate = StoreApprovalGate(
+                    self._store,
+                    ApprovalPolicy(approval_cfg),
+                    agent.agent_id,
+                    cycle_provider=lambda: self._cycle_count,
+                    session_id=session_id,
+                    goal_id=active_goal["goal_id"],
+                )
             if persona is not None:
                 runtime_agent = Agent(
                     name=agent.name,
@@ -459,6 +486,7 @@ class HiveDaemon:
                     persona=persona,
                     toolkits=self._build_toolkits(agent.agent_id),
                     tool_timeout=tool_timeout,
+                    approval_gate=approval_gate,
                 )
             else:
                 runtime_agent = Agent(
@@ -469,6 +497,7 @@ class HiveDaemon:
                     ),
                     toolkits=self._build_toolkits(agent.agent_id),
                     tool_timeout=tool_timeout,
+                    approval_gate=approval_gate,
                 )
             adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
             # Give the pursuing agent its persistent self -- name and accumulated
@@ -496,6 +525,23 @@ class HiveDaemon:
                 active_goal["objective"],
                 context=pursuit_context,
             )
+
+            if outcome.waiting_approval:
+                # A tool needs human approval. Park the agent: keep the goal active
+                # and set WAITING so the next heartbeat's park gate holds it cheaply
+                # until the approval is resolved via the API/CLI.
+                await self._store.update_agent_status(agent.agent_id, AgentStatus.WAITING)
+                await self._emit(
+                    agent.agent_id,
+                    session_id,
+                    EventType.GOAL_SET,
+                    {
+                        "goal_id": active_goal["goal_id"],
+                        "waiting_approval": True,
+                        "approval_ids": outcome.approval_ids,
+                    },
+                )
+                return "waiting_approval"
 
             goals = await self._store.list_agent_goals(agent.agent_id, limit=10)
             completed = sum(1 for g in goals if g["status"] == "completed")

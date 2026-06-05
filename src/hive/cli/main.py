@@ -145,6 +145,7 @@ def status() -> None:
     status_styles = {
         "idle": "[dim]idle[/dim]",
         "working": "[bold yellow]working[/bold yellow]",
+        "waiting_approval": "[magenta]waiting approval[/magenta]",
         "error": "[red]error[/red]",
         "dead": "[dim strikethrough]dead[/dim strikethrough]",
     }
@@ -303,6 +304,7 @@ def watch(
         status_styles = {
             "idle": "[dim]idle[/dim]",
             "working": "[bold yellow]working[/bold yellow]",
+            "waiting_approval": "[magenta]waiting approval[/magenta]",
             "error": "[red]error[/red]",
         }
 
@@ -1273,6 +1275,100 @@ def alarms() -> None:
             a["fire_at"],
         )
     console.print(table)
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address (local-first default)."),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to listen on."),
+    with_daemon: bool = typer.Option(
+        False, "--with-daemon", help="Run the heartbeat loop in-process."
+    ),
+    reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes (dev)."),
+) -> None:
+    r"""Serve the Hive REST API (requires the 'api' extra: pip install 'hive-agent\[api]')."""
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+    try:
+        import uvicorn
+
+        from hive.server.app import create_app
+    except ImportError as e:
+        from hive.errors import MissingDependencyError
+
+        raise MissingDependencyError("api") from e
+
+    console.print(f"[green]Hive AgentOS API[/green] on http://{host}:{port}  (docs at /docs)")
+    app_instance = create_app(root=Path.cwd(), with_daemon=with_daemon)
+    uvicorn.run(app_instance, host=host, port=port, reload=reload)
+
+
+@app.command()
+def approvals() -> None:
+    """List all pending human-in-the-loop tool approvals."""
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+    asyncio.run(store.initialize())
+    pending = asyncio.run(store.list_all_pending_approvals())
+    if not pending:
+        console.print("[dim]No pending approvals.[/dim]")
+        return
+
+    table = Table(title="Pending Approvals")
+    table.add_column("ID", style="cyan")
+    table.add_column("Agent", style="dim")
+    table.add_column("Tool", style="yellow")
+    table.add_column("Arguments", max_width=50)
+
+    for a in pending:
+        table.add_row(
+            a["approval_id"],
+            a["agent_id"].split("-")[0],
+            a["tool_name"],
+            a["arguments"][:50],
+        )
+    console.print(table)
+
+
+def _resolve_approval_cli(approval_id: str, decision: str, reason: str | None) -> None:
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+    store = HiveStore(hive_dir / "hive.db")
+    asyncio.run(store.initialize())
+    status = "approved" if decision == "approve" else "denied"
+    ok = asyncio.run(store.resolve_approval(approval_id, status, resolved_by="cli", reason=reason))
+    if not ok:
+        console.print(f"[red]Approval {approval_id} is not pending or does not exist.[/red]")
+        raise typer.Exit(1)
+    verb = "Approved" if decision == "approve" else "Denied"
+    console.print(f"[green]✓ {verb}[/green] {approval_id}")
+
+
+@app.command()
+def approve(approval_id: str = typer.Argument(help="Approval ID to approve")) -> None:
+    """Approve a pending tool call so the agent can run it next cycle."""
+    _resolve_approval_cli(approval_id, "approve", None)
+
+
+@app.command()
+def deny(
+    approval_id: str = typer.Argument(help="Approval ID to deny"),
+    reason: str = typer.Option("", "--reason", "-r", help="Reason shown to the agent."),
+) -> None:
+    """Deny a pending tool call. The agent sees the denial and re-plans."""
+    _resolve_approval_cli(approval_id, "deny", reason or None)
 
 
 agent_app = typer.Typer(

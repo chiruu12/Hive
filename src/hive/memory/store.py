@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     input_tokens INTEGER DEFAULT 0,
     output_tokens INTEGER DEFAULT 0,
     duration_ms INTEGER DEFAULT 0,
+    user_id TEXT DEFAULT 'default',
+    session_key TEXT,
+    created_at TEXT,
+    last_active TEXT,
+    metadata TEXT,
     FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
 );
 
@@ -106,6 +111,23 @@ CREATE TABLE IF NOT EXISTS alarms (
     created_at TEXT NOT NULL,
     FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS approvals (
+    approval_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    session_id TEXT,
+    goal_id TEXT,
+    tool_name TEXT NOT NULL,
+    arguments TEXT NOT NULL,
+    args_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT,
+    resolved_by TEXT,
+    cycle_created INTEGER,
+    FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+);
 """
 
 # Indexes on hot lookup columns (composites mirror the WHERE/ORDER BY patterns
@@ -125,10 +147,15 @@ CREATE INDEX IF NOT EXISTS idx_tasks_agent_status ON tasks(agent_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_alarms_agent_status ON alarms(agent_id, status);
 CREATE INDEX IF NOT EXISTS idx_alarms_status_fire ON alarms(status, fire_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_key ON sessions(user_id, session_key);
+CREATE INDEX IF NOT EXISTS idx_approvals_agent_status ON approvals(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status);
+CREATE INDEX IF NOT EXISTS idx_approvals_lookup ON approvals(agent_id, tool_name, args_hash);
 """
 
 # Latest schema version. Bump and append a step to _MIGRATIONS for each change.
-LATEST_SCHEMA_VERSION = 2
+LATEST_SCHEMA_VERSION = 3
 
 # Child tables rebuilt by migration 2 to add ON DELETE CASCADE on their FK to
 # agents. Each entry is (table, replacement CREATE SQL, explicit column list).
@@ -308,10 +335,54 @@ async def _migration_2(db: aiosqlite.Connection) -> None:
         await db.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
 
 
+async def _migration_3(db: aiosqlite.Connection) -> None:
+    """Add multi-tenant session columns and the approvals table.
+
+    Runs after ``_migration_2`` (which rebuilds ``sessions`` to its v2 shape, so on
+    a fresh DB the columns added below are first stripped by that rebuild and then
+    re-added here -- the end state has every column). Each ALTER is guarded by a
+    column-existence check so legacy DBs that already gained a column via an ad-hoc
+    path don't raise duplicate-column errors. The ``approvals`` table is created
+    with ``IF NOT EXISTS`` so this step is idempotent and safe to re-run.
+    """
+    cursor = await db.execute("PRAGMA table_info(sessions)")
+    session_cols = {row[1] for row in await cursor.fetchall()}
+    session_additions = [
+        ("user_id", "ALTER TABLE sessions ADD COLUMN user_id TEXT DEFAULT 'default'"),
+        ("session_key", "ALTER TABLE sessions ADD COLUMN session_key TEXT"),
+        ("created_at", "ALTER TABLE sessions ADD COLUMN created_at TEXT"),
+        ("last_active", "ALTER TABLE sessions ADD COLUMN last_active TEXT"),
+        ("metadata", "ALTER TABLE sessions ADD COLUMN metadata TEXT"),
+    ]
+    for column, ddl in session_additions:
+        if column not in session_cols:
+            await db.execute(ddl)
+
+    await db.execute(
+        """CREATE TABLE IF NOT EXISTS approvals (
+            approval_id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            session_id TEXT,
+            goal_id TEXT,
+            tool_name TEXT NOT NULL,
+            arguments TEXT NOT NULL,
+            args_hash TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            reason TEXT,
+            created_at TEXT NOT NULL,
+            resolved_at TEXT,
+            resolved_by TEXT,
+            cycle_created INTEGER,
+            FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+        )"""
+    )
+
+
 # Ordered (target_version, migration) steps applied when a DB is below target.
 _MIGRATIONS: list[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]]] = [
     (1, _migration_1),
     (2, _migration_2),
+    (3, _migration_3),
 ]
 
 
@@ -491,6 +562,83 @@ class HiveStore:
                     duration_ms,
                     session_id,
                 ),
+            )
+            await db.commit()
+
+    # --- Sessions (multi-tenant) ---
+
+    async def create_session(
+        self,
+        session_id: str,
+        agent_id: str,
+        task: str,
+        user_id: str = "default",
+        session_key: str | None = None,
+        metadata: str | None = None,
+    ) -> None:
+        """Create a session row carrying tenant/session identity.
+
+        Richer counterpart to ``save_session`` (which the daemon still uses for its
+        per-agent sessions). Kept separate so existing callers are untouched.
+        """
+        now = datetime.now(UTC).isoformat()
+        async with self._connect() as db:
+            await db.execute(
+                """INSERT OR REPLACE INTO sessions
+                   (session_id, agent_id, task, status, started_at,
+                    user_id, session_key, created_at, last_active, metadata)
+                   VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)""",
+                (session_id, agent_id, task, now, user_id, session_key, now, now, metadata),
+            )
+            await db.commit()
+
+    async def get_session(self, session_id: str) -> dict[str, Any] | None:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def resolve_session(self, user_id: str, session_key: str) -> dict[str, Any] | None:
+        """Find the most recent session for a (user_id, session_key) pair."""
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT * FROM sessions
+                   WHERE user_id = ? AND session_key = ?
+                   ORDER BY started_at DESC LIMIT 1""",
+                (user_id, session_key),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def list_sessions(
+        self, user_id: str | None = None, agent_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        values: list[Any] = []
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            values.append(user_id)
+        if agent_id is not None:
+            clauses.append("agent_id = ?")
+            values.append(agent_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                f"SELECT * FROM sessions {where} ORDER BY started_at DESC",
+                tuple(values),
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    async def touch_session(self, session_id: str) -> None:
+        async with self._connect() as db:
+            await db.execute(
+                "UPDATE sessions SET last_active = ? WHERE session_id = ?",
+                (datetime.now(UTC).isoformat(), session_id),
             )
             await db.commit()
 
@@ -908,6 +1056,152 @@ class HiveStore:
                 "SELECT * FROM alarms WHERE status = 'pending' ORDER BY fire_at",
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
+
+    # --- Approvals (human-in-the-loop tool gating) ---
+
+    async def create_approval(
+        self,
+        approval_id: str,
+        agent_id: str,
+        tool_name: str,
+        arguments: str,
+        args_hash: str,
+        session_id: str | None = None,
+        goal_id: str | None = None,
+        cycle_created: int | None = None,
+    ) -> None:
+        async with self._connect() as db:
+            await db.execute(
+                """INSERT INTO approvals
+                   (approval_id, agent_id, session_id, goal_id, tool_name,
+                    arguments, args_hash, status, created_at, cycle_created)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
+                (
+                    approval_id,
+                    agent_id,
+                    session_id,
+                    goal_id,
+                    tool_name,
+                    arguments,
+                    args_hash,
+                    datetime.now(UTC).isoformat(),
+                    cycle_created,
+                ),
+            )
+            await db.commit()
+
+    async def get_approval(self, approval_id: str) -> dict[str, Any] | None:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM approvals WHERE approval_id = ?", (approval_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def find_active_approval(
+        self, agent_id: str, tool_name: str, args_hash: str
+    ) -> dict[str, Any] | None:
+        """Most recent non-terminal approval matching this exact (tool, args).
+
+        Terminal statuses (``consumed``, ``expired``) are excluded so a fresh call
+        after a prior approval was used re-prompts. Used by the gate to decide
+        between APPROVED / DENIED / PENDING without creating duplicate rows.
+        """
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT * FROM approvals
+                   WHERE agent_id = ? AND tool_name = ? AND args_hash = ?
+                   AND status IN ('pending', 'approved', 'denied')
+                   ORDER BY created_at DESC LIMIT 1""",
+                (agent_id, tool_name, args_hash),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def get_pending_approvals(self, agent_id: str) -> list[dict[str, Any]]:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM approvals WHERE agent_id = ? AND status = 'pending' "
+                "ORDER BY created_at",
+                (agent_id,),
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    async def list_all_pending_approvals(self) -> list[dict[str, Any]]:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at",
+            ) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    async def resolve_approval(
+        self,
+        approval_id: str,
+        status: str,
+        resolved_by: str | None = None,
+        reason: str | None = None,
+        agent_id: str | None = None,
+    ) -> bool:
+        """Transition a pending approval to ``approved`` or ``denied``.
+
+        Only acts on rows still ``pending``; the rowcount guard makes
+        double-resolution races (two reviewers, or API + CLI) a no-op for the loser.
+        When ``agent_id`` is given, the row must also belong to that agent -- so a
+        request routed under ``/agents/{a}/approvals/{id}`` can't resolve an approval
+        that actually belongs to a different agent.
+        """
+        sql = (
+            "UPDATE approvals SET status = ?, resolved_at = ?, resolved_by = ?, reason = ? "
+            "WHERE approval_id = ? AND status = 'pending'"
+        )
+        params: list[Any] = [
+            status,
+            datetime.now(UTC).isoformat(),
+            resolved_by,
+            reason,
+            approval_id,
+        ]
+        if agent_id is not None:
+            sql += " AND agent_id = ?"
+            params.append(agent_id)
+        async with self._connect() as db:
+            cursor = await db.execute(sql, tuple(params))
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def consume_approval(self, approval_id: str) -> bool:
+        """Mark a resolved approval ``consumed`` so its grant/denial is single-use."""
+        async with self._connect() as db:
+            cursor = await db.execute(
+                """UPDATE approvals SET status = 'consumed'
+                   WHERE approval_id = ? AND status IN ('approved', 'denied')""",
+                (approval_id,),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def expire_approvals(self, agent_id: str, before_cycle: int) -> int:
+        """Auto-deny pending approvals created before ``before_cycle`` (timeout policy).
+
+        Modelled as a denial (not a distinct ``expired`` state) so the gate surfaces
+        it to the agent exactly once and consumes it -- a separate terminal state the
+        gate ignored would make it re-request a fresh approval every timeout window.
+        """
+        async with self._connect() as db:
+            cursor = await db.execute(
+                """UPDATE approvals
+                   SET status = 'denied', reason = 'approval request timed out',
+                       resolved_by = 'system', resolved_at = ?
+                   WHERE agent_id = ? AND status = 'pending'
+                   AND cycle_created IS NOT NULL AND cycle_created < ?""",
+                (datetime.now(UTC).isoformat(), agent_id, before_cycle),
+            )
+            await db.commit()
+            return cursor.rowcount
 
     def _row_to_state(self, row: aiosqlite.Row) -> AgentState:
         return AgentState(

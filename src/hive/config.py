@@ -162,6 +162,30 @@ class DaemonConfig(BaseModel):
         return v
 
 
+class ApprovalConfig(BaseModel):
+    """Human-in-the-loop tool-approval policy.
+
+    Disabled by default so existing single-user/local runs are unchanged. When
+    enabled, a tool is gated if it is declared ``@tool(requires_approval=True)`` or
+    its name is in ``require_for`` -- unless its name is in ``auto_approve``.
+    """
+
+    enabled: bool = False
+    # Tool names always gated regardless of their decorator flag (ops override).
+    require_for: list[str] = Field(default_factory=list)
+    # Tool names never gated, overriding a tool's own requires_approval flag.
+    auto_approve: list[str] = Field(default_factory=list)
+    # Auto-deny a pending approval after this many heartbeat cycles (0 = wait forever).
+    timeout_cycles: int = 0
+
+    @field_validator("timeout_cycles")
+    @classmethod
+    def _timeout_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"timeout_cycles must be >= 0, got {v}")
+        return v
+
+
 class ModelConfig(BaseModel):
     default_model: str = "claude-haiku-4-5"
     planning_model: str = "claude-sonnet-4-6"
@@ -177,6 +201,7 @@ class HiveConfig(BaseModel):
     economy: EconomyConfig = EconomyConfig()
     daemon: DaemonConfig = DaemonConfig()
     model: ModelConfig = ModelConfig()
+    approval: ApprovalConfig = ApprovalConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).

@@ -27,6 +27,10 @@ class Tool:
     parameters: dict[str, Any]
     fn: Callable[..., Any]
     is_async: bool = False
+    # When True, an ApprovalGate (if the agent has one and approvals are enabled)
+    # pauses this tool for human approval before it runs. Defaulted so existing
+    # tool construction and equality stay unchanged.
+    requires_approval: bool = False
 
     def to_schema(self) -> dict[str, Any]:
         """Return tool definition in the format expected by LLM APIs."""
@@ -252,12 +256,16 @@ def _extract_schema(fn: Callable[..., Any]) -> dict[str, Any]:
 def tool(
     name: str | None = None,
     description: str | None = None,
+    requires_approval: bool = False,
 ) -> Callable[..., Any]:
     """Decorator that marks a function as a tool with auto-extracted JSON Schema.
 
     The function's docstring is used as the tool description sent to the LLM.
     A warning is logged if no docstring is provided.
     Parameter descriptions are extracted from an ``Args:`` section in the docstring.
+
+    Set ``requires_approval=True`` to gate the tool behind human-in-the-loop
+    approval whenever the agent runs with an ApprovalGate and approvals are enabled.
     """
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -277,6 +285,7 @@ def tool(
             "name": tool_name,
             "description": tool_desc,
             "parameters": _extract_schema(fn),
+            "requires_approval": requires_approval,
         }
         return fn
 
@@ -294,6 +303,7 @@ def make_tool(fn: Callable[..., Any]) -> Tool:
         parameters=meta["parameters"],
         fn=fn,
         is_async=inspect.iscoroutinefunction(fn),
+        requires_approval=meta.get("requires_approval", False),
     )
 
 
@@ -386,6 +396,7 @@ class Toolkit:
                     parameters=meta["parameters"],
                     fn=method,
                     is_async=inspect.iscoroutinefunction(method),
+                    requires_approval=meta.get("requires_approval", False),
                 )
             )
         return tools

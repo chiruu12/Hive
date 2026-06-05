@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from hive.runtime.types import Task
+from hive.runtime.types import Task, TaskStatus
 
 if TYPE_CHECKING:
     from hive.runtime.agent import Agent
@@ -20,6 +20,10 @@ class GoalOutcome:
     success: bool = False
     summary: str = ""
     results: list[Any] = field(default_factory=list)
+    # Set when the run paused for human approval. The daemon parks the agent
+    # (status WAITING) and leaves the goal active instead of completing/abandoning.
+    waiting_approval: bool = False
+    approval_ids: list[str] = field(default_factory=list)
 
 
 class DaemonAgentAdapter:
@@ -37,9 +41,19 @@ class DaemonAgentAdapter:
         task = Task(instruction=instruction)
         result = await self._agent.run(task)
 
+        if result.status == TaskStatus.WAITING_APPROVAL:
+            return GoalOutcome(
+                steps_done=result.tool_calls_made or result.steps_taken,
+                steps_failed=0,
+                success=False,
+                summary=result.output[:500] if result.output else str(result.status),
+                waiting_approval=True,
+                approval_ids=list(result.approval_ids),
+            )
+
         return GoalOutcome(
             steps_done=result.tool_calls_made or result.steps_taken,
-            steps_failed=1 if result.status == "failed" else 0,
-            success=result.status == "completed",
+            steps_failed=1 if result.status == TaskStatus.FAILED else 0,
+            success=result.status == TaskStatus.COMPLETED,
             summary=result.output[:500] if result.output else str(result.status),
         )

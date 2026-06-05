@@ -118,6 +118,7 @@ class TaskStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     MAX_STEPS = "max_steps"
+    WAITING_APPROVAL = "waiting_approval"
 
 
 class Task(BaseModel):
@@ -139,6 +140,9 @@ class TaskResult(BaseModel):
     tool_calls_made: int = 0
     error: str | None = None
     duration_seconds: float = 0.0
+    # Pending approval ids when status is WAITING_APPROVAL (structured, not parsed
+    # from `output`).
+    approval_ids: list[str] = Field(default_factory=list)
 
 
 class StructuredTaskResult(TaskResult, Generic[T]):

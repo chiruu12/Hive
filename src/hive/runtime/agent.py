@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from hive.logging.models import DecisionLog, ToolLog
 from hive.models.base import BaseProvider
 from hive.models.registry import estimate_cost
+from hive.runtime.approval import ApprovalDecision, ApprovalGate, AwaitingApprovalSignal
 from hive.runtime.instructions import InstructionLike, Instructions
 from hive.runtime.memory import ConversationMemory, PersistentMemory
 from hive.runtime.persona import Persona
@@ -77,10 +78,14 @@ class Agent:
         conversation_log_dir: Path | str | None = None,
         on_text: Callable[[str], None] | None = None,
         tool_timeout: float = 0.0,
+        approval_gate: ApprovalGate | None = None,
     ):
         self.name = name
         self._model = model
         self._on_text = on_text
+        # Optional human-in-the-loop gate. When set, tools it flags are paused for
+        # approval instead of executing (see _execute_tool_calls). None = no gating.
+        self._approval_gate = approval_gate
         # Per-tool wall-clock limit (seconds); 0 disables. A tool that exceeds it
         # becomes a tool-error result so one hung tool can't stall the whole cycle.
         self._tool_timeout = tool_timeout
@@ -252,6 +257,35 @@ class Agent:
                     "duration_ms": 0,
                 }
 
+            if self._approval_gate is not None and self._approval_gate.requires_approval(tool):
+                approval = await self._approval_gate.check(tc.name, tc.arguments or {})
+                if approval.decision is ApprovalDecision.DENIED:
+                    reason = approval.reason or "no reason given"
+                    return {
+                        "tc": tc,
+                        "ok": False,
+                        "result_text": (
+                            f"Tool '{tc.name}' was denied by a human reviewer: {reason}"
+                        ),
+                        "log_result": "",
+                        "error": "denied",
+                        "duration_ms": 0,
+                    }
+                if approval.decision is ApprovalDecision.PENDING:
+                    return {
+                        "tc": tc,
+                        "ok": False,
+                        "result_text": (
+                            f"Awaiting human approval to run '{tc.name}' "
+                            f"(approval {approval.approval_id})."
+                        ),
+                        "log_result": "",
+                        "error": None,
+                        "duration_ms": 0,
+                        "pending_approval": approval.approval_id,
+                    }
+                # APPROVED: fall through and execute normally.
+
             tool_t0 = time.time()
             try:
                 if self._tool_timeout > 0:
@@ -324,6 +358,13 @@ class Agent:
                 outcome["error"],
                 outcome["duration_ms"],
             )
+
+        # If any call is awaiting approval, the round is blocked. Every tool_use now
+        # has a matching tool_result (appended above), so the transcript stays
+        # well-formed; raise so run() can park the agent with the pending ids.
+        pending_ids = [o["pending_approval"] for o in outcomes if o.get("pending_approval")]
+        if pending_ids:
+            raise AwaitingApprovalSignal(pending_ids)
 
         return len(tool_calls)
 
@@ -498,9 +539,23 @@ class Agent:
                     duration_seconds=time.time() - t0,
                 )
 
-            tool_calls_total += await self._execute_tool_calls(
-                response.tool_calls, tool_map, conversation
-            )
+            try:
+                tool_calls_total += await self._execute_tool_calls(
+                    response.tool_calls, tool_map, conversation
+                )
+            except AwaitingApprovalSignal as signal:
+                self._write_conversation_log(
+                    task.id, conversation.get_messages(), "waiting_approval"
+                )
+                return TaskResult(
+                    task_id=task.id,
+                    status=TaskStatus.WAITING_APPROVAL,
+                    output="Awaiting human approval: " + ", ".join(signal.approval_ids),
+                    approval_ids=list(signal.approval_ids),
+                    steps_taken=steps,
+                    tool_calls_made=tool_calls_total,
+                    duration_seconds=time.time() - t0,
+                )
 
         self._write_conversation_log(task.id, conversation.get_messages(), "max_steps")
         return TaskResult(

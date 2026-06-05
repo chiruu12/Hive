@@ -112,6 +112,12 @@ suffering:
   threshold_crisis: 0.90
   max_stressors: 5
 
+approval:                 # human-in-the-loop tool gating (off by default)
+  enabled: false
+  require_for: []         # tool names always gated
+  auto_approve: []        # tool names never gated (overrides a tool's own flag)
+  timeout_cycles: 0       # auto-deny after N heartbeats (0 = never)
+
 event_log_fsync: false  # fsync every event-log append (crash-durable, slower)
 seed: null              # int for a reproducible world RNG; null = system entropy
 ```

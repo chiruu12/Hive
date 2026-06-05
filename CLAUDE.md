@@ -18,6 +18,7 @@ src/hive/
 ├── world/            # Simulated economy (jobs, skills, finances, life events)
 ├── logging/          # Structured run logs (decisions, tools, goals, suffering)
 ├── mcp/              # MCP client and server
+├── server/           # REST API (FastAPI) -- optional [api] extra (hive serve)
 ├── checkpoint.py     # Save/restore agent state snapshots
 ├── api.py            # Programmatic Python API (Hive facade class)
 └── config.py         # Config loading (YAML + env vars)
@@ -96,6 +97,7 @@ src/hive/
 | Extension | API | File |
 |-----------|-----|------|
 | Custom tool | Subclass `Toolkit`, `@tool()` methods | `src/hive/tools/base.py` |
+| Gated tool (HITL) | `@tool(requires_approval=True)` or `ApprovalGate` protocol | `src/hive/runtime/approval.py` |
 | Custom model provider | Subclass `BaseProvider` | `src/hive/models/base.py` |
 | Custom stressor | `StressorRegistry.default().register(name, rate, desc)` | `src/hive/agents/suffering.py` |
 | Custom A2A pattern | Subclass `A2APattern`, `PatternRegistry.default().register(name, instance)` | `src/hive/interactions/registry.py` |

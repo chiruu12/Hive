@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **REST API server (`hive serve`)**: a FastAPI control plane behind the optional
+  `[api]` extra, exposing agents over HTTP -- spawn/list/get/kill, nudge, run-a-task,
+  SSE token streaming, goals, status, health, run logs, sessions, and approvals.
+  Auto OpenAPI docs at `/docs`. Stateless by default, or `--with-daemon` to run the
+  heartbeat in-process. New `create_app` factory under `hive.server`.
+- **Human-in-the-loop tool approval**: gate a tool with `@tool(requires_approval=True)`
+  or config (`approval.enabled`, `require_for`, `auto_approve`, `timeout_cycles`). A
+  gated call pauses the agent (`waiting_approval`) with the request persisted in a new
+  `approvals` table, so the pause survives heartbeat cycles; resolve via the API
+  (`/approvals`, `POST /agents/{id}/approvals/{id}`) or CLI (`hive approvals`,
+  `hive approve`, `hive deny`). New `ApprovalGate` protocol, `StoreApprovalGate`,
+  `ApprovalPolicy`, and `TaskStatus.WAITING_APPROVAL`.
+- **Per-user/per-session isolation**: the `sessions` table gains tenant columns and a
+  `SessionService` resolves a session per request (via the `X-Hive-User` header),
+  isolating one tenant's sessions from another's.
+
 ## [0.6.1] -- 2026-06-03
 
 ### Added
