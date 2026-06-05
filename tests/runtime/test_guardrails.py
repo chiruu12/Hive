@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -125,6 +126,23 @@ class TestAgentIntegration:
         assert result.status == TaskStatus.COMPLETED
         assert "leak@corp.com" not in result.output
         assert "REDACTED" in result.output
+
+    @pytest.mark.asyncio
+    async def test_redacted_output_not_leaked_to_conversation_log(self, tmp_path: Path) -> None:
+        from hive.runtime.types import Task
+
+        agent = Agent(
+            name="a",
+            model=MockProvider("the email is leak@corp.com"),  # type: ignore[arg-type]
+            guardrails=build_guardrail_pipeline(GuardrailConfig(enabled=True)),
+            conversation_log_dir=tmp_path,
+        )
+        await agent.run(Task(instruction="contact?"))
+        logged = "\n".join(p.read_text() for p in tmp_path.rglob("*.json"))
+        # The on-disk conversation log must not contain the unredacted PII.
+        assert logged  # a log was written
+        assert "leak@corp.com" not in logged
+        assert "REDACTED" in logged
 
     @pytest.mark.asyncio
     async def test_disabled_guardrails_passthrough(self) -> None:

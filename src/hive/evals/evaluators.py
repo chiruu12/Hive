@@ -11,20 +11,26 @@ from hive.runtime.types import Message
 if TYPE_CHECKING:
     from hive.models.base import BaseProvider
 
-_JUDGE_PROMPT = """You are grading an AI assistant's answer.
+_JUDGE_RUBRIC = (
+    "Rate how well the actual answer satisfies the expected answer on a scale of 0 to "
+    "10 (10 = fully correct and complete, 0 = wrong or missing). Reply with ONLY the "
+    "number on the first line, then a one-sentence justification."
+)
 
-Task given to the assistant:
-{instruction}
 
-Expected answer (reference):
-{expected}
+def _build_judge_prompt(instruction: str, expected: str, actual: str) -> str:
+    """Build the judge prompt by concatenation.
 
-Assistant's actual answer:
-{actual}
-
-Rate how well the actual answer satisfies the expected answer on a scale of 0 to 10
-(10 = fully correct and complete, 0 = wrong or missing). Reply with ONLY the number
-on the first line, then a one-sentence justification."""
+    Avoids ``str.format``/f-string substitution so brace characters in the instruction,
+    expected answer, or actual output (e.g. JSON like ``{"k": 1}``) can't raise.
+    """
+    return (
+        "You are grading an AI assistant's answer.\n\n"
+        f"Task given to the assistant:\n{instruction}\n\n"
+        f"Expected answer (reference):\n{expected}\n\n"
+        f"Assistant's actual answer:\n{actual}\n\n"
+        f"{_JUDGE_RUBRIC}"
+    )
 
 
 class AccuracyEval:
@@ -41,9 +47,7 @@ class AccuracyEval:
             return CaseResult(
                 case, self.name, True, 1.0, "no expected_answer (skipped)", run, skipped=True
             )
-        prompt = _JUDGE_PROMPT.format(
-            instruction=case.instruction, expected=case.expected_answer, actual=run.output
-        )
+        prompt = _build_judge_prompt(case.instruction, case.expected_answer, run.output)
         result = await self._judge.generate_with_metadata(messages=[Message.user(prompt)])
         score, detail = self._parse(result.message.content)
         return CaseResult(case, self.name, score >= self._threshold, score, detail, run)

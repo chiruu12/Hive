@@ -128,6 +128,14 @@ class TestAccuracyEval:
         res = await AccuracyEval(judge=judge).evaluate(_run("x"), EvalCase("q"))
         assert res.passed and res.skipped and "skipped" in res.detail
 
+    @pytest.mark.asyncio
+    async def test_braces_in_content_do_not_crash_judge(self) -> None:
+        judge = ScriptedProvider([Message.assistant("8\nok")])
+        run = _run('{"key": "value", "n": {}}')  # braces in the actual output
+        case = EvalCase("Parse JSON: {}", expected_answer="{'k': 1}")
+        res = await AccuracyEval(judge=judge).evaluate(run, case)
+        assert res.score == pytest.approx(0.8)
+
 
 class TestReportMetrics:
     def test_skipped_cases_excluded_from_rates(self) -> None:
@@ -152,6 +160,19 @@ class TestReportMetrics:
         agent = Agent(name="x", model=ScriptedProvider([]))  # type: ignore[arg-type]
         with pytest.raises(ValueError, match="duplicate evaluator"):
             EvalSuite(AgentEvalRunner(agent), [ReliabilityEval(), ReliabilityEval()])
+
+    @pytest.mark.asyncio
+    async def test_runner_restores_pre_existing_observer(self) -> None:
+        seen: list[str] = []
+        agent = Agent(
+            name="solver",
+            model=ScriptedProvider([Message.assistant("done")]),  # type: ignore[arg-type]
+            on_tool=lambda n, a, ok: seen.append(n),
+        )
+        await AgentEvalRunner(agent).run(EvalCase("hi"))
+        # The caller's original observer is restored, not dropped.
+        assert agent._on_tool is not None
+        assert agent._on_tool(("x"), {}, True) is None and seen == ["x"]
 
 
 class TestSuiteIntegration:
