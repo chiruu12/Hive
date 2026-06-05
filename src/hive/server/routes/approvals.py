@@ -1,4 +1,11 @@
-"""Human-in-the-loop approval endpoints: list pending and approve/deny."""
+"""Human-in-the-loop approval endpoints: list pending and approve/deny.
+
+Trust boundary: the REST API has no built-in authentication and agents are a single
+shared pool in this release (not owned per user), so ``X-Hive-User`` is a routing
+hint, not a security control. The approval queue is therefore a shared operator
+surface -- run the server behind your own auth/proxy for multi-tenant use. Per-agent
+scoping on resolve (below) is a correctness guard, not an authorization boundary.
+"""
 
 from __future__ import annotations
 
@@ -57,10 +64,18 @@ async def resolve_approval(
     decision = body.decision.lower()
     if decision not in ("approve", "deny"):
         raise HTTPException(status_code=400, detail="decision must be 'approve' or 'deny'")
+    resolved = await resolve_agent_id(ctx.store, agent_id)
     status = "approved" if decision == "approve" else "denied"
-    ok = await ctx.store.resolve_approval(approval_id, status, resolved_by=user, reason=body.reason)
+    # Scope the resolution to the agent in the URL so a pending approval belonging to
+    # a different agent can't be approved/denied via a guessed id under this path.
+    ok = await ctx.store.resolve_approval(
+        approval_id, status, resolved_by=user, reason=body.reason, agent_id=resolved
+    )
     if not ok:
-        raise HTTPException(status_code=409, detail="approval not pending or does not exist")
+        raise HTTPException(
+            status_code=409,
+            detail="approval not pending, does not exist, or does not belong to this agent",
+        )
     row = await ctx.store.get_approval(approval_id)
     assert row is not None
     return _to_summary(row)

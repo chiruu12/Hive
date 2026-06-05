@@ -142,6 +142,9 @@ class TaskResult(BaseModel):
     duration_seconds: float = 0.0
     cost_usd: float = 0.0
     total_tokens: int = 0
+    # Pending approval ids when status is WAITING_APPROVAL (structured, not parsed
+    # from `output`).
+    approval_ids: list[str] = Field(default_factory=list)
 
 
 class StructuredTaskResult(TaskResult, Generic[T]):

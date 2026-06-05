@@ -620,6 +620,7 @@ class Agent:
                     task_id=task.id,
                     status=TaskStatus.WAITING_APPROVAL,
                     output="Awaiting human approval: " + ", ".join(signal.approval_ids),
+                    approval_ids=list(signal.approval_ids),
                     steps_taken=steps,
                     tool_calls_made=tool_calls_total,
                     duration_seconds=time.time() - t0,

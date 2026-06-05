@@ -38,7 +38,9 @@ class AccuracyEval:
 
     async def evaluate(self, run: EvalRun, case: EvalCase) -> CaseResult:
         if case.expected_answer is None:
-            return CaseResult(case, self.name, True, 1.0, "no expected_answer (skipped)", run)
+            return CaseResult(
+                case, self.name, True, 1.0, "no expected_answer (skipped)", run, skipped=True
+            )
         prompt = _JUDGE_PROMPT.format(
             instruction=case.instruction, expected=case.expected_answer, actual=run.output
         )
@@ -73,7 +75,9 @@ class ReliabilityEval:
         expected = set(case.expected_tools or [])
         actual = set(run.tool_calls)
         if not expected:
-            return CaseResult(case, self.name, True, 1.0, "no expected_tools (skipped)", run)
+            return CaseResult(
+                case, self.name, True, 1.0, "no expected_tools (skipped)", run, skipped=True
+            )
         hit = expected & actual
         score = len(hit) / len(expected)
         if self._mode == "exact":
@@ -100,11 +104,21 @@ class PerformanceEval:
         ok_cost = self._max_cost_usd is None or run.cost_usd <= self._max_cost_usd
         passed = ok_time and ok_cost
         # Score is the worse of the two budget ratios (1.0 = well within budget).
+        # Guard with `is not None` (not truthiness) so a 0.0 budget is still scored --
+        # otherwise passed=False could pair with an empty-ratios score of 1.0.
         ratios = []
-        if self._max_seconds:
-            ratios.append(max(0.0, 1.0 - run.duration_seconds / self._max_seconds))
-        if self._max_cost_usd:
-            ratios.append(max(0.0, 1.0 - run.cost_usd / self._max_cost_usd))
+        if self._max_seconds is not None:
+            ratios.append(
+                max(0.0, 1.0 - run.duration_seconds / self._max_seconds)
+                if self._max_seconds > 0
+                else (0.0 if run.duration_seconds > 0 else 1.0)
+            )
+        if self._max_cost_usd is not None:
+            ratios.append(
+                max(0.0, 1.0 - run.cost_usd / self._max_cost_usd)
+                if self._max_cost_usd > 0
+                else (0.0 if run.cost_usd > 0 else 1.0)
+            )
         score = min(ratios) if ratios else 1.0
         detail = f"{run.duration_seconds:.2f}s, ${run.cost_usd:.4f}"
         return CaseResult(case, self.name, passed, score, detail, run)
