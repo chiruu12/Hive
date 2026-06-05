@@ -78,6 +78,7 @@ class Agent:
         persona: Persona | None = None,
         conversation_log_dir: Path | str | None = None,
         on_text: Callable[[str], None] | None = None,
+        on_tool: Callable[[str, dict[str, Any], bool], None] | None = None,
         tool_timeout: float = 0.0,
         approval_gate: ApprovalGate | None = None,
         guardrails: GuardrailPipeline | None = None,
@@ -85,6 +86,9 @@ class Agent:
         self.name = name
         self._model = model
         self._on_text = on_text
+        # Optional observability callback fired after each tool runs, with
+        # (tool_name, arguments, ok). Used by evals to capture tool-call traces.
+        self._on_tool = on_tool
         # Optional human-in-the-loop gate. When set, tools it flags are paused for
         # approval instead of executing (see _execute_tool_calls). None = no gating.
         self._approval_gate = approval_gate
@@ -173,6 +177,14 @@ class Agent:
 
     def __str__(self) -> str:
         return f"Agent({self.name})"
+
+    def observe_tools(self, callback: Callable[[str, dict[str, Any], bool], None] | None) -> None:
+        """Register (or clear with None) a callback fired after each tool runs.
+
+        Receives ``(tool_name, arguments, ok)``. Used by the evals harness to capture
+        an agent's tool-call trace without subclassing.
+        """
+        self._on_tool = callback
 
     def get_tools(self) -> list[Tool]:
         """Return all tools available to this agent."""
@@ -363,6 +375,8 @@ class Agent:
                 outcome["error"],
                 outcome["duration_ms"],
             )
+            if self._on_tool is not None and not outcome.get("pending_approval"):
+                self._on_tool(tc.name, tc.arguments or {}, outcome["ok"])
 
         # If any call is awaiting approval, the round is blocked. Every tool_use now
         # has a matching tool_result (appended above), so the transcript stays
@@ -471,6 +485,17 @@ class Agent:
         )
 
     async def run(self, task: Task) -> TaskResult:
+        """Execute a task using the ReAct loop.
+
+        Thin wrapper over the loop that stamps the run's accumulated cost and token
+        totals onto the result (handy for evals and budgeting).
+        """
+        result = await self._run_loop(task)
+        return result.model_copy(
+            update={"cost_usd": self._total_cost, "total_tokens": self._total_tokens}
+        )
+
+    async def _run_loop(self, task: Task) -> TaskResult:
         """Execute a task using the ReAct loop."""
         self._total_cost = 0.0
         self._total_tokens = 0
