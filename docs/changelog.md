@@ -30,6 +30,10 @@
   each case once and score it with every evaluator; `Evaluator` protocol for custom
   checks. `Agent.observe_tools(...)` captures tool-call traces; `TaskResult` now
   carries `cost_usd`/`total_tokens`.
+- **Control-plane web UI**: a self-contained browser dashboard served at `/` by
+  `hive serve` (no build step, no data egress) -- the pending-approval queue with
+  approve/deny, a live agents list, and sessions, auto-refreshing. Tenant-aware via
+  an `X-Hive-User` field.
 
 ## [0.6.1] -- 2026-06-03
 

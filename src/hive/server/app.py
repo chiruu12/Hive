@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from hive.config import load_config
 from hive.daemon.setup import ensure_hive_dirs
 from hive.memory.store import HiveStore
+from hive.server import ui
 from hive.server.deps import ServerContext, SessionService
 from hive.server.errors import register_error_handlers
 from hive.server.routes import agents, approvals, sessions, system, tasks
@@ -80,6 +81,6 @@ def create_app(root: Path | None = None, with_daemon: bool = False) -> FastAPI:
         lifespan=lifespan,
     )
     register_error_handlers(app)
-    for module in (agents, tasks, approvals, sessions, system):
+    for module in (agents, tasks, approvals, sessions, system, ui):
         app.include_router(module.router)
     return app

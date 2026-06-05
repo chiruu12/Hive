@@ -35,6 +35,16 @@ def test_healthz(client: TestClient) -> None:
     assert resp.json()["database"] is True
 
 
+def test_control_plane_ui_served(client: TestClient) -> None:
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Hive" in resp.text and "Pending Approvals" in resp.text
+    # XSS hardening: ids are not interpolated into inline JS; clicks are delegated.
+    assert 'onclick="decide(' not in resp.text
+    assert "data-decision" in resp.text
+
+
 def test_spawn_list_get_kill(client: TestClient) -> None:
     resp = client.post("/agents", json={"preset": "coder"})
     assert resp.status_code == 201

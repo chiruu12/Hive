@@ -1300,7 +1300,10 @@ def serve(
 
         raise MissingDependencyError("api") from e
 
-    console.print(f"[green]Hive AgentOS API[/green] on http://{host}:{port}  (docs at /docs)")
+    console.print(
+        f"[green]Hive AgentOS[/green] on http://{host}:{port}  "
+        f"(control plane at /, API docs at /docs)"
+    )
     app_instance = create_app(root=Path.cwd(), with_daemon=with_daemon)
     uvicorn.run(app_instance, host=host, port=port, reload=reload)
 
