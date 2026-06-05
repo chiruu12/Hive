@@ -29,13 +29,16 @@ class AgentEvalRunner:
     async def run(self, case: EvalCase) -> EvalRun:
         async with self._lock:
             calls: list[str] = []
+            # Snapshot and restore any pre-existing observer instead of clearing it,
+            # so an agent built with Agent(on_tool=...) keeps its callback afterward.
+            previous_on_tool = self._agent._on_tool
             self._agent.observe_tools(lambda name, args, ok: calls.append(name))
             try:
                 result = await self._agent.run(
                     Task(instruction=case.instruction, context=case.context)
                 )
             finally:
-                self._agent.observe_tools(None)
+                self._agent.observe_tools(previous_on_tool)
         return EvalRun(
             instruction=case.instruction,
             output=result.output,
