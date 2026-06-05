@@ -118,6 +118,13 @@ approval:                 # human-in-the-loop tool gating (off by default)
   auto_approve: []        # tool names never gated (overrides a tool's own flag)
   timeout_cycles: 0       # auto-deny after N heartbeats (0 = never)
 
+guardrails:               # content checks on model input/output (off by default)
+  enabled: false
+  pii: true               # redact PII in output
+  prompt_injection: true  # block injection phrasing in input
+  pii_action: redact      # flag | redact | block
+  injection_action: block # flag | redact | block
+
 event_log_fsync: false  # fsync every event-log append (crash-durable, slower)
 seed: null              # int for a reproducible world RNG; null = system entropy
 ```

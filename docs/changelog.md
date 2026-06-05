@@ -18,6 +18,12 @@
 - **Per-user/per-session isolation**: the `sessions` table gains tenant columns and a
   `SessionService` resolves a session per request (via the `X-Hive-User` header),
   isolating one tenant's sessions from another's.
+- **Content guardrails**: a `Guardrail` protocol with pre-hook (task input) and
+  post-hook (model output) inspection in the ReAct loop, plus built-in `PIIGuardrail`
+  (emails/phones/SSNs/cards/IPs) and `PromptInjectionGuardrail` (instruction-override /
+  jailbreak phrasing). Config-driven (`guardrails.enabled`, per-guardrail `flag`/
+  `redact`/`block` actions); `GuardrailRegistry` and `GuardrailPipeline` compose custom
+  guardrails. Off by default. `Agent(guardrails=...)`.
 
 ## [0.6.1] -- 2026-06-03
 

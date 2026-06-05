@@ -186,6 +186,28 @@ class ApprovalConfig(BaseModel):
         return v
 
 
+class GuardrailConfig(BaseModel):
+    """Content guardrails on model input/output.
+
+    Disabled by default. When enabled, a PII guardrail (redacts output by default)
+    and a prompt-injection guardrail (blocks input by default) run around the model.
+    Actions are ``flag`` (log only), ``redact`` (mask matches), or ``block``.
+    """
+
+    enabled: bool = False
+    pii: bool = True
+    prompt_injection: bool = True
+    pii_action: str = "redact"
+    injection_action: str = "block"
+
+    @field_validator("pii_action", "injection_action")
+    @classmethod
+    def _valid_action(cls, v: str) -> str:
+        if v not in ("flag", "redact", "block"):
+            raise ValueError(f"action must be flag|redact|block, got {v!r}")
+        return v
+
+
 class ModelConfig(BaseModel):
     default_model: str = "claude-haiku-4-5"
     planning_model: str = "claude-sonnet-4-6"
@@ -202,6 +224,7 @@ class HiveConfig(BaseModel):
     daemon: DaemonConfig = DaemonConfig()
     model: ModelConfig = ModelConfig()
     approval: ApprovalConfig = ApprovalConfig()
+    guardrails: GuardrailConfig = GuardrailConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).

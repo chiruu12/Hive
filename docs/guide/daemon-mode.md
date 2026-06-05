@@ -137,6 +137,27 @@ An approval is granted for a specific `(tool, arguments)` pair and is single-use
 re-running the same call later prompts again. `timeout_cycles` auto-denies a request
 that sits unresolved too long.
 
+## Guardrails
+
+Guardrails inspect content around the model -- a **pre-hook** on the task input and a
+**post-hook** on the final output (the model-I/O analog of lifecycle hooks). Enable
+them in `.hive/config.yaml`:
+
+```yaml
+guardrails:
+  enabled: true
+  pii: true                 # redact PII in output
+  prompt_injection: true    # block injection phrasing in input
+  pii_action: redact        # flag | redact | block
+  injection_action: block   # flag | redact | block
+```
+
+Built-ins: **PII** (emails, phones, SSNs, cards, IPs) and **prompt injection**
+("ignore previous instructions", "you are now …", jailbreak phrasing). Each action is
+`flag` (log only), `redact` (mask matches), or `block` (refuse the input / withhold the
+output). A blocked input fails the task; a blocked output is replaced with a notice.
+Add your own via the `Guardrail` protocol and `GuardrailRegistry`.
+
 ## Life Events
 
 The event engine rolls random events each cycle (30% probability). Events force agents to make decisions that affect their stats and suffering.
