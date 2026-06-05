@@ -224,9 +224,7 @@ class GuardrailRegistry:
         if cls._default is None:
             reg = cls()
             reg.register("pii", lambda action: PIIGuardrail(action=action))
-            reg.register(
-                "prompt_injection", lambda action: PromptInjectionGuardrail(action=action)
-            )
+            reg.register("prompt_injection", lambda action: PromptInjectionGuardrail(action=action))
             cls._default = reg
         return cls._default
 
