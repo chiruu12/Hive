@@ -3,7 +3,7 @@
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from dotenv import dotenv_values
@@ -197,15 +197,8 @@ class GuardrailConfig(BaseModel):
     enabled: bool = False
     pii: bool = True
     prompt_injection: bool = True
-    pii_action: str = "redact"
-    injection_action: str = "block"
-
-    @field_validator("pii_action", "injection_action")
-    @classmethod
-    def _valid_action(cls, v: str) -> str:
-        if v not in ("flag", "redact", "block"):
-            raise ValueError(f"action must be flag|redact|block, got {v!r}")
-        return v
+    pii_action: Literal["flag", "redact", "block"] = "redact"
+    injection_action: Literal["flag", "redact", "block"] = "block"
 
 
 class ModelConfig(BaseModel):

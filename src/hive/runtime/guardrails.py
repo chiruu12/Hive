@@ -15,7 +15,8 @@ guardrails implement the ``Guardrail`` protocol; register them on
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -43,7 +44,8 @@ class GuardrailFinding:
     triggered: bool
     action: GuardrailAction
     text: str  # possibly-redacted text (equals the input when nothing changed)
-    reasons: list[str] = field(default_factory=list)
+    # Immutable so a frozen finding can't be mutated via reasons.append(...).
+    reasons: tuple[str, ...] = ()
 
     @property
     def blocked(self) -> bool:
@@ -58,6 +60,11 @@ class Guardrail(Protocol):
     def inspect(self, text: str, stage: GuardrailStage) -> GuardrailFinding:
         """Inspect ``text`` for this stage; return a finding (triggered or not)."""
         ...
+
+
+# A factory builds a guardrail from a default action (stages are the guardrail's own
+# concern). Keeps the registry tied to the public protocol, not a private base class.
+GuardrailFactory = Callable[[GuardrailAction], Guardrail]
 
 
 def _passthrough(text: str) -> GuardrailFinding:
@@ -94,7 +101,9 @@ class _RegexGuardrail:
         if not reasons:
             return _passthrough(text)
         out = redacted if self.action is GuardrailAction.REDACT else text
-        return GuardrailFinding(triggered=True, action=self.action, text=out, reasons=reasons)
+        return GuardrailFinding(
+            triggered=True, action=self.action, text=out, reasons=tuple(reasons)
+        )
 
 
 # --- PII ---
@@ -181,40 +190,43 @@ class GuardrailPipeline:
             triggered = True
             reasons.extend(finding.reasons)
             if finding.action is GuardrailAction.BLOCK:
-                return GuardrailFinding(True, GuardrailAction.BLOCK, text, reasons)
+                return GuardrailFinding(True, GuardrailAction.BLOCK, text, tuple(reasons))
             if finding.action is GuardrailAction.REDACT:
                 current = finding.text
                 action = GuardrailAction.REDACT
             elif action is not GuardrailAction.REDACT:
                 action = GuardrailAction.FLAG
-        return GuardrailFinding(triggered, action, current, reasons)
+        return GuardrailFinding(triggered, action, current, tuple(reasons))
 
 
 class GuardrailRegistry:
     """Pluggable registry of guardrail factories (registries over hardcoded lists).
 
     The default registry holds the built-in ``pii`` and ``prompt_injection``
-    guardrails; register a callable ``(action, stages) -> Guardrail`` under a name to
-    add your own, then enable it via config.
+    guardrails. Register a factory ``(GuardrailAction) -> Guardrail`` under a name to
+    add or override one; ``build_guardrail_pipeline`` resolves the active guardrails
+    through the registry, so a re-registered name takes effect in deployed pipelines.
     """
 
     _default: GuardrailRegistry | None = None
 
     def __init__(self) -> None:
-        self._factories: dict[str, type[_RegexGuardrail]] = {}
+        self._factories: dict[str, GuardrailFactory] = {}
 
-    def register(self, name: str, factory: type[_RegexGuardrail]) -> None:
+    def register(self, name: str, factory: GuardrailFactory) -> None:
         self._factories[name] = factory
 
-    def get(self, name: str) -> type[_RegexGuardrail] | None:
+    def get(self, name: str) -> GuardrailFactory | None:
         return self._factories.get(name)
 
     @classmethod
     def default(cls) -> GuardrailRegistry:
         if cls._default is None:
             reg = cls()
-            reg.register("pii", PIIGuardrail)
-            reg.register("prompt_injection", PromptInjectionGuardrail)
+            reg.register("pii", lambda action: PIIGuardrail(action=action))
+            reg.register(
+                "prompt_injection", lambda action: PromptInjectionGuardrail(action=action)
+            )
             cls._default = reg
         return cls._default
 
@@ -223,15 +235,25 @@ class GuardrailRegistry:
         cls._default = None
 
 
-def build_guardrail_pipeline(config: GuardrailConfig) -> GuardrailPipeline:
-    """Construct the active guardrail pipeline from config (empty if disabled)."""
+def build_guardrail_pipeline(
+    config: GuardrailConfig, registry: GuardrailRegistry | None = None
+) -> GuardrailPipeline:
+    """Construct the active guardrail pipeline from config (empty if disabled).
+
+    Guardrails are resolved by name through ``registry`` (the default registry when
+    omitted), so re-registering ``pii`` / ``prompt_injection`` swaps in a custom
+    implementation here.
+    """
     if not config.enabled:
         return GuardrailPipeline([])
+    reg = registry or GuardrailRegistry.default()
     guardrails: list[Guardrail] = []
-    if config.pii:
-        guardrails.append(PIIGuardrail(action=GuardrailAction(config.pii_action)))
-    if config.prompt_injection:
-        guardrails.append(
-            PromptInjectionGuardrail(action=GuardrailAction(config.injection_action))
-        )
+    enabled: list[tuple[bool, str, str]] = [
+        (config.pii, "pii", config.pii_action),
+        (config.prompt_injection, "prompt_injection", config.injection_action),
+    ]
+    for on, name, action in enabled:
+        factory = reg.get(name)
+        if on and factory is not None:
+            guardrails.append(factory(GuardrailAction(action)))
     return GuardrailPipeline(guardrails)

@@ -74,6 +74,29 @@ class TestPipeline:
         assert not pipe
         assert pipe.run("a@b.com", GuardrailStage.OUTPUT).triggered is False
 
+    def test_registry_override_takes_effect(self) -> None:
+        from hive.runtime.guardrails import GuardrailFinding, GuardrailRegistry
+
+        class NoopPII:
+            name = "pii"
+            action = GuardrailAction.FLAG
+
+            def inspect(self, text: str, stage: GuardrailStage) -> GuardrailFinding:
+                return GuardrailFinding(False, GuardrailAction.FLAG, text)
+
+        reg = GuardrailRegistry()
+        reg.register("pii", lambda action: NoopPII())
+        pipe = build_guardrail_pipeline(
+            GuardrailConfig(enabled=True, prompt_injection=False), registry=reg
+        )
+        # The custom "pii" guardrail is consulted, so the email is NOT redacted.
+        finding = pipe.run("mail a@b.com", GuardrailStage.OUTPUT)
+        assert finding.triggered is False and "a@b.com" in finding.text
+
+    def test_reasons_is_immutable_tuple(self) -> None:
+        finding = PIIGuardrail().inspect("a@b.com", GuardrailStage.OUTPUT)
+        assert isinstance(finding.reasons, tuple)
+
 
 class TestAgentIntegration:
     @pytest.mark.asyncio
