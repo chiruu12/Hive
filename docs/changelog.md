@@ -34,6 +34,9 @@
   `hive serve` (no build step, no data egress) -- the pending-approval queue with
   approve/deny, a live agents list, and sessions, auto-refreshing. Tenant-aware via
   an `X-Hive-User` field.
+- **Docker deployment**: a multi-stage `Dockerfile` and `docker-compose.yml` run the
+  REST API + control plane and the heartbeat daemon in one non-root container with a
+  persistent `/data` volume. `ANTHROPIC_API_KEY=sk-... docker compose up --build`.
 
 ## [0.6.1] -- 2026-06-03
 

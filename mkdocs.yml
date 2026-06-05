@@ -66,6 +66,7 @@ nav:
     - CLI Reference: guide/cli-reference.md
     - REST API: guide/rest-api.md
     - Evals: guide/evals.md
+    - Deployment: guide/deployment.md
     - Architecture: guide/architecture.md
   - Extending:
     - Extension Points: extending/index.md

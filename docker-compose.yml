@@ -1,0 +1,25 @@
+# Hive AgentOS -- one-command local deployment.
+#
+#   ANTHROPIC_API_KEY=sk-... docker compose up --build
+#
+# Control plane: http://localhost:8000/   API docs: http://localhost:8000/docs
+
+services:
+  hive:
+    build: .
+    image: hive-agentos
+    ports:
+      - "8000:8000"
+    environment:
+      # Pass through provider keys from your shell / .env (only what you use).
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - HIVE_DEFAULT_MODEL=${HIVE_DEFAULT_MODEL:-claude-haiku-4-5}
+    volumes:
+      # Persist agent state, logs, and workspaces across restarts.
+      - hive_state:/data
+    restart: unless-stopped
+
+volumes:
+  hive_state:
