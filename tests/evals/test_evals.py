@@ -96,6 +96,14 @@ class TestPerformanceEval:
         res = await PerformanceEval(max_seconds=2.0).evaluate(run, EvalCase("q"))
         assert not res.passed and res.score == 0.0
 
+    @pytest.mark.asyncio
+    async def test_zero_budget_does_not_pair_fail_with_perfect_score(self) -> None:
+        # Regression: max_seconds=0 must not slip past the truthiness guard and
+        # return passed=False with score=1.0.
+        run = EvalRun("q", "4", "completed", [], 1.0, 0.0, 1)
+        res = await PerformanceEval(max_seconds=0.0).evaluate(run, EvalCase("q"))
+        assert not res.passed and res.score == 0.0
+
 
 class TestAccuracyEval:
     @pytest.mark.asyncio
@@ -118,7 +126,32 @@ class TestAccuracyEval:
     async def test_no_expected_answer_skips(self) -> None:
         judge = ScriptedProvider([])
         res = await AccuracyEval(judge=judge).evaluate(_run("x"), EvalCase("q"))
-        assert res.passed and "skipped" in res.detail
+        assert res.passed and res.skipped and "skipped" in res.detail
+
+
+class TestReportMetrics:
+    def test_skipped_cases_excluded_from_rates(self) -> None:
+        from hive.evals.types import CaseResult, EvalReport
+
+        run = _run("x")
+        report = EvalReport(evaluator="accuracy")
+        report.results.append(
+            CaseResult(EvalCase("a"), "accuracy", True, 1.0, "", run, skipped=True)
+        )
+        report.results.append(CaseResult(EvalCase("b"), "accuracy", False, 0.0, "", run))
+        # One real (failing) case scored, one skipped: rate/mean reflect only the scored one.
+        assert report.total == 2
+        assert report.skipped == 1
+        assert report.pass_rate == 0.0
+        assert report.mean_score == 0.0
+        assert report.summary()["scored"] == 1
+
+    def test_duplicate_evaluator_names_rejected(self) -> None:
+        from hive.runtime.agent import Agent
+
+        agent = Agent(name="x", model=ScriptedProvider([]))  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="duplicate evaluator"):
+            EvalSuite(AgentEvalRunner(agent), [ReliabilityEval(), ReliabilityEval()])
 
 
 class TestSuiteIntegration:
