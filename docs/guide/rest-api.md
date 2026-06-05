@@ -10,9 +10,20 @@ The server lives behind the optional `api` extra:
 ```bash
 pip install 'hive-agent[api]'
 hive init
-hive serve                       # http://127.0.0.1:8000  (Swagger UI at /docs)
+hive serve                       # http://127.0.0.1:8000
 hive serve --port 9000 --with-daemon
 ```
+
+Open `http://127.0.0.1:8000/` for the **control plane** (a browser dashboard),
+`/docs` for the Swagger API explorer.
+
+## Control plane
+
+The page at `/` is a self-contained dashboard (no build step) that talks to the API
+in the same process -- your data never leaves your machine. It shows the pending
+**approval queue** (with approve/deny buttons), the **agents** list with live status,
+and **sessions**, auto-refreshing every few seconds. Set the tenant in the `user`
+field (sent as `X-Hive-User`).
 
 | Flag | Default | Meaning |
 |------|---------|---------|
