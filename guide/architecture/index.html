@@ -1,0 +1,2151 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Local-first agent OS. Spawn persistent AI agents that collaborate, write code, and use tools autonomously.">
+      
+      
+      
+        <link rel="canonical" href="https://chiruu12.github.io/Hive/guide/architecture/">
+      
+      
+        <link rel="prev" href="../deployment/">
+      
+      
+        <link rel="next" href="../../extending/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Architecture - Hive</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Hive" class="md-header__button md-logo" aria-label="Hive" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Hive
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/chiruu12/Hive" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    chiruu12/Hive
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../developer-guide/" class="md-tabs__link">
+          
+  
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../extending/" class="md-tabs__link">
+          
+  
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/sdk-reference/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../examples/" class="md-tabs__link">
+          
+  
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Hive" class="md-nav__button md-logo" aria-label="Hive" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Hive
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/chiruu12/Hive" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    chiruu12/Hive
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/cli-quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developer-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../toolkits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Toolkits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../daemon-mode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daemon Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../suffering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Suffering System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../persona/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persona System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rest-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Evals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#directory-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Classes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-and-persistence-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance and Persistence Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extension-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extension Points
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-flow-daemon-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Flow -- Daemon Cycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../extending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extension Points
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/sdk-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#directory-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Classes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-and-persistence-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance and Persistence Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extension-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extension Points
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-flow-daemon-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Flow -- Daemon Cycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<p>Hive is a local-first autonomous agent OS. Agents are persistent entities driven by a daemon heartbeat loop, with tools, memory, suffering, and multi-model support.</p>
+<h2 id="directory-structure">Directory Structure<a class="headerlink" href="#directory-structure" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>src/hive/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── cli/              # Typer CLI -- commands map 1:1 to user actions
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── daemon/           # Background service
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── loop.py       # HiveDaemon -- heartbeat loop driving all agents
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   ├── hooks.py      # HookRegistry -- lifecycle event callbacks
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ├── lifecycle.py  # Agent spawning and killing
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   ├── diagnostics.py# Health checks and status reporting
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   └── setup.py      # Hive directory initialization
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>├── agents/           # Agent state and behavior
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   ├── profile.py    # AgentProfile -- YAML-driven configuration
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   ├── state.py      # AgentState, AgentStatus enum
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   ├── existence.py  # ExistenceLoop -- autonomous goal generation
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│   ├── goal_strategy.py # GoalStrategy protocol, GoalContext, Goal
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   ├── suffering.py  # SufferingState, StressorRegistry, stressor types
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   ├── identity.py   # IdentityManager -- narrative and opinions
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   ├── delegation.py # DelegationEngine -- inter-agent task routing
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   ├── specialization.py # SpecializationTracker -- task expertise
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   └── swarm.py      # SwarmLearning -- cross-agent pattern discovery
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── runtime/          # Agent execution framework
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   ├── agent.py      # Agent -- ReAct loop with tools
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── persona.py    # Persona -- dynamic personality that evolves
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── types.py      # Message, ToolCall, ToolResult, GenerateResult
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── instructions.py # Instructions base class
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── workflow.py   # Workflow -- multi-step task execution
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   └── plugin_loader.py # Hot-load Toolkit subclasses from plugins/
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>├── models/           # LLM provider implementations
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│   ├── base.py       # BaseProvider ABC
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>│   ├── factory.py    # create_runtime_provider() -- routes model names
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>│   ├── registry.py   # ModelRegistry -- models.yaml loader
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>│   ├── anthropic.py  # Anthropic provider (Claude)
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>│   ├── openai.py     # OpenAI provider
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>│   ├── fireworks.py  # Fireworks provider
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>│   ├── groq.py       # Groq provider
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>│   ├── ollama.py     # Ollama provider (local)
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>│   └── lmstudio.py   # LM Studio provider (local)
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>├── interactions/     # Multi-agent protocols
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>│   ├── a2a.py        # A2AStore, A2AMessage, A2AMessageType
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>│   ├── a2a_patterns.py # A2APattern ABC + 5 built-in patterns
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>│   ├── registry.py   # PatternRegistry, InteractionPatternRegistry
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>│   ├── base.py       # Participant protocol, InteractionPattern ABC
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>│   ├── exchange.py   # ExchangeRunner -- lightweight orchestrator
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>│   ├── runner.py     # ScenarioRunner -- end-to-end scenario execution
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>│   ├── presets.py    # Pre-built ExchangeConfig factories
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>│   └── patterns/     # round_table, pairs, freeform
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>├── memory/           # Persistence layer
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>│   ├── store.py      # HiveStore -- SQLite via aiosqlite
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>│   ├── events.py     # EventLog -- JSONL append-only event stream
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>│   ├── semantic.py   # SemanticMemory -- TF-IDF similarity search
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>│   └── goals.py      # GoalEngine -- hierarchy and priority
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>├── tools/            # 15 toolkit modules
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>│   ├── base.py       # Toolkit, Tool, @tool() decorator
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>│   └── */toolkit.py  # a2a, comms, delegation, file, git, mcp, memory,
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>│                     #   notepad, schedule, shell, sub_agents, web, world
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>├── world/            # Simulated economy
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>│   ├── state.py      # WorldState -- money, jobs, skills
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>│   ├── event_engine.py # Random life events
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>│   └── stats.py      # StatsManager
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>├── logging/          # Structured run logs
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>│   ├── models.py     # CycleLog, GoalLog, SufferingLog, DecisionLog
+<a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>│   └── writer.py     # LogWriter -- writes to logs directory
+<a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>├── mcp/              # MCP client and server
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>├── checkpoint.py     # Save/restore agent state snapshots
+<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>├── api.py            # Hive facade class -- programmatic Python API
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>└── config.py         # HiveConfig -- YAML + env var loading
+</code></pre></div>
+<h2 id="core-classes">Core Classes<a class="headerlink" href="#core-classes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>File</th>
+<th>Purpose</th>
+<th>Key Methods</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Agent</code></td>
+<td><code>runtime/agent.py</code></td>
+<td>ReAct loop agent with tools</td>
+<td><code>run()</code>, <code>run_once()</code>, <code>run_once_structured()</code></td>
+</tr>
+<tr>
+<td><code>Persona</code></td>
+<td><code>runtime/persona.py</code></td>
+<td>Dynamic personality with suffering effects</td>
+<td><code>build_system_prompt()</code>, <code>apply_suffering_effects()</code>, <code>snapshot()</code></td>
+</tr>
+<tr>
+<td><code>HiveDaemon</code></td>
+<td><code>daemon/loop.py</code></td>
+<td>Heartbeat loop driving all agents</td>
+<td><code>start()</code>, <code>hooks</code> property</td>
+</tr>
+<tr>
+<td><code>HookRegistry</code></td>
+<td><code>daemon/hooks.py</code></td>
+<td>Event bus for lifecycle callbacks</td>
+<td><code>on()</code>, <code>off()</code>, <code>emit()</code></td>
+</tr>
+<tr>
+<td><code>ExistenceLoop</code></td>
+<td><code>agents/existence.py</code></td>
+<td>Autonomous goal generation</td>
+<td><code>generate_goal()</code>, <code>generate_goal_from_context()</code></td>
+</tr>
+<tr>
+<td><code>GoalStrategy</code></td>
+<td><code>agents/goal_strategy.py</code></td>
+<td>Protocol for pluggable goal gen</td>
+<td><code>generate_goal(context)</code></td>
+</tr>
+<tr>
+<td><code>SufferingState</code></td>
+<td><code>agents/suffering.py</code></td>
+<td>Per-agent suffering tracking</td>
+<td><code>add_stressor()</code>, <code>escalate_all()</code>, <code>resolve()</code></td>
+</tr>
+<tr>
+<td><code>StressorRegistry</code></td>
+<td><code>agents/suffering.py</code></td>
+<td>Extensible stressor types</td>
+<td><code>register()</code>, <code>get()</code>, <code>all_types()</code></td>
+</tr>
+<tr>
+<td><code>AgentProfile</code></td>
+<td><code>agents/profile.py</code></td>
+<td>YAML-driven agent configuration</td>
+<td><code>build_system_prompt()</code></td>
+</tr>
+<tr>
+<td><code>Toolkit</code></td>
+<td><code>tools/base.py</code></td>
+<td>Base class for tool groups</td>
+<td><code>get_tools()</code>, <code>bind()</code></td>
+</tr>
+<tr>
+<td><code>Tool</code></td>
+<td><code>tools/base.py</code></td>
+<td>Single callable tool</td>
+<td><code>call()</code>, <code>to_schema()</code></td>
+</tr>
+<tr>
+<td><code>BaseProvider</code></td>
+<td><code>models/base.py</code></td>
+<td>LLM provider ABC</td>
+<td><code>generate()</code>, <code>generate_with_metadata()</code>, <code>generate_structured()</code></td>
+</tr>
+<tr>
+<td><code>PatternRegistry</code></td>
+<td><code>interactions/registry.py</code></td>
+<td>A2A pattern registry</td>
+<td><code>register()</code>, <code>get()</code>, <code>list_patterns()</code></td>
+</tr>
+<tr>
+<td><code>A2APattern</code></td>
+<td><code>interactions/a2a_patterns.py</code></td>
+<td>Collaboration pattern ABC</td>
+<td><code>execute()</code></td>
+</tr>
+<tr>
+<td><code>A2AStore</code></td>
+<td><code>interactions/a2a.py</code></td>
+<td>Agent-to-agent message store</td>
+<td><code>send()</code>, <code>get_inbox()</code>, <code>get_pending_requests()</code></td>
+</tr>
+<tr>
+<td><code>HiveStore</code></td>
+<td><code>memory/store.py</code></td>
+<td>SQLite persistence</td>
+<td><code>save_goal()</code>, <code>complete_goal()</code>, <code>list_agents()</code></td>
+</tr>
+<tr>
+<td><code>EventLog</code></td>
+<td><code>memory/events.py</code></td>
+<td>JSONL event stream</td>
+<td><code>append()</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="performance-and-persistence-notes">Performance and Persistence Notes<a class="headerlink" href="#performance-and-persistence-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Concurrent tool execution.</strong> When a model turn emits several tool calls, the
+  <code>Agent</code> runs them concurrently (<code>asyncio.gather</code>) rather than one at a time, so a
+  turn's wall-time tracks the slowest tool instead of their sum. Each call is isolated
+  -- a raised exception or unknown tool name becomes an error result for that call
+  without affecting its siblings -- and results are appended to the conversation in the
+  original call order so transcripts stay deterministic.</li>
+<li><strong>Concurrent agent cycles.</strong> Each heartbeat runs alive agents' cycles concurrently
+  with bounded concurrency (<code>max_concurrent_agents</code>, a semaphore). Every cycle is
+  isolated -- its own timeout and error handling -- so one slow, timed-out, or failing
+  agent never blocks or breaks the others that heartbeat. Set <code>max_concurrent_agents: 1</code>
+  for fully sequential behavior. Each agent's provider and profile are cached across
+  cycles (rebuilt only when the model changes or the profile YAML's mtime changes),
+  alongside the existing per-agent memory and persona caches.</li>
+<li><strong>Tool discovery is cached.</strong> A <code>Toolkit</code> discovers its <code>@tool</code> methods once (at
+  <code>bind()</code> or first <code>get_tools()</code>) and reuses the result; <code>rebind()</code> swaps the agent id
+  without rebuilding the cache (a copy resets the cache so a clone binds to itself).</li>
+<li><strong>Indexed, versioned SQLite.</strong> <code>HiveStore</code> indexes hot lookup columns
+  (<code>agent_id</code>, <code>status</code>, <code>fire_at</code>, <code>parent_goal_id</code>, ...) and tracks its schema with
+  SQLite's <code>PRAGMA user_version</code>. Schema changes are ordered migration steps applied in
+  a single transaction on <code>initialize()</code>, so an older database upgrades in place without
+  data loss.</li>
+<li><strong>WAL journaling + cascades.</strong> The store runs in WAL mode (set once on <code>initialize()</code>,
+  persistent in the DB header) with a 5s busy timeout, so readers and a writer don't lock
+  each other out across concurrent agent cycles or other processes (the MCP server, the
+  CLI). Child tables (<code>sessions</code>, <code>goals</code>, <code>tasks</code>, ...) declare <code>ON DELETE CASCADE</code> on
+  their foreign key to <code>agents</code>, so <code>HiveStore.delete_agent()</code> removes an agent and all
+  of its rows together. FK enforcement is opt-in per operation, so writing child rows for
+  a standalone agent that was never persisted to <code>agents</code> still works.</li>
+<li><strong>Crash-durable event log.</strong> The JSONL session log is append-only by construction.
+  Setting <code>event_log_fsync: true</code> (env <code>HIVE_EVENT_LOG_FSYNC</code>) flushes and <code>fsync()</code>s
+  every append so an acknowledged event survives a power/OS crash; it defaults to off
+  because that is one <code>fsync</code> per event on the hot write path. Readers tolerate a torn
+  last line from an interrupted append.</li>
+<li><strong>Deterministic mode.</strong> Setting <code>seed</code> (env <code>HIVE_SEED</code>) gives the stochastic world
+  layer reproducible RNG streams: the daemon injects a seeded <code>random.Random</code> into
+  <code>EventEngine</code> (event rolls, luck, follow-ups) and a separately-derived one into
+  <code>WorldState</code> (gambling), so one subsystem's draws don't perturb the other. Each run
+  writes a <code>manifest.json</code> (<code>logs/runs/&lt;run-id&gt;/</code>) with the hive version, seed, model
+  config, and spawned agents. The seed governs the world RNG only -- LLM outputs are not
+  deterministic -- so the manifest, not bit-for-bit replay, is what makes a run reproducible.</li>
+</ul>
+<h2 id="extension-points">Extension Points<a class="headerlink" href="#extension-points" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>How</th>
+<th>File</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Custom tool</td>
+<td>Subclass <code>Toolkit</code>, decorate methods with <code>@tool()</code></td>
+<td><code>tools/base.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Custom model provider</td>
+<td>Subclass <code>BaseProvider</code></td>
+<td><code>models/base.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Custom stressor</td>
+<td><code>StressorRegistry.default().register(...)</code></td>
+<td><code>agents/suffering.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Custom A2A pattern</td>
+<td>Subclass <code>A2APattern</code>, register via <code>PatternRegistry</code></td>
+<td><code>interactions/registry.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Custom world content</td>
+<td><code>EventRegistry</code>/<code>JobRegistry</code> <code>.default().register(...)</code></td>
+<td><code>world/registry.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Custom goal strategy</td>
+<td>Implement <code>GoalStrategy</code> protocol</td>
+<td><code>agents/goal_strategy.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Daemon hooks</td>
+<td><code>daemon.hooks.on("event", callback)</code></td>
+<td><code>daemon/hooks.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Custom agent profile</td>
+<td>YAML file in <code>profiles/</code></td>
+<td><code>agents/profile.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+<tr>
+<td>Plugin toolkit</td>
+<td>Drop Toolkit subclass in <code>.hive/plugins/</code></td>
+<td><code>runtime/plugin_loader.py</code></td>
+<td>See EXTENDING.md</td>
+</tr>
+</tbody>
+</table>
+<h2 id="data-flow-daemon-cycle">Data Flow -- Daemon Cycle<a class="headerlink" href="#data-flow-daemon-cycle" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Each heartbeat (default 10s):
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  1. Hot-load plugins (every 10 cycles)
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  2. For each alive agent (run concurrently, bounded by max_concurrent_agents;
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>     each cycle isolated so one slow/failing agent never blocks the others):
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>     a. emit(&quot;cycle_start&quot;)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>     b. Escalate all stressors
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>     c. Load profile, identity, persona, memory
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>     d. Apply suffering → persona behavioral effects
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>     e. If active goal:
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        - Pursue goal via Agent ReAct loop
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        - Assess conditions (fire/resolve stressors)
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>        - On success: emit(&quot;goal_completed&quot;), checkpoint, update narrative
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        - On failure: emit(&quot;goal_abandoned&quot;), update narrative, record stressor
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>     f. If idle:
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>        - Check scheduled goals
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        - Generate a goal (custom GoalStrategy or ExistenceLoop). The prompt
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>          includes the agent&#39;s stats (health/energy/happiness/reputation) so a
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>          drained or unwell agent steers toward recovery (D1)
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>        - emit(&quot;goal_generated&quot;)
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>     g. Log suffering state
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>     h. emit(&quot;suffering_changed&quot;)
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>     i. emit(&quot;cycle_end&quot;)
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>  3. Auto-kill expired sub-agents
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>  4. Every 5 cycles: swarm learning
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>  5. If economy: process payday + life events. A life-event Choice may declare a
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>     `stressor` it causes or `resolves_stressor` it relieves -- the daemon feeds
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>     these into the agent&#39;s suffering, and records the event in its narrative (D1)
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>  6. Sleep heartbeat seconds
+</code></pre></div>
+<p><strong>Feedback loops (D1).</strong> The world, suffering, goals, and identity influence each
+other: life events add/resolve stressors and append to the narrative; agent stats
+feed goal generation; and both goal <em>and</em> event outcomes shape the agent's story.</p>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>All config lives in <code>.hive/config.yaml</code> and env vars.</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suffering</code></td>
+<td><code>threshold_prominent</code></td>
+<td><code>float</code></td>
+<td><code>0.35</code></td>
+<td>Show suffering in prompts</td>
+</tr>
+<tr>
+<td><code>suffering</code></td>
+<td><code>threshold_constrained</code></td>
+<td><code>float</code></td>
+<td><code>0.55</code></td>
+<td>Suffering limits options</td>
+</tr>
+<tr>
+<td><code>suffering</code></td>
+<td><code>threshold_dominant</code></td>
+<td><code>float</code></td>
+<td><code>0.75</code></td>
+<td>Suffering demands attention</td>
+</tr>
+<tr>
+<td><code>suffering</code></td>
+<td><code>threshold_crisis</code></td>
+<td><code>float</code></td>
+<td><code>0.90</code></td>
+<td>Crisis mode threshold</td>
+</tr>
+<tr>
+<td><code>suffering</code></td>
+<td><code>max_stressors</code></td>
+<td><code>int</code></td>
+<td><code>5</code></td>
+<td>Max concurrent stressors</td>
+</tr>
+<tr>
+<td><code>suffering</code></td>
+<td><code>initial_severity</code></td>
+<td><code>float</code></td>
+<td><code>0.20</code></td>
+<td>Starting severity for new stressors</td>
+</tr>
+<tr>
+<td><code>suffering</code></td>
+<td><code>crisis_reset_after</code></td>
+<td><code>int</code></td>
+<td><code>3</code></td>
+<td>Cycles in crisis before force reset</td>
+</tr>
+<tr>
+<td><code>suffering</code></td>
+<td><code>escalation_rates</code></td>
+<td><code>dict[str,float]</code></td>
+<td>Per-type</td>
+<td>Daily escalation rate per stressor</td>
+</tr>
+<tr>
+<td><code>economy</code></td>
+<td><code>enabled</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable economy simulation</td>
+</tr>
+<tr>
+<td><code>economy</code></td>
+<td><code>starting_balance</code></td>
+<td><code>float</code></td>
+<td><code>100.0</code></td>
+<td>Initial agent balance</td>
+</tr>
+<tr>
+<td><code>economy</code></td>
+<td><code>skill_course_cost</code></td>
+<td><code>float</code></td>
+<td><code>80.0</code></td>
+<td>Cost to learn a skill</td>
+</tr>
+<tr>
+<td><code>economy</code></td>
+<td><code>learnable_skills</code></td>
+<td><code>list[str]</code></td>
+<td>6 skills</td>
+<td>Available skills to learn</td>
+</tr>
+<tr>
+<td><code>daemon</code></td>
+<td><code>heartbeat</code></td>
+<td><code>int</code></td>
+<td><code>10</code></td>
+<td>Seconds between cycles</td>
+</tr>
+<tr>
+<td><code>daemon</code></td>
+<td><code>max_retries</code></td>
+<td><code>int</code></td>
+<td><code>2</code></td>
+<td>Retries on agent failure</td>
+</tr>
+<tr>
+<td><code>daemon</code></td>
+<td><code>cycle_timeout</code></td>
+<td><code>int</code></td>
+<td><code>300</code></td>
+<td>Per-agent cycle timeout in seconds (0 = none)</td>
+</tr>
+<tr>
+<td><code>daemon</code></td>
+<td><code>max_concurrent_agents</code></td>
+<td><code>int</code></td>
+<td><code>8</code></td>
+<td>Max agent cycles run concurrently per heartbeat</td>
+</tr>
+<tr>
+<td><code>daemon</code></td>
+<td><code>tool_timeout</code></td>
+<td><code>float</code></td>
+<td><code>60.0</code></td>
+<td>Per-tool wall-clock limit in seconds (0 = none); a hung tool becomes a tool-error instead of stalling the cycle</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td><code>default_model</code></td>
+<td><code>str</code></td>
+<td><code>claude-haiku-4-5</code></td>
+<td>Default LLM model</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td><code>planning_model</code></td>
+<td><code>str</code></td>
+<td><code>claude-sonnet-4-6</code></td>
+<td>Model for planning tasks</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td><code>max_tokens</code></td>
+<td><code>int</code></td>
+<td><code>4096</code></td>
+<td>Max generation tokens</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td><code>temperature</code></td>
+<td><code>float</code></td>
+<td><code>0.0</code></td>
+<td>Generation temperature</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td><code>shell_pass_env</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Pass secrets (API keys, tokens) to agent shell commands; scrubbed by default</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td><code>shell_allow_dev_commands</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Allow python/git/curl etc. in the restricted shell (these can escape the workspace jail)</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td><code>file_max_read_bytes</code></td>
+<td><code>int</code></td>
+<td><code>10000000</code></td>
+<td>Refuse file reads larger than this</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td><code>file_max_write_bytes</code></td>
+<td><code>int</code></td>
+<td><code>10000000</code></td>
+<td>Refuse file writes larger than this</td>
+</tr>
+<tr>
+<td><code>plugins</code></td>
+<td><code>enabled</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Load plugin toolkits from <code>.hive/plugins/</code></td>
+</tr>
+<tr>
+<td><code>plugins</code></td>
+<td><code>allowlist</code></td>
+<td><code>list[str]</code></td>
+<td><code>[]</code></td>
+<td>Only load these plugin filenames/stems; empty = all</td>
+</tr>
+<tr>
+<td><code>retention</code></td>
+<td><code>enabled</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Periodically delete terminal rows (resolved approvals, fired alarms, delivered nudges, finished sessions/delegations) and deny dead agents' pending approvals</td>
+</tr>
+<tr>
+<td><code>retention</code></td>
+<td><code>days</code></td>
+<td><code>int</code></td>
+<td><code>30</code></td>
+<td>Only rows older than this are deleted</td>
+</tr>
+<tr>
+<td><code>retention</code></td>
+<td><code>interval_cycles</code></td>
+<td><code>int</code></td>
+<td><code>100</code></td>
+<td>Run the janitor every N heartbeats</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td><code>api_key</code></td>
+<td><code>str</code></td>
+<td><code>""</code></td>
+<td>Require <code>X-Hive-Key</code> on REST data routes; empty = no auth (also <code>HIVE_API_KEY</code>)</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td><code>cors_origins</code></td>
+<td><code>list[str]</code></td>
+<td><code>[]</code></td>
+<td>Allowed CORS origins; empty = no CORS middleware</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td><code>session_ttl_hours</code></td>
+<td><code>int</code></td>
+<td><code>0</code></td>
+<td>Expire running sessions idle longer than this (via the janitor); 0 = never</td>
+</tr>
+</tbody>
+</table>
+<p>Env var overrides: <code>HIVE_HEARTBEAT</code>, <code>HIVE_DEFAULT_MODEL</code>, <code>HIVE_STARTING_BALANCE</code>, etc.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "content.code.copy", "content.code.annotate", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
