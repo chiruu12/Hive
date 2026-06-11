@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -57,8 +58,6 @@ def create_app(root: Path | None = None, with_daemon: bool = False) -> FastAPI:
 
         daemon_task = None
         if with_daemon:
-            import asyncio
-
             from hive.daemon.loop import HiveDaemon
 
             ctx.daemon = HiveDaemon(hive_dir, logs_dir=project_root / "logs")
@@ -72,7 +71,11 @@ def create_app(root: Path | None = None, with_daemon: bool = False) -> FastAPI:
             if ctx.daemon is not None:
                 ctx.daemon.stop()
             if daemon_task is not None:
+                # Await the cancelled task so the daemon's shutdown path (alarm
+                # task teardown, shutdown checkpoints) completes before exit.
                 daemon_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await daemon_task
 
     app = FastAPI(
         title="Hive AgentOS API",

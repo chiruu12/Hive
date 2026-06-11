@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Daemon shutdown is now guaranteed** — `HiveDaemon.start()` runs its
+  shutdown path (alarm-task teardown, shutdown checkpoints, life summaries)
+  even when the heartbeat loop raises or the daemon task is cancelled, and
+  `hive serve --with-daemon` now awaits the daemon's shutdown during server
+  teardown instead of abandoning the cancelled task. Previously a crash or
+  server exit could skip checkpointing entirely and orphan the alarm task.
+- **Cycle errors can no longer cascade** — if the store fails while the daemon
+  is recording an agent's timeout or error (e.g. a locked database), the
+  failure is logged and contained instead of escaping into `asyncio.gather`
+  and killing the heartbeat for every agent.
+- **Checkpoint failures are visible** — a failed world snapshot during
+  checkpointing now logs a warning instead of passing silently, and corrupt
+  checkpoint files are quarantined as `<name>.json.corrupt` (preserved for
+  diagnosis, skipped on later listings) instead of being silently re-parsed
+  and dropped on every listing.
+- **Profile cache catches same-second edits** — daemon profile-cache
+  invalidation now keys on `(mtime_ns, size)` instead of whole-second mtime.
+
 ## [0.6.1] — 2026-06-03
 
 ### Added
