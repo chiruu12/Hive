@@ -7,9 +7,11 @@ from typing import Any
 
 import pytest
 
-import hive.server.streaming as streaming
-from hive.config import HiveConfig
-from hive.runtime.types import TaskResult, TaskStatus
+pytest.importorskip("fastapi")
+
+import hive.server.streaming as streaming  # noqa: E402
+from hive.config import HiveConfig  # noqa: E402
+from hive.runtime.types import TaskResult, TaskStatus  # noqa: E402
 
 
 class _FakeAgent:
