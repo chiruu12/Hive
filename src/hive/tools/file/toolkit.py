@@ -18,9 +18,18 @@ class FileToolkit(Toolkit):
         tk = FileToolkit(workspace="/my/dir")   # explicit path
     """
 
-    def __init__(self, workspace: str | Path | None = None):
+    def __init__(
+        self,
+        workspace: str | Path | None = None,
+        max_read_bytes: int = 10_000_000,
+        max_write_bytes: int = 10_000_000,
+    ):
         self._workspace = Path(workspace).resolve() if workspace else Path.cwd()
         self._workspace.mkdir(parents=True, exist_ok=True)
+        # Caps guard against reading a multi-GB file into memory (file_read
+        # loads the whole file before slicing lines) and unbounded writes.
+        self._max_read_bytes = max_read_bytes
+        self._max_write_bytes = max_write_bytes
 
     def _resolve(self, path: str) -> Path:
         resolved = (self._workspace / path).resolve()
@@ -43,6 +52,12 @@ class FileToolkit(Toolkit):
         if resolved.is_dir():
             return f"Error: {path} is a directory, use list_dir"
         try:
+            size = resolved.stat().st_size
+            if size > self._max_read_bytes:
+                return (
+                    f"Error: {path} is {size} bytes, over the "
+                    f"{self._max_read_bytes}-byte read limit"
+                )
             lines = resolved.read_text().splitlines()
             selected = lines[offset : offset + limit]
             numbered = [f"{i + offset + 1:4d} | {line}" for i, line in enumerate(selected)]
@@ -60,6 +75,11 @@ class FileToolkit(Toolkit):
             content: The full content to write.
         """
         resolved = self._resolve(path)
+        size = len(content.encode())
+        if size > self._max_write_bytes:
+            return (
+                f"Error: content is {size} bytes, over the {self._max_write_bytes}-byte write limit"
+            )
         try:
             resolved.parent.mkdir(parents=True, exist_ok=True)
             resolved.write_text(content)
@@ -81,6 +101,12 @@ class FileToolkit(Toolkit):
         if not resolved.exists():
             return f"Error: file not found: {path}"
         try:
+            size = resolved.stat().st_size
+            if size > self._max_read_bytes:
+                return (
+                    f"Error: {path} is {size} bytes, over the "
+                    f"{self._max_read_bytes}-byte read limit"
+                )
             content = resolved.read_text()
             if old_text not in content:
                 return f"Error: text not found in {path}"
@@ -88,6 +114,12 @@ class FileToolkit(Toolkit):
             if count > 1:
                 return f"Error: text appears {count} times in {path}. Be more specific."
             updated = content.replace(old_text, new_text, 1)
+            size = len(updated.encode())
+            if size > self._max_write_bytes:
+                return (
+                    f"Error: edited content would be {size} bytes, over the "
+                    f"{self._max_write_bytes}-byte write limit"
+                )
             resolved.write_text(updated)
             return f"Edited: {path}"
         except Exception as e:

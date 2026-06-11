@@ -201,6 +201,87 @@ class GuardrailConfig(BaseModel):
     injection_action: Literal["flag", "redact", "block"] = "block"
 
 
+class ToolsConfig(BaseModel):
+    """Sandbox knobs for the built-in file and shell toolkits."""
+
+    # Pass the full parent environment (including API keys and other secrets)
+    # to agent-run shell commands. Off by default: provider credentials must
+    # not be readable via `env` inside an agent's shell.
+    shell_pass_env: bool = False
+    # Allow interpreters/VCS/network tools (python, git, curl, ...) in the
+    # restricted shell. These can escape the workspace jail, so disable them
+    # for untrusted agents.
+    shell_allow_dev_commands: bool = True
+    # Refuse file reads/writes beyond this many bytes (guards against OOM).
+    file_max_read_bytes: int = 10_000_000
+    file_max_write_bytes: int = 10_000_000
+
+    @field_validator("file_max_read_bytes", "file_max_write_bytes")
+    @classmethod
+    def _caps_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"file size caps must be >= 1, got {v}")
+        return v
+
+
+class PluginsConfig(BaseModel):
+    """Plugin toolkit loading from ``.hive/plugins/`` (and the parent ``plugins/``).
+
+    Plugins execute with full process privileges. ``allowlist`` (filenames or
+    stems) restricts which files load; empty means all, preserving the
+    documented drop-in workflow.
+    """
+
+    enabled: bool = True
+    allowlist: list[str] = Field(default_factory=list)
+
+
+class ServerConfig(BaseModel):
+    """REST API server (`hive serve`) hardening knobs.
+
+    All defaults preserve the local-first, zero-config behavior: no auth, no
+    CORS, sessions never expire. Set ``api_key`` (or ``HIVE_API_KEY``) before
+    exposing the server beyond localhost.
+    """
+
+    # Shared bearer key checked against the X-Hive-Key header on every route
+    # except /healthz and the static UI/docs shells. Empty disables auth.
+    api_key: str = ""
+    # Allowed CORS origins; empty mounts no CORS middleware.
+    cors_origins: list[str] = Field(default_factory=list)
+    # Mark running sessions 'expired' once idle longer than this many hours
+    # (enforced by the retention janitor and on session resolve). 0 = never.
+    session_ttl_hours: int = 0
+
+    @field_validator("session_ttl_hours")
+    @classmethod
+    def _ttl_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"session_ttl_hours must be >= 0, got {v}")
+        return v
+
+
+class RetentionConfig(BaseModel):
+    """Periodic cleanup of terminal housekeeping rows (off by default).
+
+    When enabled, the daemon deletes resolved approvals, fired alarms,
+    delivered nudges, finished sessions, and finished delegations older than
+    ``days``, and auto-denies pending approvals of DEAD agents. Pending work
+    and the agents/goals tables are never touched.
+    """
+
+    enabled: bool = False
+    days: int = 30
+    interval_cycles: int = 100
+
+    @field_validator("days", "interval_cycles")
+    @classmethod
+    def _positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"retention values must be >= 1, got {v}")
+        return v
+
+
 class ModelConfig(BaseModel):
     default_model: str = "claude-haiku-4-5"
     planning_model: str = "claude-sonnet-4-6"
@@ -218,6 +299,10 @@ class HiveConfig(BaseModel):
     model: ModelConfig = ModelConfig()
     approval: ApprovalConfig = ApprovalConfig()
     guardrails: GuardrailConfig = GuardrailConfig()
+    tools: ToolsConfig = ToolsConfig()
+    plugins: PluginsConfig = PluginsConfig()
+    retention: RetentionConfig = RetentionConfig()
+    server: ServerConfig = ServerConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).
@@ -249,6 +334,7 @@ class HiveConfig(BaseModel):
             "HIVE_LOGS_DIR": ("logs_dir", None, str),
             "HIVE_EVENT_LOG_FSYNC": ("event_log_fsync", None, _parse_bool),
             "HIVE_SEED": ("seed", None, int),
+            "HIVE_API_KEY": ("server", "api_key", str),
         }
 
         for env_key, (section, field, cast) in env_map.items():

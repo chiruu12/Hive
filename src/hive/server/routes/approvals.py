@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from hive.server.deps import ServerContext, get_context, get_user, resolve_agent_id
 from hive.server.schemas import ApprovalDecisionRequest, ApprovalSummary
@@ -37,18 +37,23 @@ def _to_summary(row: dict[str, Any]) -> ApprovalSummary:
 @router.get("/approvals", response_model=list[ApprovalSummary])
 async def list_pending_approvals(
     ctx: ServerContext = Depends(get_context),
+    limit: int | None = Query(None, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> list[ApprovalSummary]:
     """Global pending-approval review queue across all agents."""
-    rows = await ctx.store.list_all_pending_approvals()
+    rows = await ctx.store.list_all_pending_approvals(limit=limit, offset=offset)
     return [_to_summary(r) for r in rows]
 
 
 @router.get("/agents/{agent_id}/approvals", response_model=list[ApprovalSummary])
 async def list_agent_approvals(
-    agent_id: str, ctx: ServerContext = Depends(get_context)
+    agent_id: str,
+    ctx: ServerContext = Depends(get_context),
+    limit: int | None = Query(None, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> list[ApprovalSummary]:
     resolved = await resolve_agent_id(ctx.store, agent_id)
-    rows = await ctx.store.get_pending_approvals(resolved)
+    rows = await ctx.store.get_pending_approvals(resolved, limit=limit, offset=offset)
     return [_to_summary(r) for r in rows]
 
 

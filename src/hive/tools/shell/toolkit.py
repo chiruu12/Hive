@@ -12,17 +12,31 @@ from hive.tools.base import Toolkit, tool
 
 logger = logging.getLogger(__name__)
 
+# Environment keys never passed to agent-run subprocesses unless pass_env=True:
+# anything that looks like a credential, plus known provider/cloud prefixes.
+_SECRET_ENV = re.compile(
+    r"(_API_KEY|_TOKEN|_SECRET|_PASSWORD|_CREDENTIALS)$"
+    r"|^(ANTHROPIC|OPENAI|GROQ|FIREWORKS|OPENROUTER|DEEPGRAM|AWS|AZURE|GOOGLE)_"
+)
+
 
 class ShellToolkit(Toolkit):
     """Sandboxed shell execution within a workspace directory.
 
     Usage:
-        tk = ShellToolkit()                           # defaults to CWD
-        tk = ShellToolkit(workspace="/my/dir")         # explicit path
-        tk = ShellToolkit(restrict=False)              # allow all commands
+        tk = ShellToolkit()                            # defaults to CWD
+        tk = ShellToolkit(workspace="/my/dir")          # explicit path
+        tk = ShellToolkit(restrict=False)               # allow all commands
+        tk = ShellToolkit(allow_dev_commands=False)     # file/text utilities only
+
+    Note: with dev commands enabled (the default), the workspace jail is
+    advisory, not a security boundary -- interpreters like ``python`` and tools
+    like ``git`` can reach outside the workspace. Disable dev commands or run
+    inside a container when the agent is untrusted.
     """
 
-    ALLOWED_COMMANDS = {
+    # File/text utilities that stay inside the workspace.
+    SAFE_COMMANDS = {
         "ls",
         "cat",
         "head",
@@ -40,6 +54,20 @@ class ShellToolkit(Toolkit):
         "cp",
         "mv",
         "rm",
+        "jq",
+        "tr",
+        "cut",
+        "which",
+        "date",
+        "pwd",
+        "cd",
+        "test",
+    }
+
+    # Interpreters, package managers, VCS, and network tools. Any of these can
+    # escape the workspace jail (``python -c``, ``git config core.pager``,
+    # ``curl``), so they form a separate tier gated by ``allow_dev_commands``.
+    DEV_COMMANDS = {
         "python",
         "python3",
         "pip",
@@ -56,30 +84,33 @@ class ShellToolkit(Toolkit):
         "make",
         "curl",
         "wget",
-        "jq",
         "sed",
         "awk",
-        "tr",
-        "cut",
         "tee",
-        "which",
         "env",
-        "date",
-        "pwd",
-        "cd",
-        "test",
     }
+
+    # Full set, kept for backward compatibility with callers that introspect it.
+    ALLOWED_COMMANDS = SAFE_COMMANDS | DEV_COMMANDS
 
     def __init__(
         self,
         workspace: str | Path | None = None,
         timeout: int = 30,
         restrict: bool = True,
+        allow_dev_commands: bool = True,
+        pass_env: bool = False,
     ):
         self._workspace = Path(workspace).resolve() if workspace else Path.cwd()
         self._workspace.mkdir(parents=True, exist_ok=True)
         self._timeout = timeout
         self._restrict = restrict
+        self._allowed = (
+            self.SAFE_COMMANDS | self.DEV_COMMANDS
+            if allow_dev_commands
+            else set(self.SAFE_COMMANDS)
+        )
+        self._pass_env = pass_env
 
     SHELL_OPERATORS = ("&&", "||", "$(", ";", "|", "`", ">>", "&>", "<")
 
@@ -108,12 +139,26 @@ class ShellToolkit(Toolkit):
 
         first_token = cmd.split()[0] if cmd else ""
         base = first_token.split("/")[-1]
-        if base not in self.ALLOWED_COMMANDS:
+        if base not in self._allowed:
             return (
                 f"Error: command '{base}' not in allowlist. "
-                f"Allowed: {', '.join(sorted(self.ALLOWED_COMMANDS)[:20])}..."
+                f"Allowed: {', '.join(sorted(self._allowed)[:20])}..."
             )
         return None
+
+    def _subprocess_env(self) -> dict[str, str]:
+        """Environment for agent-run commands.
+
+        By default credential-looking keys (API keys, tokens, secrets, provider
+        prefixes) are scrubbed so an agent cannot read them via ``env`` or pass
+        them on; ``pass_env=True`` restores full inheritance.
+        """
+        if self._pass_env:
+            env = dict(os.environ)
+        else:
+            env = {k: v for k, v in os.environ.items() if not _SECRET_ENV.search(k)}
+        env["HOME"] = str(self._workspace)
+        return env
 
     @tool()
     async def shell_exec(self, command: str) -> str:
@@ -132,7 +177,7 @@ class ShellToolkit(Toolkit):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(self._workspace),
-                env={**os.environ, "HOME": str(self._workspace)},
+                env=self._subprocess_env(),
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self._timeout)
             output = stdout.decode(errors="replace")

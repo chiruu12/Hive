@@ -1,5 +1,6 @@
 """Checkpointing — save and restore full agent state."""
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from pydantic import BaseModel, Field
 from hive.agents.identity import AgentIdentity
 from hive.agents.suffering import SufferingState
 from hive.context import ExecutionContext
+
+logger = logging.getLogger(__name__)
 
 
 class Checkpoint(BaseModel):
@@ -59,7 +62,15 @@ class CheckpointManager:
                     "skills": [s.model_dump() for s in skills],
                 }
             except Exception:
-                pass
+                # Checkpoint the rest of the agent's state anyway, but loudly:
+                # a silently empty world snapshot breaks restart recovery for
+                # economy scenarios.
+                logger.warning(
+                    "World snapshot failed for %s; checkpoint %s will omit world state",
+                    agent_id,
+                    cp_id,
+                    exc_info=True,
+                )
 
         cp = Checkpoint(
             checkpoint_id=cp_id,
@@ -91,7 +102,19 @@ class CheckpointManager:
             try:
                 cps.append(Checkpoint.model_validate_json(f.read_text()))
             except Exception:
-                pass
+                # Quarantine instead of silently skipping: the file is preserved
+                # for diagnosis but stops being re-parsed on every listing.
+                quarantined = f.with_name(f.name + ".corrupt")
+                try:
+                    f.rename(quarantined)
+                except OSError:
+                    quarantined = f
+                logger.warning(
+                    "Corrupt checkpoint for %s quarantined as %s",
+                    agent_id,
+                    quarantined.name,
+                    exc_info=True,
+                )
         return cps
 
     def diff(self, cp_a: Checkpoint, cp_b: Checkpoint) -> dict[str, Any]:

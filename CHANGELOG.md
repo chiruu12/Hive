@@ -1,5 +1,89 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+- **Agent shell commands no longer see your API keys** — `shell_exec` now
+  scrubs credential-looking environment variables (`*_API_KEY`, `*_TOKEN`,
+  `*_SECRET`, `*_PASSWORD`, and provider prefixes such as `ANTHROPIC_*` /
+  `OPENAI_*` / `AWS_*`) from the subprocess environment. Previously an agent
+  could read every provider key by running `env`. Opt back into full
+  inheritance with `ShellToolkit(pass_env=True)` or `tools.shell_pass_env:
+  true` if your agents legitimately need those variables.
+
+### Added
+- **Opt-in API-key auth for the REST server** — set `server.api_key` (or
+  `HIVE_API_KEY`) and every route except `/healthz` and the static UI/docs
+  shells requires a matching `X-Hive-Key` header (constant-time comparison).
+  Empty key (the default) keeps the server open, preserving the local-first
+  zero-config posture. The control-plane UI gained a `key` field so it keeps
+  working with auth enabled.
+- **CORS support** — `server.cors_origins` mounts FastAPI's CORS middleware
+  for the listed origins; empty (default) adds no headers.
+- **Pagination on list endpoints** — `GET /agents`, `/approvals`,
+  `/agents/{id}/approvals`, `/sessions`, and `/runs` accept `limit` (1-1000)
+  and `offset`; omitting `limit` returns everything, as before. The `/agents`
+  and `/status` endpoints also drop their per-agent N+1 goal lookups for a
+  single batched query.
+- **Session TTL** — `server.session_ttl_hours` marks running sessions
+  `expired` once idle longer than the TTL (enforced by the retention janitor);
+  expired sessions 404 by id and `session_key` lookups fall through to a
+  fresh session. Default 0 = never expire.
+- **Tiered shell allowlist** — the restricted shell's commands are now split
+  into safe file/text utilities and dev commands (interpreters, package
+  managers, VCS, network tools). Dev commands stay enabled by default;
+  `ShellToolkit(allow_dev_commands=False)` or
+  `tools.shell_allow_dev_commands: false` confines an untrusted agent to the
+  safe tier. The docs now state plainly that with dev commands enabled the
+  workspace jail is advisory, not a security boundary.
+- **File toolkit size caps** — `file_read`/`file_edit` refuse files larger
+  than 10 MB (checked via `stat` before reading, so a multi-GB file can no
+  longer be pulled into memory) and `file_write`/`file_edit` refuse oversized
+  content. Configurable via `tools.file_max_read_bytes` /
+  `tools.file_max_write_bytes` or the toolkit constructor.
+- **Plugin gating** — `plugins.enabled: false` turns plugin discovery off and
+  `plugins.allowlist` restricts which files load (by filename or stem; empty
+  keeps the documented drop-in behavior). The loader now logs a warning the
+  first time it executes each plugin file.
+- **Delegations survive restarts** — delegation records are now persisted in
+  a new `delegations` table (schema v4, automatic upgrade) instead of living
+  only in the engine's process memory. After a daemon restart,
+  `check_completion` / `list_outbound` / `list_inbound` rehydrate from the
+  store, and resolved outcomes are written back.
+- **Retention janitor** — opt-in periodic cleanup (`retention.enabled`,
+  default off) deletes terminal housekeeping rows older than `retention.days`
+  (resolved approvals, fired alarms, delivered nudges, finished
+  sessions/delegations) and auto-denies pending approvals belonging to DEAD
+  agents, which previously lingered forever. Pending work is never touched.
+- Schema v4 also backfills the `created_at`/`last_active` session columns
+  that migration v3 left NULL on pre-existing rows.
+
+### Fixed
+- **Goal pursuit is now logged** — the daemon's pursuit agent was constructed
+  without a log writer, so `decisions.jsonl` / `tools.jsonl` were never
+  written for daemon goal pursuit (only goal *generation* was logged).
+  Pursuit decisions and tool calls now land in the run's structured logs,
+  carrying new `goal_id` and `step_index` correlation fields (defaulted, so
+  pre-existing logs still parse). This is the groundwork for the planned
+  trace-tree view over run logs.
+- **Daemon shutdown is now guaranteed** — `HiveDaemon.start()` runs its
+  shutdown path (alarm-task teardown, shutdown checkpoints, life summaries)
+  even when the heartbeat loop raises or the daemon task is cancelled, and
+  `hive serve --with-daemon` now awaits the daemon's shutdown during server
+  teardown instead of abandoning the cancelled task. Previously a crash or
+  server exit could skip checkpointing entirely and orphan the alarm task.
+- **Cycle errors can no longer cascade** — if the store fails while the daemon
+  is recording an agent's timeout or error (e.g. a locked database), the
+  failure is logged and contained instead of escaping into `asyncio.gather`
+  and killing the heartbeat for every agent.
+- **Checkpoint failures are visible** — a failed world snapshot during
+  checkpointing now logs a warning instead of passing silently, and corrupt
+  checkpoint files are quarantined as `<name>.json.corrupt` (preserved for
+  diagnosis, skipped on later listings) instead of being silently re-parsed
+  and dropped on every listing.
+- **Profile cache catches same-second edits** — daemon profile-cache
+  invalidation now keys on `(mtime_ns, size)` instead of whole-second mtime.
+
 ## [0.6.1] — 2026-06-03
 
 ### Added

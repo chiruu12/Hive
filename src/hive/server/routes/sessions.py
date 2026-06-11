@@ -6,7 +6,7 @@ import json
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from hive.server.deps import (
     DEFAULT_USER,
@@ -59,9 +59,13 @@ async def list_sessions(
     agent_id: str | None = None,
     ctx: ServerContext = Depends(get_context),
     user: str = Depends(get_user),
+    limit: int | None = Query(None, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
 ) -> list[SessionSummary]:
     resolved = await resolve_agent_id(ctx.store, agent_id) if agent_id else None
-    rows = await ctx.store.list_sessions(user_id=user, agent_id=resolved)
+    rows = await ctx.store.list_sessions(
+        user_id=user, agent_id=resolved, limit=limit, offset=offset
+    )
     return [_to_summary(r) for r in rows]
 
 

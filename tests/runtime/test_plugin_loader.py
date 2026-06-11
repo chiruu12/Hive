@@ -140,6 +140,57 @@ class SecondToolkit(Toolkit):
         found = loader.discover()
         assert len(found) == 0
 
+    def test_allowlist_filters_by_stem(self, plugin_dir: Path) -> None:
+        for name, cls in (("first", "FirstToolkit"), ("second", "SecondToolkit")):
+            _write_plugin(
+                plugin_dir / f"{name}.py",
+                f"""
+from hive.tools import Toolkit, tool
+
+class {cls}(Toolkit):
+    @tool()
+    def f(self) -> str:
+        return "x"
+""",
+            )
+        loader = PluginLoader([plugin_dir], allowlist=["first"])
+        found = loader.discover()
+        assert [t.__name__ for t in found] == ["FirstToolkit"]
+
+    def test_disabled_loader_loads_nothing(self, plugin_dir: Path) -> None:
+        _write_plugin(
+            plugin_dir / "any.py",
+            """
+from hive.tools import Toolkit, tool
+
+class AnyToolkit(Toolkit):
+    @tool()
+    def f(self) -> str:
+        return "x"
+""",
+        )
+        loader = PluginLoader([plugin_dir], enabled=False)
+        assert loader.discover() == []
+        assert loader.loaded_count == 0
+
+    def test_first_load_warns_about_code_execution(
+        self, plugin_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        _write_plugin(
+            plugin_dir / "warned.py",
+            """
+from hive.tools import Toolkit, tool
+
+class WarnedToolkit(Toolkit):
+    @tool()
+    def f(self) -> str:
+        return "x"
+""",
+        )
+        loader = PluginLoader([plugin_dir])
+        loader.discover()
+        assert "Executing plugin code" in caplog.text
+
     def test_multiple_toolkits_in_one_file(
         self,
         plugin_dir: Path,

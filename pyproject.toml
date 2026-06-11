@@ -39,14 +39,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "ruff>=0.5",
-    "mypy>=1.10",
-    "types-PyYAML>=6.0",
-    "types-python-dateutil>=2.8",
-]
 chromadb = [
     "chromadb>=0.5",
     "sentence-transformers>=3.0",
@@ -136,13 +128,18 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
+# Single source of truth for dev tooling (uv installs this group by default with
+# `uv sync`). There is intentionally no `[project.optional-dependencies].dev` --
+# it duplicated this list and the two had already drifted apart.
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "ruff>=0.5",
     "mypy>=1.10",
     "types-pyyaml>=6.0",
+    "types-python-dateutil>=2.8",
     "twine>=6.0",
     "build>=1.0",
     "mkdocs-material>=9.7.6",

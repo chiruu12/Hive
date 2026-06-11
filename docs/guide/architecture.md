@@ -214,5 +214,17 @@ All config lives in `.hive/config.yaml` and env vars.
 | `model` | `planning_model` | `str` | `claude-sonnet-4-6` | Model for planning tasks |
 | `model` | `max_tokens` | `int` | `4096` | Max generation tokens |
 | `model` | `temperature` | `float` | `0.0` | Generation temperature |
+| `tools` | `shell_pass_env` | `bool` | `false` | Pass secrets (API keys, tokens) to agent shell commands; scrubbed by default |
+| `tools` | `shell_allow_dev_commands` | `bool` | `true` | Allow python/git/curl etc. in the restricted shell (these can escape the workspace jail) |
+| `tools` | `file_max_read_bytes` | `int` | `10000000` | Refuse file reads larger than this |
+| `tools` | `file_max_write_bytes` | `int` | `10000000` | Refuse file writes larger than this |
+| `plugins` | `enabled` | `bool` | `true` | Load plugin toolkits from `.hive/plugins/` |
+| `plugins` | `allowlist` | `list[str]` | `[]` | Only load these plugin filenames/stems; empty = all |
+| `retention` | `enabled` | `bool` | `false` | Periodically delete terminal rows (resolved approvals, fired alarms, delivered nudges, finished sessions/delegations) and deny dead agents' pending approvals |
+| `retention` | `days` | `int` | `30` | Only rows older than this are deleted |
+| `retention` | `interval_cycles` | `int` | `100` | Run the janitor every N heartbeats |
+| `server` | `api_key` | `str` | `""` | Require `X-Hive-Key` on REST data routes; empty = no auth (also `HIVE_API_KEY`) |
+| `server` | `cors_origins` | `list[str]` | `[]` | Allowed CORS origins; empty = no CORS middleware |
+| `server` | `session_ttl_hours` | `int` | `0` | Expire running sessions idle longer than this (via the janitor); 0 = never |
 
 Env var overrides: `HIVE_HEARTBEAT`, `HIVE_DEFAULT_MODEL`, `HIVE_STARTING_BALANCE`, etc.

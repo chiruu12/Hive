@@ -50,13 +50,14 @@ pip install hive-agent
 
 Requires Python 3.11 or later. The package installs with support for both Anthropic and OpenAI providers out of the box.
 
-For development:
+For development, clone the repository and sync with uv (this installs the dev
+tooling -- pytest, pytest-asyncio, ruff, and mypy -- automatically):
 
 ```bash
-pip install hive-agent[dev]
+git clone https://github.com/chiruu12/Hive.git
+cd Hive
+uv sync
 ```
-
-This adds pytest, pytest-asyncio, ruff, and mypy.
 
 ---
 

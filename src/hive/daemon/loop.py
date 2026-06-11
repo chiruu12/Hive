@@ -122,13 +122,17 @@ class HiveDaemon:
             )
             self._life_writer = LifeDirectoryWriter(hive_dir)
 
+        # Per-agent state caches. Accessed only from the daemon's event loop via
+        # synchronous get-or-create accessors with no awaits inside, so concurrent
+        # agent cycles cannot interleave mid-access -- no locks needed. Keep the
+        # accessors await-free to preserve this invariant.
         self._memories: dict[str, SemanticMemory] = {}
         self._suffering: dict[str, SufferingState] = {}
         self._personas: dict[str, Persona] = {}
         # Per-agent caches reused across cycles (B3). Provider invalidates when the
-        # agent's model changes; profile when its YAML file's mtime changes.
+        # agent's model changes; profile when its YAML file changes on disk.
         self._provider_cache: dict[str, tuple[str, BaseProvider]] = {}
-        self._profile_cache: dict[str, tuple[float | None, AgentProfile]] = {}
+        self._profile_cache: dict[str, tuple[tuple[int, int] | None, AgentProfile]] = {}
         self._cycle_count = 0
         self._crisis_counts: dict[str, int] = {}
         self._profiles = profiles or []
@@ -138,11 +142,14 @@ class HiveDaemon:
 
         from hive.runtime.plugin_loader import PluginLoader
 
+        plugins_cfg = get_config().plugins
         self._plugin_loader = PluginLoader(
             [
                 hive_dir / "plugins",
                 hive_dir.parent / "plugins",
-            ]
+            ],
+            allowlist=plugins_cfg.allowlist or None,
+            enabled=plugins_cfg.enabled,
         )
         self._plugin_toolkits: list[type[Any]] = []
 
@@ -154,9 +161,18 @@ class HiveDaemon:
         workspace = self._hive_dir / "workspaces" / agent_id
         workspace.mkdir(parents=True, exist_ok=True)
 
+        tools_cfg = get_config().tools
         toolkits: list[Any] = [
-            FileToolkit(workspace=workspace),
-            ShellToolkit(workspace=workspace),
+            FileToolkit(
+                workspace=workspace,
+                max_read_bytes=tools_cfg.file_max_read_bytes,
+                max_write_bytes=tools_cfg.file_max_write_bytes,
+            ),
+            ShellToolkit(
+                workspace=workspace,
+                allow_dev_commands=tools_cfg.shell_allow_dev_commands,
+                pass_env=tools_cfg.shell_pass_env,
+            ),
             GitToolkit(workspace=workspace),
             MemoryToolkit(path=self._ctx.memory_dir),
             CommsToolkit(path=self._ctx.comms_dir),
@@ -264,8 +280,14 @@ class HiveDaemon:
         self._running = True
         self._pending_shutdown = False
         self._alarm_task = asyncio.create_task(self._alarm_check_loop())
-        await self._run(max_cycles)
-        await self._shutdown()
+        try:
+            await self._run(max_cycles)
+        finally:
+            # Always shut down -- including on exceptions escaping _run and on
+            # task cancellation -- so shutdown checkpoints are written and the
+            # alarm task is never orphaned.
+            self._running = False
+            await self._shutdown()
 
     async def _alarm_check_loop(self) -> None:
         """Poll for due alarms every 15 seconds and fire notifications."""
@@ -331,6 +353,19 @@ class HiveDaemon:
                 self._process_payday(alive)
                 await self._process_life_events(alive)
 
+            retention = get_config().retention
+            if retention.enabled and self._cycle_count % retention.interval_cycles == 0:
+                try:
+                    counts = await self._store.cleanup(
+                        days=retention.days,
+                        session_ttl_hours=get_config().server.session_ttl_hours,
+                    )
+                    cleaned = {k: v for k, v in counts.items() if v}
+                    if cleaned:
+                        logger.info("Retention cleanup removed rows: %s", cleaned)
+                except Exception:
+                    logger.warning("Retention cleanup failed; will retry", exc_info=True)
+
             if self._cycle_count % 5 == 0 and alive:
                 agent_ids = [a.agent_id for a in alive]
                 report = await self._swarm.run_cycle(agent_ids)
@@ -384,10 +419,21 @@ class HiveDaemon:
                     agent.agent_id,
                     cycle_timeout,
                 )
-                active_goal = await self._store.get_active_goal(agent.agent_id)
-                if active_goal:
-                    await self._store.abandon_goal(active_goal["goal_id"])
-                await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
+                # The store calls below must not raise: an escaping exception here
+                # would surface through asyncio.gather and kill the heartbeat loop
+                # for every agent.
+                try:
+                    active_goal = await self._store.get_active_goal(agent.agent_id)
+                    if active_goal:
+                        await self._store.abandon_goal(active_goal["goal_id"])
+                    await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
+                except Exception:
+                    logger.error(
+                        "Cycle %d: could not reset agent %s after timeout",
+                        self._cycle_count,
+                        agent.agent_id,
+                        exc_info=True,
+                    )
                 return None
             except Exception as e:
                 logger.error(
@@ -397,9 +443,17 @@ class HiveDaemon:
                     e,
                     exc_info=True,
                 )
-                await self._store.update_agent_status(
-                    agent.agent_id, AgentStatus.ERROR, error=str(e)
-                )
+                try:
+                    await self._store.update_agent_status(
+                        agent.agent_id, AgentStatus.ERROR, error=str(e)
+                    )
+                except Exception:
+                    logger.error(
+                        "Cycle %d: could not mark agent %s as ERROR",
+                        self._cycle_count,
+                        agent.agent_id,
+                        exc_info=True,
+                    )
                 return None
 
     async def _run_agent_cycle(self, agent: AgentState) -> str:
@@ -488,6 +542,8 @@ class HiveDaemon:
                     goal_id=active_goal["goal_id"],
                 )
             guardrails = build_guardrail_pipeline(get_config().guardrails)
+            # log_writer + goal_id wire pursuit decisions/tool calls into the
+            # run's structured JSONL logs, correlated to the active goal.
             if persona is not None:
                 runtime_agent = Agent(
                     name=agent.name,
@@ -497,6 +553,9 @@ class HiveDaemon:
                     tool_timeout=tool_timeout,
                     approval_gate=approval_gate,
                     guardrails=guardrails,
+                    log_writer=self._log,
+                    agent_id=agent.agent_id,
+                    goal_id=active_goal["goal_id"],
                 )
             else:
                 runtime_agent = Agent(
@@ -509,6 +568,9 @@ class HiveDaemon:
                     tool_timeout=tool_timeout,
                     approval_gate=approval_gate,
                     guardrails=guardrails,
+                    log_writer=self._log,
+                    agent_id=agent.agent_id,
+                    goal_id=active_goal["goal_id"],
                 )
             adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
             # Give the pursuing agent its persistent self -- name and accumulated
@@ -942,23 +1004,31 @@ class HiveDaemon:
         return cached[1]
 
     def _load_profile(self, name: str) -> AgentProfile:
-        """Load the agent's profile, cached and invalidated on the YAML's mtime."""
+        """Load the agent's profile, cached and invalidated when the YAML changes.
+
+        The cache key is (mtime_ns, size) rather than mtime alone: coarse mtime
+        granularity on some filesystems can miss a same-second edit.
+        """
         from hive.agents.profile import default_profiles_dir
 
         cfg = get_config()
         profiles_dir = Path(cfg.profiles_dir) if cfg.profiles_dir else default_profiles_dir()
         path = profiles_dir / f"{name}.yaml"
-        mtime = path.stat().st_mtime if path.exists() else None
+        try:
+            st = path.stat()
+            stamp: tuple[int, int] | None = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = None
 
         cached = self._profile_cache.get(name)
-        if cached is not None and cached[0] == mtime:
+        if cached is not None and cached[0] == stamp:
             return cached[1]
 
         try:
             profile = AgentProfile.from_preset(name, profiles_dir)
         except FileNotFoundError:
             profile = AgentProfile(name=name, role="general agent")
-        self._profile_cache[name] = (mtime, profile)
+        self._profile_cache[name] = (stamp, profile)
         return profile
 
     async def _get_peer_summaries(self, exclude_id: str) -> list[str]:
@@ -1083,18 +1153,22 @@ class HiveDaemon:
         except Exception as e:
             logger.warning("Checkpoint on shutdown failed: %s", e)
 
-        if not self._economy_enabled or not self._life_writer:
+        # Defensive narrowing rather than asserts: this is the shutdown path, and
+        # a crash here would lose life summaries (asserts also vanish under -O).
+        if (
+            not self._economy_enabled
+            or self._life_writer is None
+            or self._stats is None
+            or self._ctx.world is None
+            or self._event_engine is None
+        ):
             return
 
         try:
             agents = await self._store.list_agents()
         except Exception:
+            logger.warning("Could not list agents for life summaries on shutdown", exc_info=True)
             return
-
-        assert self._life_writer is not None
-        assert self._stats is not None
-        assert self._ctx.world is not None
-        assert self._event_engine is not None
         for agent in agents:
             if not agent.is_alive():
                 continue

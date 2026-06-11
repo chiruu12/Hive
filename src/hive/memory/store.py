@@ -128,6 +128,19 @@ CREATE TABLE IF NOT EXISTS approvals (
     cycle_created INTEGER,
     FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS delegations (
+    delegation_id TEXT PRIMARY KEY,
+    from_agent TEXT NOT NULL,
+    to_agent TEXT NOT NULL,
+    task TEXT NOT NULL,
+    goal_id TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    result TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (from_agent) REFERENCES agents(agent_id) ON DELETE CASCADE
+);
 """
 
 # Indexes on hot lookup columns (composites mirror the WHERE/ORDER BY patterns
@@ -152,10 +165,21 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_key ON sessions(user_id, session_ke
 CREATE INDEX IF NOT EXISTS idx_approvals_agent_status ON approvals(agent_id, status);
 CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status);
 CREATE INDEX IF NOT EXISTS idx_approvals_lookup ON approvals(agent_id, tool_name, args_hash);
+CREATE INDEX IF NOT EXISTS idx_delegations_from ON delegations(from_agent);
+CREATE INDEX IF NOT EXISTS idx_delegations_to ON delegations(to_agent);
 """
 
 # Latest schema version. Bump and append a step to _MIGRATIONS for each change.
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
+
+
+def _paginate(limit: int | None, offset: int = 0) -> str:
+    """LIMIT/OFFSET suffix for list queries. ``None`` keeps the full result
+    (backward compatible). Values are coerced to int, never interpolated raw."""
+    if limit is None:
+        return ""
+    return f" LIMIT {int(limit)} OFFSET {int(offset)}"
+
 
 # Child tables rebuilt by migration 2 to add ON DELETE CASCADE on their FK to
 # agents. Each entry is (table, replacement CREATE SQL, explicit column list).
@@ -378,11 +402,42 @@ async def _migration_3(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_4(db: aiosqlite.Connection) -> None:
+    """Add the delegations table and backfill NULL session timestamps.
+
+    ``_migration_3`` added ``created_at``/``last_active`` to ``sessions`` but
+    left them NULL on pre-existing rows, which breaks any logic keyed on
+    ``last_active`` (e.g. session expiry). Backfill from the columns that have
+    always existed. The CREATE is ``IF NOT EXISTS`` so the step is idempotent.
+    """
+    await db.execute(
+        """CREATE TABLE IF NOT EXISTS delegations (
+            delegation_id TEXT PRIMARY KEY,
+            from_agent TEXT NOT NULL,
+            to_agent TEXT NOT NULL,
+            task TEXT NOT NULL,
+            goal_id TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            result TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (from_agent) REFERENCES agents(agent_id) ON DELETE CASCADE
+        )"""
+    )
+    await db.execute(
+        """UPDATE sessions
+           SET created_at = COALESCE(created_at, started_at),
+               last_active = COALESCE(last_active, completed_at, started_at)
+           WHERE created_at IS NULL OR last_active IS NULL"""
+    )
+
+
 # Ordered (target_version, migration) steps applied when a DB is below target.
 _MIGRATIONS: list[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]]] = [
     (1, _migration_1),
     (2, _migration_2),
     (3, _migration_3),
+    (4, _migration_4),
 ]
 
 
@@ -500,12 +555,22 @@ class HiveStore:
                     return None
                 return self._row_to_state(row)
 
-    async def list_agents(self) -> list[AgentState]:
+    async def list_agents(self, limit: int | None = None, offset: int = 0) -> list[AgentState]:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM agents ORDER BY spawned_at DESC") as cursor:
+            async with db.execute(
+                f"SELECT * FROM agents ORDER BY spawned_at DESC{_paginate(limit, offset)}"
+            ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_state(row) for row in rows]
+
+    async def get_active_goals_map(self) -> dict[str, str]:
+        """agent_id -> active-goal objective, in one query (avoids N+1 listings)."""
+        async with self._connect() as db:
+            async with db.execute(
+                "SELECT agent_id, objective FROM goals WHERE status = 'active'"
+            ) as cursor:
+                return {row[0]: row[1] for row in await cursor.fetchall()}
 
     async def update_agent_status(
         self, agent_id: str, status: AgentStatus, error: str | None = None
@@ -615,7 +680,11 @@ class HiveStore:
                 return dict(row) if row else None
 
     async def list_sessions(
-        self, user_id: str | None = None, agent_id: str | None = None
+        self,
+        user_id: str | None = None,
+        agent_id: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         clauses: list[str] = []
         values: list[Any] = []
@@ -629,7 +698,8 @@ class HiveStore:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                f"SELECT * FROM sessions {where} ORDER BY started_at DESC",
+                f"SELECT * FROM sessions {where} ORDER BY started_at DESC"
+                f"{_paginate(limit, offset)}",
                 tuple(values),
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
@@ -1120,21 +1190,26 @@ class HiveStore:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
-    async def get_pending_approvals(self, agent_id: str) -> list[dict[str, Any]]:
+    async def get_pending_approvals(
+        self, agent_id: str, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT * FROM approvals WHERE agent_id = ? AND status = 'pending' "
-                "ORDER BY created_at",
+                f"ORDER BY created_at{_paginate(limit, offset)}",
                 (agent_id,),
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
 
-    async def list_all_pending_approvals(self) -> list[dict[str, Any]]:
+    async def list_all_pending_approvals(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at",
+                "SELECT * FROM approvals WHERE status = 'pending' "
+                f"ORDER BY created_at{_paginate(limit, offset)}",
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
 
@@ -1205,6 +1280,128 @@ class HiveStore:
             )
             await db.commit()
             return cursor.rowcount
+
+    # -- Delegations ------------------------------------------------------
+    # Persisted so delegated work survives a daemon restart (the engine's
+    # in-process map is a cache over these rows).
+
+    async def save_delegation(
+        self,
+        delegation_id: str,
+        from_agent: str,
+        to_agent: str,
+        task: str,
+        goal_id: str = "",
+    ) -> None:
+        async with self._connect() as db:
+            await db.execute(
+                """INSERT OR REPLACE INTO delegations
+                   (delegation_id, from_agent, to_agent, task, goal_id, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, 'pending', ?)""",
+                (
+                    delegation_id,
+                    from_agent,
+                    to_agent,
+                    task,
+                    goal_id,
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            await db.commit()
+
+    async def get_delegation(self, delegation_id: str) -> dict[str, Any] | None:
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM delegations WHERE delegation_id = ?", (delegation_id,)
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def update_delegation_status(
+        self, delegation_id: str, status: str, result: str = ""
+    ) -> None:
+        async with self._connect() as db:
+            await db.execute(
+                """UPDATE delegations
+                   SET status = ?, result = ?, completed_at = ?
+                   WHERE delegation_id = ?""",
+                (status, result, datetime.now(UTC).isoformat(), delegation_id),
+            )
+            await db.commit()
+
+    async def list_delegations(
+        self,
+        from_agent: str | None = None,
+        to_agent: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[str] = []
+        if from_agent:
+            clauses.append("from_agent = ?")
+            params.append(from_agent)
+        if to_agent:
+            clauses.append("to_agent = ?")
+            params.append(to_agent)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"SELECT * FROM delegations {where} ORDER BY created_at DESC",  # noqa: S608
+                params,
+            )
+            return [dict(r) for r in await cursor.fetchall()]
+
+    # -- Retention janitor -------------------------------------------------
+
+    async def cleanup(self, days: int = 30, session_ttl_hours: int = 0) -> dict[str, int]:
+        """Delete terminal housekeeping rows older than ``days`` and auto-deny
+        pending approvals belonging to DEAD agents.
+
+        Only terminal rows are touched (resolved approvals, fired/cancelled
+        alarms, delivered nudges, non-running sessions, finished delegations);
+        pending work and the agents/goals tables are never deleted here.
+        When ``session_ttl_hours`` > 0, running sessions idle longer than the
+        TTL are marked ``expired`` (not deleted) first, so they both stop
+        resolving and age out on the next pass.
+        Returns per-table deletion counts (plus ``dead_agent_approvals`` and
+        ``expired_sessions``).
+        """
+        from datetime import timedelta
+
+        now = datetime.now(UTC)
+        cutoff = (now - timedelta(days=days)).isoformat()
+        counts: dict[str, int] = {}
+        async with self._connect() as db:
+            if session_ttl_hours > 0:
+                idle_cutoff = (now - timedelta(hours=session_ttl_hours)).isoformat()
+                cursor = await db.execute(
+                    """UPDATE sessions SET status = 'expired'
+                       WHERE status = 'running' AND last_active IS NOT NULL
+                       AND last_active < ?""",
+                    (idle_cutoff,),
+                )
+                counts["expired_sessions"] = cursor.rowcount
+            cursor = await db.execute(
+                """UPDATE approvals
+                   SET status = 'denied', reason = 'agent dead',
+                       resolved_by = 'system', resolved_at = ?
+                   WHERE status = 'pending' AND agent_id IN
+                       (SELECT agent_id FROM agents WHERE status = 'dead')""",
+                (now.isoformat(),),
+            )
+            counts["dead_agent_approvals"] = cursor.rowcount
+            for name, sql in (
+                ("approvals", "DELETE FROM approvals WHERE status != 'pending'"),
+                ("alarms", "DELETE FROM alarms WHERE status != 'pending'"),
+                ("nudges", "DELETE FROM nudges WHERE delivered = 1"),
+                ("sessions", "DELETE FROM sessions WHERE status != 'running'"),
+                ("delegations", "DELETE FROM delegations WHERE status != 'pending'"),
+            ):
+                cursor = await db.execute(f"{sql} AND created_at < ?", (cutoff,))  # noqa: S608
+                counts[name] = cursor.rowcount
+            await db.commit()
+        return counts
 
     def _row_to_state(self, row: aiosqlite.Row) -> AgentState:
         return AgentState(
