@@ -634,6 +634,44 @@ def inspect(run_id: str = typer.Argument(help="Run ID to inspect")) -> None:
 
 
 @app.command()
+def trace(run_id: str = typer.Argument(help="Run ID to trace")) -> None:
+    """Render a run's span tree: run -> agent -> goal -> decision/tool."""
+    from rich.tree import Tree as RichTree
+
+    from hive.logging.trace import Span, TraceBuilder, children_of
+
+    builder = TraceBuilder(Path.cwd() / "logs")
+    spans = builder.build(run_id)
+    if not spans:
+        console.print(f"[red]Run not found: {run_id}[/red]")
+        raise typer.Exit(1)
+
+    style = {"run": "bold", "agent": "cyan", "goal": "green", "decision": "dim", "tool": "yellow"}
+
+    def label(s: Span) -> str:
+        extra = ""
+        if s.kind == "goal" and s.attributes.get("outcome"):
+            extra = f" [{s.attributes['outcome']}]"
+        elif s.kind == "decision":
+            tokens = (s.attributes.get("input_tokens") or 0) + (
+                s.attributes.get("output_tokens") or 0
+            )
+            extra = f" ({tokens} tok)" if tokens else ""
+        elif s.kind == "tool":
+            extra = " ✓" if s.attributes.get("success") else " ✗"
+        return f"[{style[s.kind]}]{s.name}{extra}[/{style[s.kind]}]"
+
+    def attach(node: RichTree, parent_id: str) -> None:
+        for child in children_of(spans, parent_id):
+            attach(node.add(label(child)), child.span_id)
+
+    root_span = spans[0]
+    tree = RichTree(label(root_span))
+    attach(tree, root_span.span_id)
+    console.print(tree)
+
+
+@app.command()
 def lives() -> None:
     """List all agent life directories."""
     from hive.world.life_summary import LifeDirectoryWriter
