@@ -32,7 +32,9 @@ jobs:
 
       - name: Install dependencies
         # The dev dependency-group is installed by `uv sync` automatically.
-        run: uv sync
+        # The api extra is included so the gate tests the full published
+        # surface (server tests skip without it, but should actually run here).
+        run: uv sync --extra api
 
       - name: Run tests
         run: uv run pytest tests/ -x -q
