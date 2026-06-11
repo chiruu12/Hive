@@ -97,6 +97,8 @@ Interactive docs are auto-generated at `/docs` (Swagger) and `/redoc`.
 | `GET` | `/status` | Status of all agents |
 | `GET` | `/healthz` | Liveness + readiness (DB reachable) |
 | `GET` | `/runs`, `/runs/{id}` | Structured run logs |
+| `GET` | `/runs/{id}/trace` | Span tree derived from run logs (run -> agent -> goal -> decision/tool) |
+| `GET` | `/metrics` | Prometheus text metrics: agents by status + latest-run counters |
 | `GET` | `/approvals` | Global pending-approval queue |
 | `GET` | `/agents/{id}/approvals` | Pending approvals for one agent |
 | `POST` | `/agents/{id}/approvals/{approval_id}` | Approve or deny |

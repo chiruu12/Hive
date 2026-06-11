@@ -89,6 +89,16 @@ Show detailed summary of a recorded run -- goals, decisions, tool usage.
 hive inspect <run-id>
 ```
 
+### `hive trace`
+
+Render a run's span tree -- run -> agent -> goal -> decision/tool -- derived
+from the structured logs. Goals show their outcome, decisions their token
+counts, tools a success/failure mark.
+
+```bash
+hive trace <run-id>
+```
+
 ### `hive replay`
 
 Replay a past session step by step.

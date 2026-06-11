@@ -71,6 +71,19 @@ def test_get_unknown_run_404(client: TestClient) -> None:
     assert client.get("/runs/does-not-exist").status_code == 404
 
 
+def test_get_unknown_trace_404(client: TestClient) -> None:
+    assert client.get("/runs/does-not-exist/trace").status_code == 404
+
+
+def test_metrics_exposition(client: TestClient) -> None:
+    client.post("/agents", json={"preset": "coder"})
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/plain")
+    assert 'hive_agents{status="idle"} 1' in resp.text
+    assert "hive_goals_completed 0" in resp.text
+
+
 def test_healthz_ok_when_db_reachable(client: TestClient) -> None:
     resp = client.get("/healthz")
     assert resp.status_code == 200
