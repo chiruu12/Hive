@@ -20,6 +20,15 @@ from hive.logging.reader import LogReader
 SpanKind = Literal["run", "agent", "goal", "decision", "tool"]
 
 
+def _seg(value: str) -> str:
+    """Sanitize one span-id path segment.
+
+    Span ids join segments with ``/``; a literal ``/`` inside an agent or
+    goal id would let two distinct tuples collide on the same span id.
+    """
+    return value.replace("/", "%2F")
+
+
 class Span(BaseModel):
     """One node in the derived trace tree.
 
@@ -64,7 +73,7 @@ class TraceBuilder:
         spans = [run_span]
 
         for agent_id in self._reader.get_agent_ids(run_id):
-            agent_span_id = f"{run_id}/{agent_id}"
+            agent_span_id = f"{run_id}/{_seg(agent_id)}"
             spans.append(
                 Span(
                     span_id=agent_span_id,
@@ -74,29 +83,34 @@ class TraceBuilder:
                 )
             )
 
-            goal_span_ids: dict[str, str] = {}
+            goal_spans: dict[str, Span] = {}
             for goal in self._reader.get_agent_goals(run_id, agent_id):
-                goal_span_id = f"{agent_span_id}/{goal.goal_id}"
-                if goal.goal_id not in goal_span_ids:
-                    goal_span_ids[goal.goal_id] = goal_span_id
-                    spans.append(
-                        Span(
-                            span_id=goal_span_id,
-                            parent_span_id=agent_span_id,
-                            name=goal.objective or goal.goal_id,
-                            kind="goal",
-                            start=goal.ts if goal.event == "generated" else None,
-                            attributes={"goal_id": goal.goal_id, "outcome": goal.event},
-                        )
+                existing = goal_spans.get(goal.goal_id)
+                if existing is None:
+                    span = Span(
+                        span_id=f"{agent_span_id}/{_seg(goal.goal_id)}",
+                        parent_span_id=agent_span_id,
+                        name=goal.objective or goal.goal_id,
+                        kind="goal",
+                        start=goal.ts if goal.event == "generated" else None,
+                        attributes={
+                            "goal_id": goal.goal_id,
+                            # "in_progress" until a terminal event closes the
+                            # span, so a crashed or mid-flight run is
+                            # distinguishable from a closed goal.
+                            "outcome": ("in_progress" if goal.event == "generated" else goal.event),
+                        },
                     )
+                    goal_spans[goal.goal_id] = span
+                    spans.append(span)
                 else:
                     # Later events (completed/abandoned) close and annotate the span.
-                    existing = next(s for s in spans if s.span_id == goal_span_id)
                     existing.attributes["outcome"] = goal.event
                     if goal.event in ("completed", "abandoned"):
                         existing.end = goal.ts
                     if goal.objective and existing.name == goal.goal_id:
                         existing.name = goal.objective
+            goal_span_ids = {gid: s.span_id for gid, s in goal_spans.items()}
 
             for i, d in enumerate(self._reader.get_agent_decisions(run_id, agent_id)):
                 parent = goal_span_ids.get(d.goal_id, agent_span_id)

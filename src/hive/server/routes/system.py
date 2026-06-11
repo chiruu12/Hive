@@ -94,7 +94,9 @@ async def metrics(ctx: ServerContext = Depends(get_context)) -> Response:
     """Prometheus text-format metrics: agent statuses plus latest-run counters.
 
     Rendered by hand -- the exposition text format is trivial and not worth a
-    dependency. Counters come from the most recent run's log summary.
+    dependency. The per-run values are snapshots of the most recent run's log
+    summary, exposed as gauges (they reset when a new run starts, so they are
+    deliberately NOT counters -- don't apply rate()/increase() to them).
     """
     from hive.logging.reader import LogReader
 
@@ -115,15 +117,15 @@ async def metrics(ctx: ServerContext = Depends(get_context)) -> Response:
     ]
     for status_value, count in sorted(by_status.items()):
         lines.append(f'hive_agents{{status="{status_value}"}} {count}')
-    counter_help = {
-        "goals_generated": "Goals generated in the latest run.",
-        "goals_completed": "Goals completed in the latest run.",
-        "goals_abandoned": "Goals abandoned in the latest run.",
-        "tool_calls": "Tool calls in the latest run.",
-        "total_tokens": "Tokens consumed in the latest run.",
-        "total_cost_usd": "Estimated cost (USD) of the latest run.",
+    snapshot_help = {
+        "goals_generated": "Goals generated in the latest run (snapshot; resets each run).",
+        "goals_completed": "Goals completed in the latest run (snapshot; resets each run).",
+        "goals_abandoned": "Goals abandoned in the latest run (snapshot; resets each run).",
+        "tool_calls": "Tool calls in the latest run (snapshot; resets each run).",
+        "total_tokens": "Tokens consumed in the latest run (snapshot; resets each run).",
+        "total_cost_usd": "Estimated cost (USD) of the latest run (snapshot; resets each run).",
     }
-    for key, help_text in counter_help.items():
+    for key, help_text in snapshot_help.items():
         lines.append(f"# HELP hive_{key} {help_text}")
         lines.append(f"# TYPE hive_{key} gauge")
         lines.append(f"hive_{key} {summary.get(key, 0)}")

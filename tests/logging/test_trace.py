@@ -80,6 +80,36 @@ class TestTraceBuilder:
         second = [s.span_id for s in TraceBuilder(tmp_path).build(run_id)]
         assert first == second
 
+    def test_open_goal_reports_in_progress(self, tmp_path: Path) -> None:
+        """A goal with no terminal event (crash / mid-flight snapshot) must not
+        read as 'generated' -- it shows 'in_progress' and stays unclosed."""
+        writer = LogWriter(tmp_path)
+        writer.start_run(heartbeat=5, profiles=[], agents=["a-1"], tools=[])
+        writer.log_goal(
+            GoalLog(agent_id="a-1", goal_id="goal-open", event="generated", objective="ongoing")
+        )
+
+        spans = TraceBuilder(tmp_path).build(writer.run_id)
+        goal = next(s for s in spans if s.kind == "goal")
+        assert goal.attributes["outcome"] == "in_progress"
+        assert goal.end is None
+
+    def test_slash_in_goal_id_does_not_collide(self, tmp_path: Path) -> None:
+        """A '/' inside a goal_id is sanitized, so a goal literally named
+        'g/d0' can't collide with goal 'g's first decision span ('.../g/d0')."""
+        writer = LogWriter(tmp_path)
+        writer.start_run(heartbeat=5, profiles=[], agents=["a-1"], tools=[])
+        writer.log_goal(GoalLog(agent_id="a-1", goal_id="g", event="generated"))
+        writer.log_decision(
+            DecisionLog(agent_id="a-1", goal_id="g", step_index=1, decision_type="react_step")
+        )
+        writer.log_goal(GoalLog(agent_id="a-1", goal_id="g/d0", event="generated"))
+
+        spans = TraceBuilder(tmp_path).build(writer.run_id)
+        ids = [s.span_id for s in spans]
+        assert len(ids) == len(set(ids)), "span ids must be unique"
+        assert len([s for s in spans if s.kind == "goal"]) == 2
+
     def test_old_logs_without_correlation_still_build(self, tmp_path: Path) -> None:
         """Pre-correlation logs (no goal_id) attach to the agent span, not dropped."""
         writer = LogWriter(tmp_path)
