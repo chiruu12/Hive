@@ -353,6 +353,16 @@ class HiveDaemon:
                 self._process_payday(alive)
                 await self._process_life_events(alive)
 
+            retention = get_config().retention
+            if retention.enabled and self._cycle_count % retention.interval_cycles == 0:
+                try:
+                    counts = await self._store.cleanup(days=retention.days)
+                    cleaned = {k: v for k, v in counts.items() if v}
+                    if cleaned:
+                        logger.info("Retention cleanup removed rows: %s", cleaned)
+                except Exception:
+                    logger.warning("Retention cleanup failed; will retry", exc_info=True)
+
             if self._cycle_count % 5 == 0 and alive:
                 agent_ids = [a.agent_id for a in alive]
                 report = await self._swarm.run_cycle(agent_ids)

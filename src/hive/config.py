@@ -236,6 +236,27 @@ class PluginsConfig(BaseModel):
     allowlist: list[str] = Field(default_factory=list)
 
 
+class RetentionConfig(BaseModel):
+    """Periodic cleanup of terminal housekeeping rows (off by default).
+
+    When enabled, the daemon deletes resolved approvals, fired alarms,
+    delivered nudges, finished sessions, and finished delegations older than
+    ``days``, and auto-denies pending approvals of DEAD agents. Pending work
+    and the agents/goals tables are never touched.
+    """
+
+    enabled: bool = False
+    days: int = 30
+    interval_cycles: int = 100
+
+    @field_validator("days", "interval_cycles")
+    @classmethod
+    def _positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"retention values must be >= 1, got {v}")
+        return v
+
+
 class ModelConfig(BaseModel):
     default_model: str = "claude-haiku-4-5"
     planning_model: str = "claude-sonnet-4-6"
@@ -255,6 +276,7 @@ class HiveConfig(BaseModel):
     guardrails: GuardrailConfig = GuardrailConfig()
     tools: ToolsConfig = ToolsConfig()
     plugins: PluginsConfig = PluginsConfig()
+    retention: RetentionConfig = RetentionConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).

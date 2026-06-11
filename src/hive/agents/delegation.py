@@ -22,7 +22,11 @@ class DelegationRecord(BaseModel):
 
 
 class DelegationEngine:
-    """Manages task delegation between agents."""
+    """Manages task delegation between agents.
+
+    Records are persisted in the store so delegated work survives a daemon
+    restart; ``_active`` is an in-process cache over those rows.
+    """
 
     def __init__(
         self,
@@ -53,6 +57,7 @@ class DelegationEngine:
             goal_id=goal_id,
         )
         self._active[did] = record
+        await self._store.save_delegation(did, from_agent, to_agent, task, goal_id)
 
         if self._a2a_store:
             from hive.interactions.a2a import A2AMessage, A2AMessageType
@@ -77,7 +82,12 @@ class DelegationEngine:
         """Check if a delegated task has been completed."""
         rec = self._active.get(delegation_id)
         if not rec:
-            return None
+            # Cache miss (e.g. after a daemon restart): rehydrate from the store.
+            row = await self._store.get_delegation(delegation_id)
+            if not row:
+                return None
+            rec = self._record_from_row(row)
+            self._active[delegation_id] = rec
 
         goal = await self._store.get_active_goal(rec.to_agent)
         if goal and goal.get("goal_id") == rec.goal_id:
@@ -94,15 +104,37 @@ class DelegationEngine:
                     rec.status = "failed"
                     rec.result = f"Goal abandoned by {rec.to_agent}"
                     rec.completed_at = datetime.now(UTC)
+                if rec.status != "pending":
+                    await self._store.update_delegation_status(
+                        rec.delegation_id, rec.status, rec.result
+                    )
                 break
 
         return rec
 
     async def list_outbound(self, agent_id: str) -> list[DelegationRecord]:
-        return [r for r in self._active.values() if r.from_agent == agent_id]
+        rows = await self._store.list_delegations(from_agent=agent_id)
+        return [self._active.get(r["delegation_id"]) or self._record_from_row(r) for r in rows]
 
     async def list_inbound(self, agent_id: str) -> list[DelegationRecord]:
-        return [r for r in self._active.values() if r.to_agent == agent_id]
+        rows = await self._store.list_delegations(to_agent=agent_id)
+        return [self._active.get(r["delegation_id"]) or self._record_from_row(r) for r in rows]
+
+    @staticmethod
+    def _record_from_row(row: dict[str, Any]) -> DelegationRecord:
+        return DelegationRecord(
+            delegation_id=row["delegation_id"],
+            from_agent=row["from_agent"],
+            to_agent=row["to_agent"],
+            task=row["task"],
+            goal_id=row.get("goal_id") or "",
+            status=row.get("status") or "pending",
+            result=row.get("result") or "",
+            created_at=datetime.fromisoformat(row["created_at"]),
+            completed_at=(
+                datetime.fromisoformat(row["completed_at"]) if row.get("completed_at") else None
+            ),
+        )
 
     def find_best_agent(
         self, task: str, agents: list[str], specializations: dict[str, dict[str, Any]]

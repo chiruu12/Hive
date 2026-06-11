@@ -28,6 +28,18 @@
   `plugins.allowlist` restricts which files load (by filename or stem; empty
   keeps the documented drop-in behavior). The loader now logs a warning the
   first time it executes each plugin file.
+- **Delegations survive restarts** — delegation records are now persisted in
+  a new `delegations` table (schema v4, automatic upgrade) instead of living
+  only in the engine's process memory. After a daemon restart,
+  `check_completion` / `list_outbound` / `list_inbound` rehydrate from the
+  store, and resolved outcomes are written back.
+- **Retention janitor** — opt-in periodic cleanup (`retention.enabled`,
+  default off) deletes terminal housekeeping rows older than `retention.days`
+  (resolved approvals, fired alarms, delivered nudges, finished
+  sessions/delegations) and auto-denies pending approvals belonging to DEAD
+  agents, which previously lingered forever. Pending work is never touched.
+- Schema v4 also backfills the `created_at`/`last_active` session columns
+  that migration v3 left NULL on pre-existing rows.
 
 ### Fixed
 - **Goal pursuit is now logged** — the daemon's pursuit agent was constructed

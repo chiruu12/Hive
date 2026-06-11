@@ -220,5 +220,8 @@ All config lives in `.hive/config.yaml` and env vars.
 | `tools` | `file_max_write_bytes` | `int` | `10000000` | Refuse file writes larger than this |
 | `plugins` | `enabled` | `bool` | `true` | Load plugin toolkits from `.hive/plugins/` |
 | `plugins` | `allowlist` | `list[str]` | `[]` | Only load these plugin filenames/stems; empty = all |
+| `retention` | `enabled` | `bool` | `false` | Periodically delete terminal rows (resolved approvals, fired alarms, delivered nudges, finished sessions/delegations) and deny dead agents' pending approvals |
+| `retention` | `days` | `int` | `30` | Only rows older than this are deleted |
+| `retention` | `interval_cycles` | `int` | `100` | Run the janitor every N heartbeats |
 
 Env var overrides: `HIVE_HEARTBEAT`, `HIVE_DEFAULT_MODEL`, `HIVE_STARTING_BALANCE`, etc.

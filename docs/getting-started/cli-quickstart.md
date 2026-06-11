@@ -135,6 +135,11 @@ plugins:                  # plugin toolkits from .hive/plugins/
   enabled: true
   allowlist: []           # filenames/stems to load; empty = all
 
+retention:                # periodic DB cleanup (off by default)
+  enabled: false
+  days: 30                # delete terminal rows older than this
+  interval_cycles: 100    # run every N heartbeats
+
 event_log_fsync: false  # fsync every event-log append (crash-durable, slower)
 seed: null              # int for a reproducible world RNG; null = system entropy
 ```
