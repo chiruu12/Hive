@@ -30,6 +30,13 @@
   first time it executes each plugin file.
 
 ### Fixed
+- **Goal pursuit is now logged** — the daemon's pursuit agent was constructed
+  without a log writer, so `decisions.jsonl` / `tools.jsonl` were never
+  written for daemon goal pursuit (only goal *generation* was logged).
+  Pursuit decisions and tool calls now land in the run's structured logs,
+  carrying new `goal_id` and `step_index` correlation fields (defaulted, so
+  pre-existing logs still parse). This is the groundwork for the planned
+  trace-tree view over run logs.
 - **Daemon shutdown is now guaranteed** — `HiveDaemon.start()` runs its
   shutdown path (alarm-task teardown, shutdown checkpoints, life summaries)
   even when the heartbeat loop raises or the daemon task is cancelled, and

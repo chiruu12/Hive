@@ -163,6 +163,59 @@ class TestDaemonIntegration:
         assert any("research" in g.get("objective", "").lower() for g in goals)
 
     @pytest.mark.asyncio
+    async def test_pursuit_writes_decision_and_tool_logs(self, hive_dir: Path) -> None:
+        """Goal pursuit emits DecisionLog/ToolLog entries correlated to the goal.
+
+        Regression test: the daemon's pursuit Agent used to be constructed
+        without a log_writer, so pursuit decisions and tool calls were never
+        logged at all.
+        """
+        store = HiveStore(hive_dir / "hive.db")
+        await store.initialize()
+        agent = await _seed_agent(store)
+
+        logs_dir = hive_dir.parent / "logs"
+        daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=logs_dir, profiles=["researcher"])
+
+        cycles_run = 0
+
+        async def _limited_run(max_cycles: int | None = None) -> None:
+            nonlocal cycles_run
+            while daemon._running and cycles_run < 2:
+                daemon._cycle_count += 1
+                cycles_run += 1
+                agents = await daemon._store.list_agents()
+                for a in [a for a in agents if a.is_alive()]:
+                    await daemon._run_agent_cycle(a)
+            daemon._running = False
+
+        daemon._run = _limited_run  # type: ignore[assignment]
+
+        with patch(
+            "hive.daemon.loop.create_runtime_provider",
+            side_effect=_mock_create_provider,
+        ):
+            await daemon.start()
+
+        decision_files = list(logs_dir.glob(f"runs/*/agents/{agent.agent_id}/decisions.jsonl"))
+        tool_files = list(logs_dir.glob(f"runs/*/agents/{agent.agent_id}/tools.jsonl"))
+        assert decision_files, "pursuit wrote no decisions.jsonl"
+        assert tool_files, "pursuit wrote no tools.jsonl"
+
+        goals = await store.list_agent_goals(agent.agent_id, limit=10)
+        goal_ids = {g["goal_id"] for g in goals}
+
+        decisions = [json.loads(line) for line in decision_files[0].read_text().splitlines()]
+        pursuit = [d for d in decisions if d.get("goal_id")]
+        assert pursuit, "no decision carries a goal_id"
+        assert pursuit[0]["goal_id"] in goal_ids
+        assert pursuit[0]["step_index"] >= 1
+
+        tools = [json.loads(line) for line in tool_files[0].read_text().splitlines()]
+        assert tools[0]["goal_id"] in goal_ids
+        assert tools[0]["step_index"] >= 1
+
+    @pytest.mark.asyncio
     async def test_goal_generation(self, hive_dir: Path) -> None:
         """ExistenceLoop generates a goal via the mocked provider."""
         from hive.agents.existence import ExistenceLoop

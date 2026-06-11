@@ -529,6 +529,8 @@ class HiveDaemon:
                     goal_id=active_goal["goal_id"],
                 )
             guardrails = build_guardrail_pipeline(get_config().guardrails)
+            # log_writer + goal_id wire pursuit decisions/tool calls into the
+            # run's structured JSONL logs, correlated to the active goal.
             if persona is not None:
                 runtime_agent = Agent(
                     name=agent.name,
@@ -538,6 +540,9 @@ class HiveDaemon:
                     tool_timeout=tool_timeout,
                     approval_gate=approval_gate,
                     guardrails=guardrails,
+                    log_writer=self._log,
+                    agent_id=agent.agent_id,
+                    goal_id=active_goal["goal_id"],
                 )
             else:
                 runtime_agent = Agent(
@@ -550,6 +555,9 @@ class HiveDaemon:
                     tool_timeout=tool_timeout,
                     approval_gate=approval_gate,
                     guardrails=guardrails,
+                    log_writer=self._log,
+                    agent_id=agent.agent_id,
+                    goal_id=active_goal["goal_id"],
                 )
             adapter = DaemonAgentAdapter(runtime_agent, agent.agent_id)
             # Give the pursuing agent its persistent self -- name and accumulated

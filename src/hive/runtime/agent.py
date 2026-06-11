@@ -82,6 +82,7 @@ class Agent:
         tool_timeout: float = 0.0,
         approval_gate: ApprovalGate | None = None,
         guardrails: GuardrailPipeline | None = None,
+        goal_id: str = "",
     ):
         self.name = name
         self._model = model
@@ -105,6 +106,10 @@ class Agent:
         self._temperature = temperature
         self._log_writer = log_writer
         self._agent_id = agent_id or name
+        # Correlates this run's DecisionLog/ToolLog entries with the goal being
+        # pursued (set by the daemon; empty for standalone/one-shot runs).
+        self._goal_id = goal_id
+        self._current_step = 0
         self._max_cost_usd = max_cost_usd
         self._max_tokens = max_tokens
         self._gen_max_tokens = max_tokens or 4096
@@ -538,6 +543,7 @@ class Agent:
 
         while steps < max_steps:
             steps += 1
+            self._current_step = steps
 
             try:
                 result = await self._generate_message(conversation.get_messages(), tool_schemas)
@@ -949,6 +955,8 @@ class Agent:
         self._log_writer.log_decision(
             DecisionLog(
                 agent_id=self._agent_id,
+                goal_id=self._goal_id,
+                step_index=step,
                 decision_type="react_step",
                 model=result.model,
                 input_tokens=result.input_tokens,
@@ -966,6 +974,8 @@ class Agent:
         self._log_writer.log_decision(
             DecisionLog(
                 agent_id=self._agent_id,
+                goal_id=self._goal_id,
+                step_index=step,
                 decision_type="react_step",
                 success=False,
                 response_raw=str(error),
@@ -986,6 +996,8 @@ class Agent:
         self._log_writer.log_tool(
             ToolLog(
                 agent_id=self._agent_id,
+                goal_id=self._goal_id,
+                step_index=self._current_step,
                 tool_name=name,
                 params_raw=params,
                 success=success,

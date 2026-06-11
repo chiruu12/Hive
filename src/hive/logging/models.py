@@ -41,6 +41,10 @@ class GoalLog(BaseModel):
 class DecisionLog(BaseModel):
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
     agent_id: str
+    # Correlation with the goal being pursued (empty for goal generation, where
+    # no goal exists yet). Defaulted so pre-existing JSONL logs still parse.
+    goal_id: str = ""
+    step_index: int = 0
     decision_type: str
     model: str = ""
     input_tokens: int = 0
