@@ -111,7 +111,9 @@ class _RegexGuardrail:
 _PII_PATTERNS: dict[str, re.Pattern[str]] = {
     "email": re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"),
     "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-    "credit_card": re.compile(r"\b(?:\d[ -]?){13,16}\b"),
+    # Separators only BETWEEN digits (not after the last), so the match never eats a
+    # trailing space/hyphen and glues the next word onto the redaction marker.
+    "credit_card": re.compile(r"\b\d(?:[ -]?\d){12,15}\b"),
     "phone": re.compile(r"\b(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}\b"),
     "ipv4": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
 }

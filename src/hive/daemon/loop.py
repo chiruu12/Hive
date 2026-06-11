@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import random
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -434,9 +435,15 @@ class HiveDaemon:
         approval_cfg = get_config().approval
         if approval_cfg.enabled and agent.status == AgentStatus.WAITING:
             if approval_cfg.timeout_cycles > 0:
-                await self._store.expire_approvals(
-                    agent.agent_id, self._cycle_count - approval_cfg.timeout_cycles
-                )
+                # Expire on wall-clock age (timeout_cycles * heartbeat seconds) rather
+                # than the in-process cycle counter, which resets to 0 on restart and
+                # would otherwise let a pending approval outlive its timeout (or never
+                # expire) across a daemon restart.
+                cutoff = (
+                    datetime.now(UTC)
+                    - timedelta(seconds=approval_cfg.timeout_cycles * self._heartbeat)
+                ).isoformat()
+                await self._store.expire_approvals(agent.agent_id, cutoff)
             if await self._store.get_pending_approvals(agent.agent_id):
                 return "waiting_approval"
 
@@ -991,7 +998,18 @@ class HiveDaemon:
             return
         logger.info("Resuming %d agents from previous run", len(resumable))
         for agent in resumable:
-            await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
+            # Keep a parked agent parked across the restart: an agent that is WAITING
+            # with a still-pending approval should retain WAITING + its active goal, so
+            # the park gate holds it next heartbeat instead of resetting to IDLE and
+            # burning a full LLM cycle before re-parking. (The cycle counter resets on
+            # restart, but the pending approval row persists.)
+            parked = bool(
+                get_config().approval.enabled
+                and agent.status == AgentStatus.WAITING
+                and await self._store.get_pending_approvals(agent.agent_id)
+            )
+            if not parked:
+                await self._store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
             cps = self._checkpoint.list_checkpoints(agent.agent_id)
             if cps:
                 snap = cps[0].suffering_snapshot
@@ -1026,10 +1044,11 @@ class HiveDaemon:
                                 agent.agent_id,
                                 exc_info=True,
                             )
-            active = await self._store.get_active_goal(agent.agent_id)
-            if active:
-                await self._store.abandon_goal(active["goal_id"])
-                logger.info("Abandoned stale goal %s for %s", active["goal_id"], agent.agent_id)
+            if not parked:
+                active = await self._store.get_active_goal(agent.agent_id)
+                if active:
+                    await self._store.abandon_goal(active["goal_id"])
+                    logger.info("Abandoned stale goal %s for %s", active["goal_id"], agent.agent_id)
 
     async def _shutdown(self) -> None:
         """Checkpoint all agents, then write life summaries if economy is on."""

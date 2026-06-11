@@ -65,6 +65,32 @@ def test_get_unknown_agent_404(client: TestClient) -> None:
     assert client.get("/agents/nope").status_code == 404
 
 
+def test_get_unknown_run_404(client: TestClient) -> None:
+    # A missing run must 404, not return 200 + {} (which is indistinguishable
+    # from an empty run).
+    assert client.get("/runs/does-not-exist").status_code == 404
+
+
+def test_healthz_ok_when_db_reachable(client: TestClient) -> None:
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "database": True}
+
+
+def test_healthz_503_when_db_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Make the readiness probe's DB call fail; the endpoint must report 503 so a
+    # container HEALTHCHECK detects the degraded instance.
+    async def boom() -> list[object]:
+        raise RuntimeError("database is unreachable")
+
+    monkeypatch.setattr(client.app.state.ctx.store, "list_agents", boom)
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "degraded", "database": False}
+
+
 def test_nudge(client: TestClient) -> None:
     agent_id = client.post("/agents", json={"preset": "coder"}).json()["agent_id"]
     resp = client.post(f"/agents/{agent_id}/nudge", json={"message": "hi"})

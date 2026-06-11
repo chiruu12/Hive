@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from hive.server.deps import ServerContext, get_context
 
@@ -32,13 +33,18 @@ async def status(ctx: ServerContext = Depends(get_context)) -> list[dict[str, An
 
 
 @router.get("/healthz")
-async def healthz(ctx: ServerContext = Depends(get_context)) -> dict[str, Any]:
-    """Liveness + readiness (DB reachable)."""
+async def healthz(response: Response, ctx: ServerContext = Depends(get_context)) -> dict[str, Any]:
+    """Liveness + readiness (DB reachable).
+
+    Returns 503 when the database is unreachable so container/orchestrator probes
+    (e.g. the image's HEALTHCHECK) actually detect a degraded instance.
+    """
     try:
         await ctx.store.list_agents()
         db_ok = True
     except Exception:
         db_ok = False
+    response.status_code = 200 if db_ok else 503
     return {"status": "ok" if db_ok else "degraded", "database": db_ok}
 
 
@@ -47,12 +53,19 @@ async def list_runs(ctx: ServerContext = Depends(get_context)) -> list[dict[str,
     from hive.logging.reader import LogReader
 
     reader = LogReader(ctx.root / "logs")
-    return [r.model_dump(mode="json") for r in reader.list_runs()]
+    # LogReader is fully synchronous (iterdir + read_text per run); run it off the
+    # event loop so it can't stall the API (and the in-process daemon under
+    # `serve --with-daemon`).
+    runs = await asyncio.to_thread(reader.list_runs)
+    return [r.model_dump(mode="json") for r in runs]
 
 
 @router.get("/runs/{run_id}")
-async def get_run(run_id: str, ctx: ServerContext = Depends(get_context)) -> dict[str, Any] | None:
+async def get_run(run_id: str, ctx: ServerContext = Depends(get_context)) -> dict[str, Any]:
     from hive.logging.reader import LogReader
 
     reader = LogReader(ctx.root / "logs")
-    return reader.get_summary(run_id)
+    summary = await asyncio.to_thread(reader.get_summary, run_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+    return summary

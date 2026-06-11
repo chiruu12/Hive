@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Streaming endpoint honored guardrails**: when guardrails are enabled, the SSE
+  task stream no longer forwards raw token deltas (which bypassed OUTPUT-stage PII
+  redaction); the terminal `done` event still carries the redacted final output.
+- **Approval timeout survives a daemon restart**: `timeout_cycles` is now evaluated on
+  the approval's persisted `created_at` (wall-clock `timeout_cycles * heartbeat`)
+  instead of the in-process cycle counter, which resets to 0 on restart.
+- **Parked agents stay parked on restart**: a `WAITING` agent with a pending approval
+  keeps its status and active goal across a restart instead of resetting to `IDLE` and
+  burning a cycle before re-parking.
+- **Non-blocking run-log endpoints**: `/runs` and `/runs/{id}` run the synchronous
+  `LogReader` off the event loop (`asyncio.to_thread`).
+- **`GET /runs/{id}` 404s for a missing run** (was 200 + `{}`); **`/healthz` returns
+  503** when the database is unreachable so container HEALTHCHECK probes detect it.
+- **PII credit-card redaction** no longer consumes the trailing separator (so the
+  redaction marker isn't glued onto the next word).
+
 ### Added
 - **REST API server (`hive serve`)**: a FastAPI control plane behind the optional
   `[api]` extra, exposing agents over HTTP -- spawn/list/get/kill, nudge, run-a-task,

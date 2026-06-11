@@ -17,18 +17,30 @@ if TYPE_CHECKING:
 async def stream_task(
     ctx: ServerContext, agent: AgentState, instruction: str, session_id: str, max_steps: int
 ) -> AsyncIterator[dict[str, str]]:
-    """Yield SSE events (``token`` deltas, then a terminal ``done``/``error``).
+    """Yield SSE events: an optional ``info`` notice, ``token`` deltas, then a
+    terminal ``done``/``error``.
 
     The Agent pushes text via ``on_text``; we funnel it through a queue so the
     coroutine running the task and the response stream stay decoupled. A sentinel
-    closes the stream when the run finishes.
+    closes the stream when the run finishes. When guardrails are enabled, token
+    deltas are suppressed and a single ``info`` event is emitted up-front.
     """
     from hive.server.runner import build_oneshot_agent
 
     queue: asyncio.Queue[str | None] = asyncio.Queue()
-    runtime_agent = build_oneshot_agent(
-        ctx, agent, session_id, on_text=lambda t: queue.put_nowait(t)
-    )
+    # Output guardrails (e.g. PII redaction) only run on the final result, but token
+    # deltas are raw. Streaming them would leak the unredacted content the
+    # non-streaming path masks. So when guardrails are enabled, don't forward token
+    # deltas -- the terminal `done` event still carries the redacted final output.
+    stream_tokens = not ctx.config.guardrails.enabled
+    on_text = (lambda t: queue.put_nowait(t)) if stream_tokens else None
+    runtime_agent = build_oneshot_agent(ctx, agent, session_id, on_text=on_text)
+
+    # Tell the client up-front when token streaming is intentionally suppressed, so a
+    # guardrailed run (which only emits the final `done`) is distinguishable from a
+    # hung connection and the client can show a non-incremental progress indicator.
+    if not stream_tokens:
+        yield {"event": "info", "data": "token_streaming_suppressed_by_guardrails"}
 
     async def _run() -> None:
         try:

@@ -89,6 +89,12 @@ curl -N -X POST localhost:8000/agents/coder/tasks/stream \
   -H 'Content-Type: application/json' -d '{"instruction":"summarize the repo"}'
 ```
 
+When **guardrails are enabled**, token deltas are suppressed (they would bypass
+OUTPUT-stage redaction); the stream opens with a single `info` event
+(`token_streaming_suppressed_by_guardrails`) and delivers only the redacted final
+output in the `done` event. Clients should treat `info` as a cue to show a
+non-incremental progress indicator.
+
 ## Sessions and multi-tenancy
 
 Requests carry a tenant via the `X-Hive-User` header (default `default`). A session

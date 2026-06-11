@@ -44,6 +44,13 @@ class TestPIIGuardrail:
     def test_clean_text_not_triggered(self) -> None:
         assert PIIGuardrail().inspect("nothing here", GuardrailStage.OUTPUT).triggered is False
 
+    def test_credit_card_does_not_eat_trailing_separator(self) -> None:
+        f = PIIGuardrail().inspect("pay 4111 1111 1111 1111 ok now", GuardrailStage.OUTPUT)
+        assert f.triggered
+        # The redaction marker must not glue onto the next word.
+        assert "[REDACTED:credit_card] ok now" in f.text
+        assert "4111" not in f.text
+
 
 class TestPromptInjection:
     @pytest.mark.parametrize(
