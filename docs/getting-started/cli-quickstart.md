@@ -125,6 +125,16 @@ guardrails:               # content checks on model input/output (off by default
   pii_action: redact      # flag | redact | block
   injection_action: block # flag | redact | block
 
+tools:                    # sandbox knobs for the file/shell toolkits
+  shell_pass_env: false   # pass API keys & other secrets to agent shell commands
+  shell_allow_dev_commands: true  # python/git/curl etc. (can escape the workspace jail)
+  file_max_read_bytes: 10000000   # refuse file reads larger than this
+  file_max_write_bytes: 10000000  # refuse file writes larger than this
+
+plugins:                  # plugin toolkits from .hive/plugins/
+  enabled: true
+  allowlist: []           # filenames/stems to load; empty = all
+
 event_log_fsync: false  # fsync every event-log append (crash-durable, slower)
 seed: null              # int for a reproducible world RNG; null = system entropy
 ```

@@ -10,6 +10,7 @@ Read, write, edit, and list files in the agent's workspace.
 from hive.runtime import FileToolkit
 
 tk = FileToolkit(workspace="./workspaces/coder")
+tk = FileToolkit(workspace="./workspaces/coder", max_read_bytes=1_000_000)
 ```
 
 | Tool | Parameters | Description |
@@ -19,6 +20,11 @@ tk = FileToolkit(workspace="./workspaces/coder")
 | `file_edit` | `path`, `old_text`, `new_text` | Replace a string in a file |
 | `list_dir` | `path="."`, `max_depth=2` | List directory tree |
 
+Reads and writes are capped at 10 MB by default (`max_read_bytes` /
+`max_write_bytes` constructor params, `tools.file_max_read_bytes` /
+`tools.file_max_write_bytes` in config) so an agent cannot load a multi-GB
+file into memory.
+
 ## ShellToolkit
 
 Execute shell commands with security restrictions.
@@ -27,13 +33,33 @@ Execute shell commands with security restrictions.
 from hive.runtime import ShellToolkit
 
 tk = ShellToolkit(workspace="./workspaces/coder", timeout=30, restrict=True)
+tk = ShellToolkit(workspace="./workspaces/coder", allow_dev_commands=False)
 ```
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `shell_exec` | `command` | Execute a shell command |
 
-When `restrict=True` (default), only whitelisted commands are allowed (71 commands including `ls`, `cat`, `python`, `git`, `npm`, `pytest`, `curl`, etc.) and shell operators (`&&`, `||`, `|`, `;`, `` ` ``) are blocked.
+When `restrict=True` (default), only allowlisted commands run and shell
+operators (`&&`, `||`, `|`, `;`, `` ` ``) are blocked. The allowlist has two
+tiers:
+
+- **Safe commands** -- file/text utilities that stay inside the workspace
+  (`ls`, `cat`, `grep`, `mkdir`, `jq`, ...).
+- **Dev commands** -- interpreters, package managers, VCS, and network tools
+  (`python`, `git`, `npm`, `pytest`, `curl`, ...). Enabled by default; pass
+  `allow_dev_commands=False` (or set `tools.shell_allow_dev_commands: false`
+  in config) to disable them for untrusted agents.
+
+With dev commands enabled the workspace jail is advisory, not a security
+boundary -- `python -c` or `git` can reach outside the workspace. Run inside
+a container when the agent is untrusted.
+
+Commands run with credential-looking environment variables scrubbed
+(`*_API_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, and provider prefixes like
+`ANTHROPIC_*`/`OPENAI_*`), so an agent cannot read your provider keys via
+`env`. Pass `pass_env=True` (or `tools.shell_pass_env: true` in config) to
+restore full environment inheritance.
 
 ## GitToolkit
 

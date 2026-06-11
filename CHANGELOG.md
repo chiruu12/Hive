@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Security
+- **Agent shell commands no longer see your API keys** — `shell_exec` now
+  scrubs credential-looking environment variables (`*_API_KEY`, `*_TOKEN`,
+  `*_SECRET`, `*_PASSWORD`, and provider prefixes such as `ANTHROPIC_*` /
+  `OPENAI_*` / `AWS_*`) from the subprocess environment. Previously an agent
+  could read every provider key by running `env`. Opt back into full
+  inheritance with `ShellToolkit(pass_env=True)` or `tools.shell_pass_env:
+  true` if your agents legitimately need those variables.
+
+### Added
+- **Tiered shell allowlist** — the restricted shell's commands are now split
+  into safe file/text utilities and dev commands (interpreters, package
+  managers, VCS, network tools). Dev commands stay enabled by default;
+  `ShellToolkit(allow_dev_commands=False)` or
+  `tools.shell_allow_dev_commands: false` confines an untrusted agent to the
+  safe tier. The docs now state plainly that with dev commands enabled the
+  workspace jail is advisory, not a security boundary.
+- **File toolkit size caps** — `file_read`/`file_edit` refuse files larger
+  than 10 MB (checked via `stat` before reading, so a multi-GB file can no
+  longer be pulled into memory) and `file_write`/`file_edit` refuse oversized
+  content. Configurable via `tools.file_max_read_bytes` /
+  `tools.file_max_write_bytes` or the toolkit constructor.
+- **Plugin gating** — `plugins.enabled: false` turns plugin discovery off and
+  `plugins.allowlist` restricts which files load (by filename or stem; empty
+  keeps the documented drop-in behavior). The loader now logs a warning the
+  first time it executes each plugin file.
+
 ### Fixed
 - **Daemon shutdown is now guaranteed** — `HiveDaemon.start()` runs its
   shutdown path (alarm-task teardown, shutdown checkpoints, life summaries)

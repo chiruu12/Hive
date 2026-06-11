@@ -13,15 +13,30 @@ logger = logging.getLogger(__name__)
 
 
 class PluginLoader:
-    """Scan directories for Python files that export Toolkit subclasses."""
+    """Scan directories for Python files that export Toolkit subclasses.
 
-    def __init__(self, plugin_dirs: list[Path]):
+    Plugin files execute with full process privileges -- there is no sandboxing
+    or signature verification. ``allowlist`` restricts loading to named files
+    (by filename or stem); ``enabled=False`` turns discovery off entirely.
+    """
+
+    def __init__(
+        self,
+        plugin_dirs: list[Path],
+        allowlist: list[str] | None = None,
+        enabled: bool = True,
+    ):
         self._dirs = plugin_dirs
+        self._allowlist = set(allowlist) if allowlist else None
+        self._enabled = enabled
         self._loaded: dict[str, type[Toolkit]] = {}
         self._seen_files: set[Path] = set()
+        self._skipped: set[Path] = set()
 
     def discover(self) -> list[type[Toolkit]]:
         """Scan plugin directories and return newly found Toolkit classes."""
+        if not self._enabled:
+            return []
         new_toolkits: list[type[Toolkit]] = []
         for d in self._dirs:
             if not d.is_dir():
@@ -29,9 +44,21 @@ class PluginLoader:
             for py_file in sorted(d.glob("*.py")):
                 if py_file.name.startswith("_"):
                     continue
+                if self._allowlist is not None and not (
+                    py_file.name in self._allowlist or py_file.stem in self._allowlist
+                ):
+                    if py_file not in self._skipped:
+                        self._skipped.add(py_file)
+                        logger.info("Skipping plugin %s (not in plugins.allowlist)", py_file.name)
+                    continue
                 if py_file in self._seen_files:
                     continue
                 self._seen_files.add(py_file)
+                logger.warning(
+                    "Executing plugin code from %s -- plugins run with full process "
+                    "privileges; only keep trusted files in plugin directories",
+                    py_file,
+                )
                 try:
                     tks = self._load_module(py_file)
                     new_toolkits.extend(tks)

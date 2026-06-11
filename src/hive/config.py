@@ -201,6 +201,41 @@ class GuardrailConfig(BaseModel):
     injection_action: Literal["flag", "redact", "block"] = "block"
 
 
+class ToolsConfig(BaseModel):
+    """Sandbox knobs for the built-in file and shell toolkits."""
+
+    # Pass the full parent environment (including API keys and other secrets)
+    # to agent-run shell commands. Off by default: provider credentials must
+    # not be readable via `env` inside an agent's shell.
+    shell_pass_env: bool = False
+    # Allow interpreters/VCS/network tools (python, git, curl, ...) in the
+    # restricted shell. These can escape the workspace jail, so disable them
+    # for untrusted agents.
+    shell_allow_dev_commands: bool = True
+    # Refuse file reads/writes beyond this many bytes (guards against OOM).
+    file_max_read_bytes: int = 10_000_000
+    file_max_write_bytes: int = 10_000_000
+
+    @field_validator("file_max_read_bytes", "file_max_write_bytes")
+    @classmethod
+    def _caps_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"file size caps must be >= 1, got {v}")
+        return v
+
+
+class PluginsConfig(BaseModel):
+    """Plugin toolkit loading from ``.hive/plugins/`` (and the parent ``plugins/``).
+
+    Plugins execute with full process privileges. ``allowlist`` (filenames or
+    stems) restricts which files load; empty means all, preserving the
+    documented drop-in workflow.
+    """
+
+    enabled: bool = True
+    allowlist: list[str] = Field(default_factory=list)
+
+
 class ModelConfig(BaseModel):
     default_model: str = "claude-haiku-4-5"
     planning_model: str = "claude-sonnet-4-6"
@@ -218,6 +253,8 @@ class HiveConfig(BaseModel):
     model: ModelConfig = ModelConfig()
     approval: ApprovalConfig = ApprovalConfig()
     guardrails: GuardrailConfig = GuardrailConfig()
+    tools: ToolsConfig = ToolsConfig()
+    plugins: PluginsConfig = PluginsConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).

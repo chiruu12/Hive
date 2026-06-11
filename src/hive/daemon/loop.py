@@ -142,11 +142,14 @@ class HiveDaemon:
 
         from hive.runtime.plugin_loader import PluginLoader
 
+        plugins_cfg = get_config().plugins
         self._plugin_loader = PluginLoader(
             [
                 hive_dir / "plugins",
                 hive_dir.parent / "plugins",
-            ]
+            ],
+            allowlist=plugins_cfg.allowlist or None,
+            enabled=plugins_cfg.enabled,
         )
         self._plugin_toolkits: list[type[Any]] = []
 
@@ -158,9 +161,18 @@ class HiveDaemon:
         workspace = self._hive_dir / "workspaces" / agent_id
         workspace.mkdir(parents=True, exist_ok=True)
 
+        tools_cfg = get_config().tools
         toolkits: list[Any] = [
-            FileToolkit(workspace=workspace),
-            ShellToolkit(workspace=workspace),
+            FileToolkit(
+                workspace=workspace,
+                max_read_bytes=tools_cfg.file_max_read_bytes,
+                max_write_bytes=tools_cfg.file_max_write_bytes,
+            ),
+            ShellToolkit(
+                workspace=workspace,
+                allow_dev_commands=tools_cfg.shell_allow_dev_commands,
+                pass_env=tools_cfg.shell_pass_env,
+            ),
             GitToolkit(workspace=workspace),
             MemoryToolkit(path=self._ctx.memory_dir),
             CommsToolkit(path=self._ctx.comms_dir),

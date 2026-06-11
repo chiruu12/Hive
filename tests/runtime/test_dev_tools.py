@@ -68,6 +68,31 @@ class TestFileToolkit:
         with pytest.raises(PermissionError):
             ft.file_write("../escape.txt", "bad")
 
+    def test_read_size_cap(self, tmp_path: Path) -> None:
+        ft = FileToolkit(tmp_path, max_read_bytes=10)
+        (tmp_path / "big.txt").write_text("x" * 100)
+        result = ft.file_read("big.txt")
+        assert "read limit" in result
+
+    def test_edit_read_size_cap(self, tmp_path: Path) -> None:
+        ft = FileToolkit(tmp_path, max_read_bytes=10)
+        (tmp_path / "big.txt").write_text("x" * 100)
+        result = ft.file_edit("big.txt", "x", "y")
+        assert "read limit" in result
+
+    def test_write_size_cap(self, tmp_path: Path) -> None:
+        ft = FileToolkit(tmp_path, max_write_bytes=10)
+        result = ft.file_write("big.txt", "x" * 100)
+        assert "write limit" in result
+        assert not (tmp_path / "big.txt").exists()
+
+    def test_edit_growth_over_write_cap(self, tmp_path: Path) -> None:
+        ft = FileToolkit(tmp_path, max_write_bytes=20)
+        ft.file_write("a.txt", "short")
+        result = ft.file_edit("a.txt", "short", "x" * 50)
+        assert "write limit" in result
+        assert (tmp_path / "a.txt").read_text() == "short"
+
 
 class TestShellToolkit:
     @pytest.fixture
@@ -196,6 +221,64 @@ class TestShellToolkit:
     def test_check_command_unrestricted_allows_all(self, tmp_path: Path) -> None:
         st = ShellToolkit(tmp_path, restrict=False)
         assert st._check_command("sudo rm -rf / && echo done") is None
+
+    @pytest.mark.asyncio
+    async def test_env_secrets_scrubbed_by_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_API_KEY", "sk-supersecret")
+        st = ShellToolkit(tmp_path, timeout=15)
+        result = await st.shell_exec(
+            "python3 -c \"print(__import__('os').environ.get('FAKE_API_KEY', 'MISSING'))\""
+        )
+        assert "MISSING" in result
+        assert "sk-supersecret" not in result
+
+    @pytest.mark.asyncio
+    async def test_env_passed_through_when_opted_in(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_API_KEY", "sk-supersecret")
+        st = ShellToolkit(tmp_path, timeout=15, pass_env=True)
+        result = await st.shell_exec(
+            "python3 -c \"print(__import__('os').environ.get('FAKE_API_KEY', 'MISSING'))\""
+        )
+        assert "sk-supersecret" in result
+
+    def test_scrub_covers_provider_prefixes(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path)
+        env = {
+            "ANTHROPIC_API_KEY": "a",
+            "OPENAI_API_KEY": "b",
+            "GROQ_API_KEY": "c",
+            "MY_TOKEN": "d",
+            "DB_PASSWORD": "e",
+            "PATH": "/usr/bin",
+            "LANG": "en_US.UTF-8",
+        }
+        with pytest.MonkeyPatch.context() as mp:
+            for k, v in env.items():
+                mp.setenv(k, v)
+            scrubbed = st._subprocess_env()
+        for secret in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "MY_TOKEN"):
+            assert secret not in scrubbed
+        assert "DB_PASSWORD" not in scrubbed
+        assert scrubbed["PATH"] == "/usr/bin"
+        assert scrubbed["LANG"] == "en_US.UTF-8"
+        assert scrubbed["HOME"] == str(st._workspace)
+
+    @pytest.mark.asyncio
+    async def test_dev_commands_blocked_when_disabled(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path, allow_dev_commands=False)
+        for cmd in ('python3 -c "print(1)"', "git status", "curl http://example.com"):
+            result = await st.shell_exec(cmd)
+            assert "not in allowlist" in result, cmd
+        result = await st.shell_exec("echo still works")
+        assert "still works" in result
+
+    def test_dev_commands_allowed_by_default(self, st: ShellToolkit) -> None:
+        assert st._check_command("git status") is None
+        assert st._check_command("python3 --version") is None
 
 
 class TestGitToolkit:
