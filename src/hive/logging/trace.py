@@ -118,7 +118,7 @@ class TraceBuilder:
                     Span(
                         span_id=f"{parent}/d{i}",
                         parent_span_id=parent,
-                        name=f"{d.decision_type} #{d.step_index or i}",
+                        name=f"{d.decision_type} #{i if d.step_index is None else d.step_index}",
                         kind="decision",
                         start=d.ts,
                         attributes={
