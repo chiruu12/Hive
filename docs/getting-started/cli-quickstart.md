@@ -140,6 +140,11 @@ retention:                # periodic DB cleanup (off by default)
   days: 30                # delete terminal rows older than this
   interval_cycles: 100    # run every N heartbeats
 
+server:                   # REST API hardening (all off by default)
+  api_key: ""             # require X-Hive-Key on data routes (or HIVE_API_KEY)
+  cors_origins: []        # allowed CORS origins; empty = none
+  session_ttl_hours: 0    # expire idle sessions after N hours; 0 = never
+
 event_log_fsync: false  # fsync every event-log append (crash-durable, slower)
 seed: null              # int for a reproducible world RNG; null = system entropy
 ```

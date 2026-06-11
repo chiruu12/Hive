@@ -57,6 +57,7 @@ _HTML = """<!DOCTYPE html>
   <h1>Hive <span>AgentOS</span></h1>
   <div class="meta">
     <label>user <input id="user" value="default" size="8"></label>
+    <label>key <input id="key" type="password" value="" size="10" placeholder="(none)"></label>
     <span id="clock">--</span>
   </div>
 </header>
@@ -67,7 +68,13 @@ _HTML = """<!DOCTYPE html>
 </main>
 <script>
 const $ = id => document.getElementById(id);
-const userHdr = () => ({ "X-Hive-User": $("user").value || "default" });
+// Tenant header always; API-key header only when the operator entered one
+// (matches server.api_key -- leave empty when the server has no key set).
+const userHdr = () => {
+  const h = { "X-Hive-User": $("user").value || "default" };
+  if ($("key").value) h["X-Hive-Key"] = $("key").value;
+  return h;
+};
 // Escape for HTML text AND attribute contexts (includes quotes), so untrusted
 // fields (ids, status, args) can't break out of an attribute or inject markup.
 const ESC = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
@@ -138,6 +145,7 @@ async function refresh() {
 }
 
 $("user").addEventListener("change", refresh);
+$("key").addEventListener("change", refresh);
 refresh();
 setInterval(refresh, 3000);
 </script>

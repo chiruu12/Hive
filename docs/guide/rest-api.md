@@ -3,13 +3,45 @@
 Hive can expose its agents over HTTP -- a FastAPI control-plane surface for
 spawning, running, streaming, and approving agents from any client.
 
-!!! warning "No built-in authentication"
-    The REST API ships **without authentication**, binds to `127.0.0.1` by default,
-    and treats `X-Hive-User` as a tenant *routing hint*, not a security boundary.
-    Agents are a single shared pool in this release, so the agents and approval
-    endpoints are a shared operator surface. For multi-user or networked
-    deployments, run it behind your own authentication/TLS proxy. Per-request session
-    rows are isolated by user; agent ownership / RBAC is on the roadmap.
+!!! warning "Authentication is opt-in"
+    The REST API binds to `127.0.0.1` and runs **without authentication by
+    default** (the local-first zero-config posture). Before exposing it beyond
+    localhost, set a shared API key -- `server.api_key` in `.hive/config.yaml`
+    or the `HIVE_API_KEY` env var -- and every route except `/healthz` and the
+    static UI/docs shells will require a matching `X-Hive-Key` header.
+    `X-Hive-User` remains a tenant *routing hint*, not a security boundary:
+    agents are a single shared pool in this release, so the agents and approval
+    endpoints are a shared operator surface. For multi-user or internet-facing
+    deployments, still front it with your own TLS/auth proxy; per-request
+    session rows are isolated by user, and agent ownership / RBAC is on the
+    roadmap.
+
+## Authentication, CORS, and session expiry
+
+```yaml
+# .hive/config.yaml
+server:
+  api_key: ""            # set to require X-Hive-Key on data routes (or HIVE_API_KEY)
+  cors_origins: []       # e.g. ["http://localhost:5173"]; empty = no CORS headers
+  session_ttl_hours: 0   # mark running sessions 'expired' after N idle hours; 0 = never
+```
+
+With a key set, pass it on every request; the control plane has a `key` field
+in its header bar that does the same:
+
+```bash
+curl -H "X-Hive-Key: $HIVE_API_KEY" http://127.0.0.1:8000/agents
+```
+
+Session expiry is enforced by the retention janitor (`retention.enabled`) and
+on session resolution: an expired session 404s when addressed by id, and a
+`session_key` lookup falls through to a fresh session.
+
+## Pagination
+
+`GET /agents`, `/approvals`, `/agents/{id}/approvals`, `/sessions`, and
+`/runs` accept `limit` (1-1000) and `offset` query parameters. Omitting
+`limit` returns the full result set (backward compatible).
 
 ## Install and run
 

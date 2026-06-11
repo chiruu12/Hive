@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from hive.server.deps import ServerContext, get_context
 
@@ -16,20 +16,18 @@ router = APIRouter(tags=["system"])
 async def status(ctx: ServerContext = Depends(get_context)) -> list[dict[str, Any]]:
     """Status of all agents (mirrors ``hive status``)."""
     agents = await ctx.store.list_agents()
-    out: list[dict[str, Any]] = []
-    for a in agents:
-        goal = await ctx.store.get_active_goal(a.agent_id)
-        out.append(
-            {
-                "agent_id": a.agent_id,
-                "name": a.name,
-                "role": a.role,
-                "model": a.model,
-                "status": a.status.value,
-                "goal": goal["objective"] if goal else None,
-            }
-        )
-    return out
+    goals = await ctx.store.get_active_goals_map()
+    return [
+        {
+            "agent_id": a.agent_id,
+            "name": a.name,
+            "role": a.role,
+            "model": a.model,
+            "status": a.status.value,
+            "goal": goals.get(a.agent_id),
+        }
+        for a in agents
+    ]
 
 
 @router.get("/healthz")
@@ -49,7 +47,11 @@ async def healthz(response: Response, ctx: ServerContext = Depends(get_context))
 
 
 @router.get("/runs")
-async def list_runs(ctx: ServerContext = Depends(get_context)) -> list[dict[str, Any]]:
+async def list_runs(
+    ctx: ServerContext = Depends(get_context),
+    limit: int | None = Query(None, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+) -> list[dict[str, Any]]:
     from hive.logging.reader import LogReader
 
     reader = LogReader(ctx.root / "logs")
@@ -57,6 +59,8 @@ async def list_runs(ctx: ServerContext = Depends(get_context)) -> list[dict[str,
     # event loop so it can't stall the API (and the in-process daemon under
     # `serve --with-daemon`).
     runs = await asyncio.to_thread(reader.list_runs)
+    if limit is not None:
+        runs = runs[offset : offset + limit]
     return [r.model_dump(mode="json") for r in runs]
 
 

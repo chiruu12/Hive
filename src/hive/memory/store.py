@@ -172,6 +172,15 @@ CREATE INDEX IF NOT EXISTS idx_delegations_to ON delegations(to_agent);
 # Latest schema version. Bump and append a step to _MIGRATIONS for each change.
 LATEST_SCHEMA_VERSION = 4
 
+
+def _paginate(limit: int | None, offset: int = 0) -> str:
+    """LIMIT/OFFSET suffix for list queries. ``None`` keeps the full result
+    (backward compatible). Values are coerced to int, never interpolated raw."""
+    if limit is None:
+        return ""
+    return f" LIMIT {int(limit)} OFFSET {int(offset)}"
+
+
 # Child tables rebuilt by migration 2 to add ON DELETE CASCADE on their FK to
 # agents. Each entry is (table, replacement CREATE SQL, explicit column list).
 # Explicit columns (not SELECT *) keep the copy order-independent -- legacy DBs
@@ -546,12 +555,22 @@ class HiveStore:
                     return None
                 return self._row_to_state(row)
 
-    async def list_agents(self) -> list[AgentState]:
+    async def list_agents(self, limit: int | None = None, offset: int = 0) -> list[AgentState]:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM agents ORDER BY spawned_at DESC") as cursor:
+            async with db.execute(
+                f"SELECT * FROM agents ORDER BY spawned_at DESC{_paginate(limit, offset)}"
+            ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_state(row) for row in rows]
+
+    async def get_active_goals_map(self) -> dict[str, str]:
+        """agent_id -> active-goal objective, in one query (avoids N+1 listings)."""
+        async with self._connect() as db:
+            async with db.execute(
+                "SELECT agent_id, objective FROM goals WHERE status = 'active'"
+            ) as cursor:
+                return {row[0]: row[1] for row in await cursor.fetchall()}
 
     async def update_agent_status(
         self, agent_id: str, status: AgentStatus, error: str | None = None
@@ -661,7 +680,11 @@ class HiveStore:
                 return dict(row) if row else None
 
     async def list_sessions(
-        self, user_id: str | None = None, agent_id: str | None = None
+        self,
+        user_id: str | None = None,
+        agent_id: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         clauses: list[str] = []
         values: list[Any] = []
@@ -675,7 +698,8 @@ class HiveStore:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                f"SELECT * FROM sessions {where} ORDER BY started_at DESC",
+                f"SELECT * FROM sessions {where} ORDER BY started_at DESC"
+                f"{_paginate(limit, offset)}",
                 tuple(values),
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
@@ -1166,21 +1190,26 @@ class HiveStore:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
-    async def get_pending_approvals(self, agent_id: str) -> list[dict[str, Any]]:
+    async def get_pending_approvals(
+        self, agent_id: str, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT * FROM approvals WHERE agent_id = ? AND status = 'pending' "
-                "ORDER BY created_at",
+                f"ORDER BY created_at{_paginate(limit, offset)}",
                 (agent_id,),
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
 
-    async def list_all_pending_approvals(self) -> list[dict[str, Any]]:
+    async def list_all_pending_approvals(
+        self, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         async with self._connect() as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at",
+                "SELECT * FROM approvals WHERE status = 'pending' "
+                f"ORDER BY created_at{_paginate(limit, offset)}",
             ) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
 
@@ -1325,14 +1354,18 @@ class HiveStore:
 
     # -- Retention janitor -------------------------------------------------
 
-    async def cleanup(self, days: int = 30) -> dict[str, int]:
+    async def cleanup(self, days: int = 30, session_ttl_hours: int = 0) -> dict[str, int]:
         """Delete terminal housekeeping rows older than ``days`` and auto-deny
         pending approvals belonging to DEAD agents.
 
         Only terminal rows are touched (resolved approvals, fired/cancelled
         alarms, delivered nudges, non-running sessions, finished delegations);
         pending work and the agents/goals tables are never deleted here.
-        Returns per-table deletion counts (plus ``dead_agent_approvals``).
+        When ``session_ttl_hours`` > 0, running sessions idle longer than the
+        TTL are marked ``expired`` (not deleted) first, so they both stop
+        resolving and age out on the next pass.
+        Returns per-table deletion counts (plus ``dead_agent_approvals`` and
+        ``expired_sessions``).
         """
         from datetime import timedelta
 
@@ -1340,6 +1373,15 @@ class HiveStore:
         cutoff = (now - timedelta(days=days)).isoformat()
         counts: dict[str, int] = {}
         async with self._connect() as db:
+            if session_ttl_hours > 0:
+                idle_cutoff = (now - timedelta(hours=session_ttl_hours)).isoformat()
+                cursor = await db.execute(
+                    """UPDATE sessions SET status = 'expired'
+                       WHERE status = 'running' AND last_active IS NOT NULL
+                       AND last_active < ?""",
+                    (idle_cutoff,),
+                )
+                counts["expired_sessions"] = cursor.rowcount
             cursor = await db.execute(
                 """UPDATE approvals
                    SET status = 'denied', reason = 'agent dead',

@@ -356,7 +356,10 @@ class HiveDaemon:
             retention = get_config().retention
             if retention.enabled and self._cycle_count % retention.interval_cycles == 0:
                 try:
-                    counts = await self._store.cleanup(days=retention.days)
+                    counts = await self._store.cleanup(
+                        days=retention.days,
+                        session_ttl_hours=get_config().server.session_ttl_hours,
+                    )
                     cleaned = {k: v for k, v in counts.items() if v}
                     if cleaned:
                         logger.info("Retention cleanup removed rows: %s", cleaned)

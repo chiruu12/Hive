@@ -223,5 +223,8 @@ All config lives in `.hive/config.yaml` and env vars.
 | `retention` | `enabled` | `bool` | `false` | Periodically delete terminal rows (resolved approvals, fired alarms, delivered nudges, finished sessions/delegations) and deny dead agents' pending approvals |
 | `retention` | `days` | `int` | `30` | Only rows older than this are deleted |
 | `retention` | `interval_cycles` | `int` | `100` | Run the janitor every N heartbeats |
+| `server` | `api_key` | `str` | `""` | Require `X-Hive-Key` on REST data routes; empty = no auth (also `HIVE_API_KEY`) |
+| `server` | `cors_origins` | `list[str]` | `[]` | Allowed CORS origins; empty = no CORS middleware |
+| `server` | `session_ttl_hours` | `int` | `0` | Expire running sessions idle longer than this (via the janitor); 0 = never |
 
 Env var overrides: `HIVE_HEARTBEAT`, `HIVE_DEFAULT_MODEL`, `HIVE_STARTING_BALANCE`, etc.

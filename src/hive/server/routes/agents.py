@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from hive.agents.profile import AgentProfile, default_profiles_dir
 from hive.agents.state import AgentState, AgentStatus
@@ -41,22 +41,24 @@ async def spawn_agent(
 
 
 @router.get("", response_model=list[AgentSummary])
-async def list_agents(ctx: ServerContext = Depends(get_context)) -> list[AgentSummary]:
-    agents = await ctx.store.list_agents()
-    summaries: list[AgentSummary] = []
-    for a in agents:
-        goal = await ctx.store.get_active_goal(a.agent_id)
-        summaries.append(
-            AgentSummary(
-                agent_id=a.agent_id,
-                name=a.name,
-                role=a.role,
-                model=a.model,
-                status=a.status.value,
-                goal=goal["objective"] if goal else None,
-            )
+async def list_agents(
+    ctx: ServerContext = Depends(get_context),
+    limit: int | None = Query(None, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+) -> list[AgentSummary]:
+    agents = await ctx.store.list_agents(limit=limit, offset=offset)
+    goals = await ctx.store.get_active_goals_map()
+    return [
+        AgentSummary(
+            agent_id=a.agent_id,
+            name=a.name,
+            role=a.role,
+            model=a.model,
+            status=a.status.value,
+            goal=goals.get(a.agent_id),
         )
-    return summaries
+        for a in agents
+    ]
 
 
 @router.get("/{agent_id}", response_model=AgentSummary)

@@ -12,6 +12,23 @@
   true` if your agents legitimately need those variables.
 
 ### Added
+- **Opt-in API-key auth for the REST server** — set `server.api_key` (or
+  `HIVE_API_KEY`) and every route except `/healthz` and the static UI/docs
+  shells requires a matching `X-Hive-Key` header (constant-time comparison).
+  Empty key (the default) keeps the server open, preserving the local-first
+  zero-config posture. The control-plane UI gained a `key` field so it keeps
+  working with auth enabled.
+- **CORS support** — `server.cors_origins` mounts FastAPI's CORS middleware
+  for the listed origins; empty (default) adds no headers.
+- **Pagination on list endpoints** — `GET /agents`, `/approvals`,
+  `/agents/{id}/approvals`, `/sessions`, and `/runs` accept `limit` (1-1000)
+  and `offset`; omitting `limit` returns everything, as before. The `/agents`
+  and `/status` endpoints also drop their per-agent N+1 goal lookups for a
+  single batched query.
+- **Session TTL** — `server.session_ttl_hours` marks running sessions
+  `expired` once idle longer than the TTL (enforced by the retention janitor);
+  expired sessions 404 by id and `session_key` lookups fall through to a
+  fresh session. Default 0 = never expire.
 - **Tiered shell allowlist** — the restricted shell's commands are now split
   into safe file/text utilities and dev commands (interpreters, package
   managers, VCS, network tools). Dev commands stay enabled by default;

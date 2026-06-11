@@ -236,6 +236,31 @@ class PluginsConfig(BaseModel):
     allowlist: list[str] = Field(default_factory=list)
 
 
+class ServerConfig(BaseModel):
+    """REST API server (`hive serve`) hardening knobs.
+
+    All defaults preserve the local-first, zero-config behavior: no auth, no
+    CORS, sessions never expire. Set ``api_key`` (or ``HIVE_API_KEY``) before
+    exposing the server beyond localhost.
+    """
+
+    # Shared bearer key checked against the X-Hive-Key header on every route
+    # except /healthz and the static UI/docs shells. Empty disables auth.
+    api_key: str = ""
+    # Allowed CORS origins; empty mounts no CORS middleware.
+    cors_origins: list[str] = Field(default_factory=list)
+    # Mark running sessions 'expired' once idle longer than this many hours
+    # (enforced by the retention janitor and on session resolve). 0 = never.
+    session_ttl_hours: int = 0
+
+    @field_validator("session_ttl_hours")
+    @classmethod
+    def _ttl_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"session_ttl_hours must be >= 0, got {v}")
+        return v
+
+
 class RetentionConfig(BaseModel):
     """Periodic cleanup of terminal housekeeping rows (off by default).
 
@@ -277,6 +302,7 @@ class HiveConfig(BaseModel):
     tools: ToolsConfig = ToolsConfig()
     plugins: PluginsConfig = PluginsConfig()
     retention: RetentionConfig = RetentionConfig()
+    server: ServerConfig = ServerConfig()
     profiles_dir: str = ""
     logs_dir: str = "logs"
     # fsync every event-log append for crash durability (one fsync per event).
@@ -308,6 +334,7 @@ class HiveConfig(BaseModel):
             "HIVE_LOGS_DIR": ("logs_dir", None, str),
             "HIVE_EVENT_LOG_FSYNC": ("event_log_fsync", None, _parse_bool),
             "HIVE_SEED": ("seed", None, int),
+            "HIVE_API_KEY": ("server", "api_key", str),
         }
 
         for env_key, (section, field, cast) in env_map.items():
