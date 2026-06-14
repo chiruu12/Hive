@@ -598,12 +598,16 @@ class HiveStore:
         agent_id: str,
         task: str,
     ) -> None:
+        now = datetime.now(UTC).isoformat()
         async with self._connect() as db:
             await db.execute(
+                # Set created_at/last_active too: the retention janitor deletes on
+                # created_at and expires idle sessions on last_active, so omitting
+                # them (NULL) left daemon sessions un-collectable forever.
                 """INSERT OR REPLACE INTO sessions
-                   (session_id, agent_id, task, status, started_at)
-                   VALUES (?, ?, ?, 'running', ?)""",
-                (session_id, agent_id, task, datetime.now(UTC).isoformat()),
+                   (session_id, agent_id, task, status, started_at, created_at, last_active)
+                   VALUES (?, ?, ?, 'running', ?, ?, ?)""",
+                (session_id, agent_id, task, now, now, now),
             )
             await db.commit()
 

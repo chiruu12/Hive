@@ -72,6 +72,9 @@ class HiveDaemon:
         self._heartbeat = heartbeat or cfg.daemon.heartbeat
         self._economy_enabled = cfg.economy.enabled
         self._running = False
+        # Set by stop() to break the heartbeat sleep immediately instead of
+        # waiting up to a full heartbeat. Created in start() (needs a running loop).
+        self._stop_event: asyncio.Event | None = None
         self._store = HiveStore(hive_dir / "hive.db")
         self._events = EventLog(hive_dir, fsync=cfg.event_log_fsync)
 
@@ -278,7 +281,7 @@ class HiveDaemon:
             self._economy_enabled,
         )
         self._running = True
-        self._pending_shutdown = False
+        self._stop_event = asyncio.Event()
         self._alarm_task = asyncio.create_task(self._alarm_check_loop())
         try:
             await self._run(max_cycles)
@@ -393,7 +396,15 @@ class HiveDaemon:
             if max_cycles is not None and cycles_run >= max_cycles:
                 break
 
-            await asyncio.sleep(self._heartbeat)
+            # Sleep the heartbeat, but wake immediately if stop() is called so
+            # Ctrl+C/SIGTERM isn't delayed by up to a full heartbeat.
+            if self._stop_event is not None:
+                try:
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=self._heartbeat)
+                except TimeoutError:
+                    pass
+            else:
+                await asyncio.sleep(self._heartbeat)
 
     async def _run_agent_cycle_guarded(
         self, agent: AgentState, cycle_timeout: int, sem: asyncio.Semaphore
@@ -869,7 +880,9 @@ class HiveDaemon:
 
             for event in events:
                 prompt = self._event_engine.format_event_prompt(event)
-                event_provider = create_runtime_provider(agent.model)
+                # Reuse the cached provider for this agent's model -- building a
+                # fresh client per event (never closed) leaked connection pools.
+                event_provider = self._get_provider(agent)
                 profile = self._load_profile(agent.name)
 
                 try:
@@ -1055,7 +1068,8 @@ class HiveDaemon:
 
     def stop(self) -> None:
         self._running = False
-        self._pending_shutdown = True
+        if self._stop_event is not None:
+            self._stop_event.set()
 
     async def _resume_agents(self) -> None:
         """Resume agents from a previous run, restoring suffering from checkpoints."""

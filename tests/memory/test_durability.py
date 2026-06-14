@@ -158,6 +158,40 @@ class TestRetentionJanitor:
         assert nudges == {"n-new"}
 
     @pytest.mark.asyncio
+    async def test_cleanup_removes_old_daemon_sessions(self, tmp_path: Path) -> None:
+        # Regression: save_session() used to omit created_at (NULL), so the
+        # janitor's `created_at < cutoff` never matched and daemon sessions
+        # accumulated forever.
+        db_path = tmp_path / "hive.db"
+        store = HiveStore(db_path)
+        await store.initialize()
+        await _seed_agent(store, "alive-0001", AgentStatus.IDLE)
+
+        await store.save_session("s-daemon", "alive-0001", "do work")
+        await store.complete_session("s-daemon")
+
+        # save_session must populate created_at (not NULL) for the janitor.
+        async with aiosqlite.connect(db_path) as db:
+            row = await (
+                await db.execute(
+                    "SELECT created_at FROM sessions WHERE session_id = 's-daemon'"
+                )
+            ).fetchone()
+            assert row[0] is not None
+            # Age it past the retention window.
+            old = (datetime.now(UTC) - timedelta(days=60)).isoformat()
+            await db.execute(
+                "UPDATE sessions SET created_at = ? WHERE session_id = 's-daemon'", (old,)
+            )
+            await db.commit()
+
+        counts = await store.cleanup(days=30)
+        assert counts["sessions"] == 1
+        async with aiosqlite.connect(db_path) as db:
+            remaining = await (await db.execute("SELECT COUNT(*) FROM sessions")).fetchone()
+        assert remaining[0] == 0
+
+    @pytest.mark.asyncio
     async def test_cleanup_denies_dead_agents_pending_approvals(self, tmp_path: Path) -> None:
         db_path = tmp_path / "hive.db"
         store = HiveStore(db_path)

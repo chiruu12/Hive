@@ -94,6 +94,29 @@ class TestShutdownAlwaysRuns:
         assert daemon._alarm_task.done()
 
 
+class TestHeartbeatInterruptible:
+    @pytest.mark.asyncio
+    async def test_stop_breaks_heartbeat_sleep(self, hive_dir: Path) -> None:
+        """stop() must wake the heartbeat sleep immediately, not after a full beat."""
+        store = HiveStore(hive_dir / "hive.db")
+        await store.initialize()
+        # A 100s heartbeat: if the sleep weren't interruptible, this test would
+        # hang well past its wait_for timeout.
+        daemon = HiveDaemon(hive_dir, heartbeat=100, logs_dir=hive_dir.parent / "logs")
+
+        task = asyncio.create_task(daemon.start())
+        # Wait until the daemon is in the loop (stop event created).
+        for _ in range(200):
+            if daemon._stop_event is not None:
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)  # let it reach the heartbeat sleep
+
+        daemon.stop()
+        await asyncio.wait_for(task, timeout=5)
+        assert not daemon._running
+
+
 class TestCycleErrorIsolation:
     @pytest.mark.asyncio
     async def test_store_failure_in_error_handler_spares_siblings(self, hive_dir: Path) -> None:
