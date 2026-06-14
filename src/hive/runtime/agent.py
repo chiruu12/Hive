@@ -510,26 +510,27 @@ class Agent:
 
         # Pre-hook: inspect the task input before the model sees it. A blocking
         # guardrail (e.g. prompt injection) refuses the run; a redacting one rewrites
-        # the instruction the model receives.
+        # the instruction the model receives. Guard the full input the model will
+        # actually see -- instruction *and* context -- so payloads hidden in
+        # task.context aren't a bypass (it is folded into the user message below).
         if self._guardrails:
-            finding = self._guardrails.run(task.instruction, GuardrailStage.INPUT)
-            if finding.triggered:
-                logger.warning(
-                    "Agent %r: input guardrail %s (%s)",
-                    self.name,
-                    finding.action.value,
-                    "; ".join(finding.reasons),
+            guard_text = task.instruction
+            if task.context:
+                context_str = "\n".join(f"{k}: {v}" for k, v in task.context.items())
+                guard_text = f"{task.instruction}\n\nContext:\n{context_str}"
+            block_reason, redacted = self._apply_input_guardrail(guard_text)
+            if block_reason is not None:
+                return TaskResult(
+                    task_id=task.id,
+                    status=TaskStatus.FAILED,
+                    output="",
+                    error=f"blocked by guardrail: {block_reason}",
+                    duration_seconds=time.time() - t0,
                 )
-                if finding.blocked:
-                    return TaskResult(
-                        task_id=task.id,
-                        status=TaskStatus.FAILED,
-                        output="",
-                        error=f"blocked by guardrail: {'; '.join(finding.reasons)}",
-                        duration_seconds=time.time() - t0,
-                    )
-                if finding.action is GuardrailAction.REDACT:
-                    task = task.model_copy(update={"instruction": finding.text})
+            if redacted != guard_text:
+                # Collapse to a single redacted instruction; context is already
+                # folded into the redacted text, so clear it to avoid double-emit.
+                task = task.model_copy(update={"instruction": redacted, "context": {}})
 
         tools = self.get_tools()
         tool_map = {t.name: t for t in tools}
@@ -590,20 +591,7 @@ class Agent:
             if not response.tool_calls:
                 # Post-hook: inspect the final output before returning it. A blocking
                 # guardrail withholds it; a redacting one masks matched spans (e.g. PII).
-                output = response.content
-                if self._guardrails:
-                    finding = self._guardrails.run(output, GuardrailStage.OUTPUT)
-                    if finding.triggered:
-                        logger.warning(
-                            "Agent %r: output guardrail %s (%s)",
-                            self.name,
-                            finding.action.value,
-                            "; ".join(finding.reasons),
-                        )
-                        if finding.blocked:
-                            output = "[output withheld by guardrail]"
-                        elif finding.action is GuardrailAction.REDACT:
-                            output = finding.text
+                output = self._apply_output_guardrail(response.content)
                 # The raw assistant message is already in the conversation; replace it
                 # with the sanitized output for the on-disk log too, so a redacting
                 # guardrail doesn't leak the unredacted content into the JSON log file.
@@ -648,6 +636,49 @@ class Agent:
             duration_seconds=time.time() - t0,
         )
 
+    def _apply_input_guardrail(self, text: str) -> tuple[str | None, str]:
+        """Run INPUT guardrails on ``text``.
+
+        Returns ``(block_reason, text)``. ``block_reason`` is a non-None string
+        when the run must be refused; otherwise it is None and ``text`` is the
+        (possibly redacted) input the model should receive.
+        """
+        if not self._guardrails:
+            return None, text
+        finding = self._guardrails.run(text, GuardrailStage.INPUT)
+        if not finding.triggered:
+            return None, text
+        logger.warning(
+            "Agent %r: input guardrail %s (%s)",
+            self.name,
+            finding.action.value,
+            "; ".join(finding.reasons),
+        )
+        if finding.blocked:
+            return "; ".join(finding.reasons), text
+        if finding.action is GuardrailAction.REDACT:
+            return None, finding.text
+        return None, text
+
+    def _apply_output_guardrail(self, text: str) -> str:
+        """Run OUTPUT guardrails on ``text``, returning the sanitized output."""
+        if not self._guardrails:
+            return text
+        finding = self._guardrails.run(text, GuardrailStage.OUTPUT)
+        if not finding.triggered:
+            return text
+        logger.warning(
+            "Agent %r: output guardrail %s (%s)",
+            self.name,
+            finding.action.value,
+            "; ".join(finding.reasons),
+        )
+        if finding.blocked:
+            return "[output withheld by guardrail]"
+        if finding.action is GuardrailAction.REDACT:
+            return finding.text
+        return text
+
     async def run_structured(
         self,
         task: Task,
@@ -657,14 +688,29 @@ class Agent:
         self._total_cost = 0.0
         self._total_tokens = 0
         t0 = time.time()
+
+        # INPUT guardrails over the full instruction + context (no tools here, so
+        # the approval gate doesn't apply, but injection/PII checks still do).
+        guard_text = task.instruction
+        if task.context:
+            context_str = "\n".join(f"{k}: {v}" for k, v in task.context.items())
+            guard_text = f"{task.instruction}\n\nContext:\n{context_str}"
+        block_reason, redacted = self._apply_input_guardrail(guard_text)
+        if block_reason is not None:
+            return StructuredTaskResult(
+                task_id=task.id,
+                status=TaskStatus.FAILED,
+                output="",
+                error=f"blocked by guardrail: {block_reason}",
+                steps_taken=0,
+                duration_seconds=time.time() - t0,
+                parsed=None,
+            )
+
         messages: list[Message] = []
         if self._system_prompt:
             messages.append(Message.system(self._system_prompt))
-        if task.context:
-            context_str = "\n".join(f"{k}: {v}" for k, v in task.context.items())
-            messages.append(Message.user(f"{task.instruction}\n\nContext:\n{context_str}"))
-        else:
-            messages.append(Message.user(task.instruction))
+        messages.append(Message.user(redacted))
 
         try:
             structured: StructuredGenerateResult[Any] = await self._model.generate_structured(
@@ -721,6 +767,16 @@ class Agent:
         self._cost_warned = False
         self._tokens_warned = False
 
+        # INPUT guardrails: refuse or redact before the model sees the request.
+        # (run_once previously skipped guardrails entirely, unlike _run_loop.)
+        block_reason, message = self._apply_input_guardrail(message)
+        if block_reason is not None:
+            return f"[blocked by guardrail: {block_reason}]"
+        if context is not None:
+            ctx_block, context = self._apply_input_guardrail(context)
+            if ctx_block is not None:
+                return f"[blocked by guardrail: {ctx_block}]"
+
         tools = self.get_tools()
         tool_map = {t.name: t for t in tools}
         tool_schemas = [t.to_schema() for t in tools] if tools else None
@@ -751,19 +807,46 @@ class Agent:
 
             if not response.tool_calls:
                 messages.append(response)
-                self._write_conversation_log("run_once", messages, "completed")
-                return response.content
+                output = self._apply_output_guardrail(response.content)
+                if output != response.content:
+                    log_messages = [*messages[:-1], Message.assistant(output)]
+                else:
+                    log_messages = messages
+                self._write_conversation_log("run_once", log_messages, "completed")
+                return output
 
             messages.append(response)
             for tc in response.tool_calls:
                 tool = tool_map.get(tc.name)
-                if tool:
-                    try:
-                        output = await tool.call(**(tc.arguments or {}))
-                    except Exception as e:
-                        output = f"Error: {e}"
-                else:
-                    output = f"Unknown tool: {tc.name}"
+                if tool is None:
+                    messages.append(Message.tool_result(tc.id, f"Unknown tool: {tc.name}"))
+                    continue
+                # Honor the HITL approval gate (run_once previously bypassed it).
+                if self._approval_gate is not None and self._approval_gate.requires_approval(tool):
+                    approval = await self._approval_gate.check(tc.name, tc.arguments or {})
+                    if approval.decision is ApprovalDecision.DENIED:
+                        reason = approval.reason or "no reason given"
+                        messages.append(
+                            Message.tool_result(
+                                tc.id,
+                                f"Tool '{tc.name}' was denied by a human reviewer: {reason}",
+                            )
+                        )
+                        continue
+                    if approval.decision is ApprovalDecision.PENDING:
+                        # No persistence in run_once: report back and skip execution.
+                        messages.append(
+                            Message.tool_result(
+                                tc.id,
+                                f"Awaiting human approval to run '{tc.name}' "
+                                f"(approval {approval.approval_id}).",
+                            )
+                        )
+                        continue
+                try:
+                    output = await tool.call(**(tc.arguments or {}))
+                except Exception as e:
+                    output = f"Error: {e}"
                 messages.append(Message.tool_result(tc.id, output))
 
         # Enforce the budget before the wrap-up generation too -- otherwise an
@@ -795,8 +878,13 @@ class Agent:
         self._total_tokens += final_result.input_tokens + final_result.output_tokens
         self._total_cost += final_result.cost_usd or 0.0
         messages.append(final_result.message)
-        self._write_conversation_log("run_once", messages, "completed")
-        return final_result.message.content
+        output = self._apply_output_guardrail(final_result.message.content)
+        if output != final_result.message.content:
+            log_messages = [*messages[:-1], Message.assistant(output)]
+        else:
+            log_messages = messages
+        self._write_conversation_log("run_once", log_messages, "completed")
+        return output
 
     def run_once_sync(
         self,
@@ -832,7 +920,19 @@ class Agent:
 
         Returns:
             An instance of output_type validated from the LLM response.
+
+        Raises:
+            RuntimeError: if an INPUT guardrail blocks the request.
         """
+        # INPUT guardrails (no tools here, so the approval gate doesn't apply).
+        block_reason, message = self._apply_input_guardrail(message)
+        if block_reason is not None:
+            raise RuntimeError(f"blocked by guardrail: {block_reason}")
+        if context is not None:
+            ctx_block, context = self._apply_input_guardrail(context)
+            if ctx_block is not None:
+                raise RuntimeError(f"blocked by guardrail: {ctx_block}")
+
         messages: list[Message] = []
         if self._system_prompt:
             messages.append(Message.system(self._system_prompt))
