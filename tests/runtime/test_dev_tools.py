@@ -267,6 +267,41 @@ class TestShellToolkit:
         assert scrubbed["LANG"] == "en_US.UTF-8"
         assert scrubbed["HOME"] == str(st._workspace)
 
+    def test_scrub_covers_db_and_extra_credentials(self, tmp_path: Path) -> None:
+        # Regression: the original denylist missed DB URLs, bare *_KEY, SSH/GH
+        # creds, etc. -- an agent could read them via `env`.
+        st = ShellToolkit(tmp_path)
+        env = {
+            "DATABASE_URL": "postgres://u:p@h/db",
+            "REDIS_URL": "redis://h:6379",
+            "MONGODB_URI": "mongodb://u:p@h",
+            "PGPASSWORD": "p",
+            "STRIPE_KEY": "sk_live_x",
+            "SSH_PRIVATE_KEY": "----",
+            "GH_TOKEN": "ghp_x",
+            "SESSION_SECRET": "s",
+            "MY_SERVICE_PASS": "p",
+            "PATH": "/usr/bin",
+        }
+        with pytest.MonkeyPatch.context() as mp:
+            for k, v in env.items():
+                mp.setenv(k, v)
+            scrubbed = st._subprocess_env()
+        for secret in (
+            "DATABASE_URL",
+            "REDIS_URL",
+            "MONGODB_URI",
+            "PGPASSWORD",
+            "STRIPE_KEY",
+            "SSH_PRIVATE_KEY",
+            "GH_TOKEN",
+            "SESSION_SECRET",
+            "MY_SERVICE_PASS",
+        ):
+            assert secret not in scrubbed, secret
+        # Non-secret operational vars still pass through.
+        assert scrubbed["PATH"] == "/usr/bin"
+
     @pytest.mark.asyncio
     async def test_dev_commands_blocked_when_disabled(self, tmp_path: Path) -> None:
         st = ShellToolkit(tmp_path, allow_dev_commands=False)

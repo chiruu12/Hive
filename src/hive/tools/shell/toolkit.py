@@ -13,10 +13,20 @@ from hive.tools.base import Toolkit, tool
 logger = logging.getLogger(__name__)
 
 # Environment keys never passed to agent-run subprocesses unless pass_env=True:
-# anything that looks like a credential, plus known provider/cloud prefixes.
+# anything that looks like a credential, plus known provider/cloud prefixes and
+# common connection strings. We err on the side of over-scrubbing -- dropping a
+# non-secret var from an untrusted agent's subprocess is harmless, leaking a real
+# secret is not. Use pass_env=True to restore full inheritance for trusted runs.
 _SECRET_ENV = re.compile(
-    r"(_API_KEY|_TOKEN|_SECRET|_PASSWORD|_CREDENTIALS)$"
-    r"|^(ANTHROPIC|OPENAI|GROQ|FIREWORKS|OPENROUTER|DEEPGRAM|AWS|AZURE|GOOGLE)_"
+    # Credential-looking suffixes.
+    r"(_API_KEY|_KEY|_TOKEN|_SECRET|_SECRETS|_PASSWORD|_PASSWD|_PASS|_PWD"
+    r"|_CREDENTIAL|_CREDENTIALS|_AUTH|_DSN|_PRIVATE_KEY|_ACCESS_KEY|_SESSION_TOKEN)$"
+    # Known provider / cloud / tooling prefixes.
+    r"|^(ANTHROPIC|OPENAI|GROQ|FIREWORKS|OPENROUTER|DEEPGRAM|AWS|AZURE|GCP|GOOGLE"
+    r"|GITHUB|GITLAB|GH|SSH|STRIPE|TWILIO|SLACK|HF|HUGGINGFACE|NPM|DOCKER|VAULT|PG)_"
+    # Specific connection-string / credential vars not covered by the above.
+    r"|^(DATABASE_URL|DATABASE_URI|DB_URL|DB_URI|REDIS_URL|MONGODB_URI|MONGO_URL"
+    r"|PGPASSWORD|PGUSER|SECRET_KEY|PRIVATE_KEY|ACCESS_TOKEN|SESSION_SECRET)$"
 )
 
 
