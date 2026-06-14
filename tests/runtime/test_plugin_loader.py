@@ -77,12 +77,16 @@ class AnotherClass:
         plugin_dir: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
+        import sys
+
         _write_plugin(plugin_dir / "broken.py", "raise RuntimeError('boom')")
 
         loader = PluginLoader([plugin_dir])
         found = loader.discover()
         assert len(found) == 0
         assert "Failed to load plugin broken.py" in caplog.text
+        # The half-initialized module must not linger in sys.modules.
+        assert not any(m.startswith("hive_plugin_broken_") for m in sys.modules)
 
     def test_same_file_not_loaded_twice(self, plugin_dir: Path) -> None:
         _write_plugin(

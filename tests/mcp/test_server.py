@@ -94,7 +94,10 @@ class TestToolsCall:
                 "params": {"name": "hive_spawn", "arguments": {}},  # missing "profile"
             }
         )
-        assert resp["result"]["content"][0]["text"].startswith("Error:")
+        text = resp["result"]["content"][0]["text"]
+        assert text.startswith("Error:")
+        # The error names the missing argument instead of an opaque KeyError.
+        assert "profile" in text
 
 
 class TestHandleTool:

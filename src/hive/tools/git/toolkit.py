@@ -77,7 +77,9 @@ class GitToolkit(Toolkit):
         Args:
             path: File or directory to stage.
         """
-        return self._run_git("add", path)
+        # `--` terminates option parsing so a path like "--renormalize" is
+        # treated as a pathspec, not a git flag.
+        return self._run_git("add", "--", path)
 
     @tool()
     def git_commit(self, message: str) -> str:

@@ -22,7 +22,6 @@ class HiveMCPServer:
         self._hive_dir = hive_dir or Path.cwd() / ".hive"
         self._store = HiveStore(self._hive_dir / "hive.db")
         self._daemon_task: asyncio.Task[None] | None = None
-        self._request_id = 0
 
     def _tools(self) -> list[dict[str, Any]]:
         return [
@@ -117,6 +116,13 @@ class HiveMCPServer:
             },
         ]
 
+    @staticmethod
+    def _require(args: dict[str, Any], *keys: str) -> None:
+        """Validate that required arguments are present (per the tool's schema)."""
+        missing = [k for k in keys if k not in args]
+        if missing:
+            raise ValueError(f"missing required argument(s): {', '.join(missing)}")
+
     async def handle_tool(self, name: str, args: dict[str, Any]) -> str:
         """Execute a tool and return the result as text."""
         if name == "hive_init":
@@ -131,12 +137,16 @@ class HiveMCPServer:
         if name == "hive_status":
             return await self._status()
         if name == "hive_spawn":
+            self._require(args, "profile")
             return await self._spawn(args["profile"])
         if name == "hive_kill":
+            self._require(args, "agent")
             return await self._kill(args["agent"])
         if name == "hive_nudge":
+            self._require(args, "agent", "message")
             return await self._nudge(args["agent"], args["message"])
         if name == "hive_logs":
+            self._require(args, "agent")
             return await self._logs(args["agent"], args.get("limit", 20))
         if name == "hive_models":
             return await self._models()
@@ -317,13 +327,9 @@ class HiveMCPServer:
             writer_transport, writer_protocol, None, asyncio.get_event_loop()
         )
 
-        await self._send(
-            writer,
-            {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-            },
-        )
+        # Per the MCP lifecycle, `notifications/initialized` is sent by the
+        # *client* after it receives the server's `initialize` result -- the
+        # server must not emit it (and certainly not before initialize).
 
         while True:
             line = await reader.readline()

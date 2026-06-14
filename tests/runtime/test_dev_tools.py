@@ -347,6 +347,16 @@ class TestGitToolkit:
         result = gt.git_diff()
         assert "Changed" in result
 
+    def test_add_treats_dash_path_as_pathspec(self, gt: GitToolkit, tmp_path: Path) -> None:
+        # A leading-dash path must be staged as a file, not parsed as a git
+        # option (the toolkit inserts `--` before the pathspec).
+        (tmp_path / "-x.txt").write_text("tricky name")
+        gt.git_add("-x.txt")
+        # The commit only succeeds if the dash-named file was actually staged;
+        # without `--`, `git add -x.txt` would error and stage nothing.
+        result = gt.git_commit("add dash file")
+        assert "add dash file" in result
+
     def test_init_new_repo(self, tmp_path: Path) -> None:
         new_dir = tmp_path / "fresh"
         new_dir.mkdir()
