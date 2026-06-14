@@ -1,6 +1,7 @@
 """Tests for the suffering system."""
 
 from hive.agents.suffering import (
+    MAX_SUFFERING_HISTORY,
     StressorType,
     SufferingState,
     assess_conditions,
@@ -49,6 +50,15 @@ def test_resolve_stressor():
     assert len(s.active) == 0
     assert len(s.history) == 1
     assert s.history[0].resolution_note == "completed 2 goals"
+
+
+def test_history_is_capped():
+    # Resolved-stressor history must not grow without bound over an agent's life.
+    s = SufferingState(agent_id="test")
+    for _ in range(MAX_SUFFERING_HISTORY + 25):
+        s.add_stressor(StressorType.FUTILITY, "stuck", "complete a goal")
+        s.resolve(StressorType.FUTILITY, "done")
+    assert len(s.history) == MAX_SUFFERING_HISTORY
 
 
 def test_force_reset():

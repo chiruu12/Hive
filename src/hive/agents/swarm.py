@@ -1,5 +1,6 @@
 """Swarm learning — collective intelligence from agent outcomes."""
 
+from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,6 +8,11 @@ from pydantic import BaseModel, Field
 
 from hive.agents.specialization import SpecializationTracker
 from hive.memory.store import HiveStore
+
+# Cap retained learning reports. SwarmLearning is a daemon-lifetime singleton
+# that appends one report per cycle; only the latest and the trend over recent
+# reports are ever read, so an uncapped list just leaked memory.
+MAX_REPORTS = 200
 
 
 class Recommendation(BaseModel):
@@ -51,7 +57,7 @@ class SwarmLearning:
         self._store = store
         self._tracker = tracker
         self._cycle_count = 0
-        self._reports: list[LearningReport] = []
+        self._reports: deque[LearningReport] = deque(maxlen=MAX_REPORTS)
         self._patterns: list[SwarmPattern] = []
 
     async def run_cycle(self, agent_ids: list[str]) -> LearningReport:

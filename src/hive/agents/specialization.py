@@ -1,8 +1,15 @@
 """Specialization tracker — profile what each agent is good at."""
 
+from collections import defaultdict, deque
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
+
+# Cap retained task records per agent. The tracker is a daemon-lifetime
+# singleton and record() fires on every goal outcome, so an uncapped history
+# grew without bound (and made _recompute scan it all). Recent records dominate
+# specialization anyway (route_score caps sample_count at 10).
+MAX_HISTORY_PER_AGENT = 200
 
 
 class TaskPerformance(BaseModel):
@@ -33,7 +40,9 @@ class SpecializationTracker:
     """Track task outcomes per agent and compute specialization profiles."""
 
     def __init__(self) -> None:
-        self._history: list[TaskPerformance] = []
+        self._history: dict[str, deque[TaskPerformance]] = defaultdict(
+            lambda: deque(maxlen=MAX_HISTORY_PER_AGENT)
+        )
         self._profiles: dict[str, SpecializationProfile] = {}
 
     def record(
@@ -44,7 +53,7 @@ class SpecializationTracker:
         duration_ms: int = 0,
         action_used: str = "",
     ) -> None:
-        self._history.append(
+        self._history[agent_id].append(
             TaskPerformance(
                 agent_id=agent_id,
                 task_type=task_type,
@@ -84,7 +93,7 @@ class SpecializationTracker:
         return scored[0][1]
 
     def _recompute(self, agent_id: str) -> None:
-        records = [r for r in self._history if r.agent_id == agent_id]
+        records = list(self._history.get(agent_id, ()))
         if not records:
             return
 

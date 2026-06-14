@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 
 from hive.config import get_config
 
+# Cap resolved-stressor history retained per agent. It is persisted in
+# checkpoints and accumulates for the agent's whole life; only recent entries
+# inform anticipated_warning, so an uncapped list just grew checkpoints forever.
+MAX_SUFFERING_HISTORY = 500
+
 
 class StressorType(StrEnum):
     FUTILITY = "futility"
@@ -154,6 +159,7 @@ class SufferingState(BaseModel):
                 remaining.append(s)
         self.active = remaining
         self.history.extend(resolved)
+        self._trim_history()
 
     def force_reset(self, reason: str) -> None:
         for s in self.active:
@@ -162,6 +168,12 @@ class SufferingState(BaseModel):
             s.resolution_note = f"force_reset: {reason}"
         self.history.extend(self.active)
         self.active = []
+        self._trim_history()
+
+    def _trim_history(self) -> None:
+        """Keep only the most recent MAX_SUFFERING_HISTORY resolved stressors."""
+        if len(self.history) > MAX_SUFFERING_HISTORY:
+            del self.history[:-MAX_SUFFERING_HISTORY]
 
     def prompt_fragment(self) -> str:
         cfg = get_config().suffering
