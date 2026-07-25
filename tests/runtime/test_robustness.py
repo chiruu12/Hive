@@ -198,51 +198,47 @@ class TestDelegationToolkit:
 
 class TestGoalValidation:
     def test_too_short(self) -> None:
-        from hive.agents.existence import ExistenceLoop
+        from hive.agents.goal_persistence import validate_goal
 
-        result = ExistenceLoop._validate_goal("hi", [])
+        result = validate_goal("hi", [])
         assert result is not None
         assert "short" in result
 
     def test_too_long(self) -> None:
-        from hive.agents.existence import ExistenceLoop
+        from hive.agents.goal_persistence import validate_goal
 
-        result = ExistenceLoop._validate_goal("x" * 600, [])
+        result = validate_goal("x" * 600, [])
         assert result is not None
         assert "long" in result
 
     def test_duplicate_active(self) -> None:
-        from hive.agents.existence import ExistenceLoop
+        from hive.agents.goal_persistence import validate_goal
 
         recent = [{"objective": "Learn Python basics", "status": "active"}]
-        result = ExistenceLoop._validate_goal("Learn Python basics", recent)
+        result = validate_goal("Learn Python basics", recent)
         assert result is not None
         assert "duplicate" in result
 
     def test_similar_to_abandoned(self) -> None:
-        from hive.agents.existence import ExistenceLoop
+        from hive.agents.goal_persistence import validate_goal
 
         recent = [{"objective": "Learn Python programming and write tests", "status": "abandoned"}]
-        result = ExistenceLoop._validate_goal(
-            "Learn Python programming and write documentation", recent
-        )
+        result = validate_goal("Learn Python programming and write documentation", recent)
         assert result is not None
         assert "similar" in result
 
     def test_valid_goal_passes(self) -> None:
-        from hive.agents.existence import ExistenceLoop
+        from hive.agents.goal_persistence import validate_goal
 
         recent = [{"objective": "Something completely different", "status": "completed"}]
-        result = ExistenceLoop._validate_goal(
-            "Research testing best practices for the team", recent
-        )
+        result = validate_goal("Research testing best practices for the team", recent)
         assert result is None
 
     def test_different_goal_passes(self) -> None:
-        from hive.agents.existence import ExistenceLoop
+        from hive.agents.goal_persistence import validate_goal
 
         recent = [{"objective": "Learn Python", "status": "abandoned"}]
-        result = ExistenceLoop._validate_goal("Write documentation for the API endpoints", recent)
+        result = validate_goal("Write documentation for the API endpoints", recent)
         assert result is None
 
 

@@ -50,7 +50,8 @@ async def create_session(
         metadata=metadata,
     )
     row = await ctx.store.get_session(session_id)
-    assert row is not None
+    if row is None:
+        raise HTTPException(status_code=500, detail="session creation failed")
     return _to_summary(row)
 
 

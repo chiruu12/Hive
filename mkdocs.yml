@@ -58,9 +58,11 @@ nav:
     - SDK Quickstart: getting-started/quickstart.md
     - CLI Quickstart: getting-started/cli-quickstart.md
   - Guide:
+    - System Overview: guide/system-overview.md
     - Developer Guide: guide/developer-guide.md
     - Built-in Toolkits: guide/toolkits.md
     - Daemon Mode: guide/daemon-mode.md
+    - Prompt Assembly: guide/prompt-assembly.md
     - Suffering System: guide/suffering.md
     - Persona System: guide/persona.md
     - CLI Reference: guide/cli-reference.md

@@ -2,6 +2,8 @@
 
 Hive is a local-first autonomous agent OS. Agents are persistent entities driven by a daemon heartbeat loop, with tools, memory, suffering, and multi-model support.
 
+For a user-facing tour of surfaces and capabilities, see [System Overview](system-overview.md). For how LLM context is built each cycle, see [Prompt Assembly](prompt-assembly.md).
+
 ## Directory Structure
 
 ```
@@ -17,7 +19,7 @@ src/hive/
 │   ├── profile.py    # AgentProfile -- YAML-driven configuration
 │   ├── state.py      # AgentState, AgentStatus enum
 │   ├── existence.py  # ExistenceLoop -- autonomous goal generation
-│   ├── goal_strategy.py # GoalStrategy protocol, GoalContext, Goal
+│   ├── goal_strategy.py # GoalStrategy protocol, GoalContext, GeneratedGoal
 │   ├── suffering.py  # SufferingState, StressorRegistry, stressor types
 │   ├── identity.py   # IdentityManager -- narrative and opinions
 │   ├── delegation.py # DelegationEngine -- inter-agent task routing
@@ -210,19 +212,24 @@ All config lives in `.hive/config.yaml` and env vars.
 | `daemon` | `cycle_timeout` | `int` | `300` | Per-agent cycle timeout in seconds (0 = none) |
 | `daemon` | `max_concurrent_agents` | `int` | `8` | Max agent cycles run concurrently per heartbeat |
 | `daemon` | `tool_timeout` | `float` | `60.0` | Per-tool wall-clock limit in seconds (0 = none); a hung tool becomes a tool-error instead of stalling the cycle |
+| `daemon` | `budget_usd` | `float` | `0.0` | Daemon-wide USD spend limit; goal pursuit is blocked once exceeded (0 = unlimited; also `HIVE_BUDGET_USD`) |
+| `daemon` | `budget_tokens` | `int` | `0` | Daemon-wide token spend limit, same kill-switch as `budget_usd` (0 = unlimited; also `HIVE_BUDGET_TOKENS`) |
+| `daemon` | `guards_fail_closed` | `bool` | `true` | Built-in budget guard exceptions block the phase (set `false` for legacy fail-open behavior) |
 | `model` | `default_model` | `str` | `claude-haiku-4-5` | Default LLM model |
 | `model` | `planning_model` | `str` | `claude-sonnet-4-6` | Model for planning tasks |
 | `model` | `max_tokens` | `int` | `4096` | Max generation tokens |
 | `model` | `temperature` | `float` | `0.0` | Generation temperature |
 | `tools` | `shell_pass_env` | `bool` | `false` | Pass secrets (API keys, tokens) to agent shell commands; scrubbed by default |
-| `tools` | `shell_allow_dev_commands` | `bool` | `true` | Allow python/git/curl etc. in the restricted shell (these can escape the workspace jail) |
+| `tools` | `shell_allow_dev_commands` | `bool` | `false` | Allow python/git/curl etc. in the restricted shell (opt-in; these can escape the workspace jail) |
 | `tools` | `file_max_read_bytes` | `int` | `10000000` | Refuse file reads larger than this |
 | `tools` | `file_max_write_bytes` | `int` | `10000000` | Refuse file writes larger than this |
-| `plugins` | `enabled` | `bool` | `true` | Load plugin toolkits from `.hive/plugins/` |
+| `tools` | `sub_agent_toolkits` | `list[str] \| null` | `null` | Toolkit allowlist for spawned sub-agents; `null` uses the secure built-in default (excludes shell, git, delegation, schedule, orchestrator, plugins, world). Parent agents always get the full set. |
+| `plugins` | `enabled` | `bool` | `false` | Load plugin toolkits from `.hive/plugins/` (off by default; agents can write plugin files that hot-load with full process privileges) |
 | `plugins` | `allowlist` | `list[str]` | `[]` | Only load these plugin filenames/stems; empty = all |
 | `retention` | `enabled` | `bool` | `false` | Periodically delete terminal rows (resolved approvals, fired alarms, delivered nudges, finished sessions/delegations) and deny dead agents' pending approvals |
 | `retention` | `days` | `int` | `30` | Only rows older than this are deleted |
 | `retention` | `interval_cycles` | `int` | `100` | Run the janitor every N heartbeats |
+| `retention` | `max_runs` | `int` | `50` | Keep at most this many run-log directories under `logs/`; oldest are deleted first (0 = unlimited) |
 | `server` | `api_key` | `str` | `""` | Require `X-Hive-Key` on REST data routes; empty = no auth (also `HIVE_API_KEY`) |
 | `server` | `cors_origins` | `list[str]` | `[]` | Allowed CORS origins; empty = no CORS middleware |
 | `server` | `session_ttl_hours` | `int` | `0` | Expire running sessions idle longer than this (via the janitor); 0 = never |

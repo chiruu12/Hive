@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -57,16 +56,17 @@ class TestClaudeCodeSession:
         s = ClaudeCodeSession(task="build api", workspace="/w", model="sonnet")
         result = await s.wait()
 
-        mock_exec.assert_called_once_with(
+        mock_exec.assert_called_once()
+        call = mock_exec.call_args
+        assert call.args[:6] == (
             "claude",
             "-p",
             "build api",
             "--model",
             "sonnet",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd="/w",
         )
+        assert call.kwargs["cwd"] == "/w"
+        assert call.kwargs["env"]["HOME"] == "/w"
         assert result.output == "result text"
         assert result.exit_code == 0
         assert result.tool == "claude"
@@ -154,15 +154,11 @@ class TestCodexSession:
         s = CodexSession(task="write tests", workspace="/w", model="o4-mini")
         result = await s.wait()
 
-        mock_exec.assert_called_once_with(
-            "codex",
-            "--model",
-            "o4-mini",
-            "write tests",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd="/w",
-        )
+        mock_exec.assert_called_once()
+        call = mock_exec.call_args
+        assert call.args[:4] == ("codex", "--model", "o4-mini", "write tests")
+        assert call.kwargs["cwd"] == "/w"
+        assert call.kwargs["env"]["HOME"] == "/w"
         assert result.output == "codex output"
         assert result.tool == "codex"
         assert result.model == "o4-mini"

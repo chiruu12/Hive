@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import logging
 import sys
@@ -72,13 +73,22 @@ class PluginLoader:
 
     def _load_module(self, path: Path) -> list[type[Toolkit]]:
         """Import a Python file and extract Toolkit subclasses."""
-        module_name = f"hive_plugin_{path.stem}"
+        # Suffix the module name with a hash of the absolute path so two plugins
+        # sharing a filename stem in different directories don't collide (and
+        # silently shadow each other) in sys.modules.
+        path_hash = hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:8]
+        module_name = f"hive_plugin_{path.stem}_{path_hash}"
         spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:
             return []
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            # Don't leave a half-initialized module registered on failure.
+            sys.modules.pop(module_name, None)
+            raise
 
         toolkits: list[type[Toolkit]] = []
         for attr_name in dir(module):

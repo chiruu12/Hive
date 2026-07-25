@@ -11,14 +11,13 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from hive.agents.approval import ApprovalPolicy, StoreApprovalGate
-from hive.agents.profile import AgentProfile, default_profiles_dir
+from hive.agents.profile import AgentProfile, resolve_profiles_dir
 from hive.agents.state import AgentState
+from hive.daemon.secure_toolkit_factory import build_minimal
 from hive.models.factory import create_runtime_provider
 from hive.runtime import Agent
 from hive.runtime.guardrails import build_guardrail_pipeline
 from hive.runtime.persona import Persona
-from hive.tools.comms import CommsToolkit
-from hive.tools.memory import MemoryToolkit
 
 if TYPE_CHECKING:
     from hive.server.deps import ServerContext
@@ -35,15 +34,16 @@ def build_oneshot_agent(
     memory_dir = ctx.hive_dir / "agent_memory"
     comms_dir = ctx.hive_dir / "comms"
 
-    toolkits: list[object] = [
-        MemoryToolkit(memory_dir, agent.agent_id),
-        CommsToolkit(comms_dir, agent.agent_id),
-    ]
-    if ctx.config.economy.enabled:
-        from hive.tools.world import WorldToolkit
-        from hive.world.state import WorldState
-
-        toolkits.insert(0, WorldToolkit(WorldState(ctx.hive_dir), agent.agent_id))
+    guardrails = build_guardrail_pipeline(ctx.config.guardrails)
+    toolkits = build_minimal(
+        hive_dir=ctx.hive_dir,
+        agent_id=agent.agent_id,
+        comms_dir=comms_dir,
+        memory_dir=memory_dir,
+        guardrails=guardrails,
+        unified_memory=ctx.config.memory.unified,
+        economy_enabled=ctx.config.economy.enabled,
+    )
 
     approval_gate = None
     if ctx.config.approval.enabled:
@@ -53,10 +53,9 @@ def build_oneshot_agent(
             agent.agent_id,
             session_id=session_id,
         )
-    guardrails = build_guardrail_pipeline(ctx.config.guardrails)
 
     try:
-        profile = AgentProfile.from_preset(agent.name, default_profiles_dir())
+        profile = AgentProfile.from_preset(agent.name, resolve_profiles_dir(ctx.hive_dir))
     except Exception:
         profile = None
 
@@ -65,7 +64,7 @@ def build_oneshot_agent(
             name=agent.name,
             model=provider,
             persona=Persona.from_profile(profile),
-            toolkits=toolkits,  # type: ignore[arg-type]
+            toolkits=toolkits,
             agent_id=agent.agent_id,
             on_text=on_text,
             approval_gate=approval_gate,
@@ -82,7 +81,7 @@ def build_oneshot_agent(
         name=agent.name,
         model=provider,
         system_prompt=system_prompt,
-        toolkits=toolkits,  # type: ignore[arg-type]
+        toolkits=toolkits,
         agent_id=agent.agent_id,
         on_text=on_text,
         approval_gate=approval_gate,

@@ -17,7 +17,7 @@ src/hive/
 │   ├── profile.py    # AgentProfile — YAML-driven configuration
 │   ├── state.py      # AgentState, AgentStatus enum
 │   ├── existence.py  # ExistenceLoop — autonomous goal generation
-│   ├── goal_strategy.py # GoalStrategy protocol, GoalContext, Goal
+│   ├── goal_strategy.py # GoalStrategy protocol, GoalContext, GeneratedGoal
 │   ├── suffering.py  # SufferingState, StressorRegistry, stressor types
 │   ├── identity.py   # IdentityManager — narrative and opinions
 │   ├── delegation.py # DelegationEngine — inter-agent task routing

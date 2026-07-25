@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import httpx
 import pytest
 
 from hive.memory.semantic import SemanticMemory
 from hive.tools.links.toolkit import LinkToolkit
+from hive.tools.url_safety import SafeFetchResult
 
 
 @pytest.fixture
@@ -22,14 +22,6 @@ def toolkit(memory: SemanticMemory) -> LinkToolkit:
     tk = LinkToolkit(memory=memory)
     tk.bind("test-agent")
     return tk
-
-
-def _mock_async_client(mock_resp: MagicMock) -> AsyncMock:
-    mock_client = AsyncMock()
-    mock_client.get.return_value = mock_resp
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    return mock_client
 
 
 class TestLinkToolkit:
@@ -45,14 +37,10 @@ class TestLinkToolkit:
     @pytest.mark.asyncio
     async def test_save_link(self, toolkit: LinkToolkit) -> None:
         html = "<html><head><title>Test Page</title></head><body><p>Content here</p></body></html>"
-        mock_resp = MagicMock()
-        mock_resp.text = html
-        mock_resp.headers = {"content-type": "text/html"}
-        mock_resp.raise_for_status = MagicMock()
-
         with patch(
-            "hive.tools.links.toolkit.httpx.AsyncClient",
-            return_value=_mock_async_client(mock_resp),
+            "hive.tools.links.toolkit.fetch_url_safe",
+            new_callable=AsyncMock,
+            return_value=SafeFetchResult(ok=True, text=html, content_type="text/html"),
         ):
             result = await toolkit.save_link("https://example.com", tags="test", notes="my note")
 
@@ -61,12 +49,11 @@ class TestLinkToolkit:
 
     @pytest.mark.asyncio
     async def test_save_link_fetch_failure(self, toolkit: LinkToolkit) -> None:
-        mock_client = AsyncMock()
-        mock_client.get.side_effect = httpx.RequestError("timeout")
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("hive.tools.links.toolkit.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "hive.tools.links.toolkit.fetch_url_safe",
+            new_callable=AsyncMock,
+            return_value=SafeFetchResult(ok=False, error="Request failed: timeout"),
+        ):
             result = await toolkit.save_link("https://example.com/broken")
 
         assert "Saved link" in result
@@ -107,14 +94,10 @@ class TestLinkToolkit:
     @pytest.mark.asyncio
     async def test_scrape_link(self, toolkit: LinkToolkit) -> None:
         html = "<html><body><p>Scraped content here.</p></body></html>"
-        mock_resp = MagicMock()
-        mock_resp.text = html
-        mock_resp.headers = {"content-type": "text/html"}
-        mock_resp.raise_for_status = MagicMock()
-
         with patch(
-            "hive.tools.links.toolkit.httpx.AsyncClient",
-            return_value=_mock_async_client(mock_resp),
+            "hive.tools.links.toolkit.fetch_url_safe",
+            new_callable=AsyncMock,
+            return_value=SafeFetchResult(ok=True, text=html, content_type="text/html"),
         ):
             result = await toolkit.scrape_link("https://example.com")
 
@@ -122,12 +105,11 @@ class TestLinkToolkit:
 
     @pytest.mark.asyncio
     async def test_scrape_link_error(self, toolkit: LinkToolkit) -> None:
-        mock_client = AsyncMock()
-        mock_client.get.side_effect = httpx.RequestError("fail")
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("hive.tools.links.toolkit.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "hive.tools.links.toolkit.fetch_url_safe",
+            new_callable=AsyncMock,
+            return_value=SafeFetchResult(ok=False, error="Request failed: fail"),
+        ):
             result = await toolkit.scrape_link("https://example.com/broken")
 
         assert "Request failed" in result

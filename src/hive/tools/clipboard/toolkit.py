@@ -8,13 +8,17 @@ import platform
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hive.tools._process import kill_and_reap
 from hive.tools.base import Toolkit, tool
 
 if TYPE_CHECKING:
+    from hive.memory.protocol import StoreProtocol
     from hive.memory.semantic import SemanticMemory
-    from hive.memory.store import HiveStore
 
 logger = logging.getLogger(__name__)
+
+# Named for byte budget in the hardening spec; enforced on string length (chars).
+MAX_CLIPBOARD_BYTES = 10_000
 
 
 async def _copy_to_system_clipboard(text: str) -> bool:
@@ -28,6 +32,7 @@ async def _copy_to_system_clipboard(text: str) -> bool:
         logger.warning("Clipboard not supported on %s", system)
         return False
 
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -38,6 +43,7 @@ async def _copy_to_system_clipboard(text: str) -> bool:
         await asyncio.wait_for(proc.communicate(input=text.encode()), timeout=5)
         return proc.returncode == 0
     except Exception as e:
+        await kill_and_reap(proc)
         logger.warning("Clipboard copy failed: %s", e)
         return False
 
@@ -56,6 +62,7 @@ async def _read_from_system_clipboard() -> str | None:
         logger.warning("Clipboard not supported on %s", system)
         return None
 
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -67,6 +74,7 @@ async def _read_from_system_clipboard() -> str | None:
             return None
         return stdout.decode("utf-8", errors="replace")
     except Exception as e:
+        await kill_and_reap(proc)
         logger.warning("Clipboard read failed: %s", e)
         return None
 
@@ -84,12 +92,12 @@ class ClipboardToolkit(Toolkit):
 
     def __init__(
         self,
-        store: HiveStore | None = None,
+        store: StoreProtocol | None = None,
         memory: SemanticMemory | None = None,
         db_path: str | Path | None = None,
         memory_dir: str | Path | None = None,
     ) -> None:
-        self._store: HiveStore | None = None
+        self._store: StoreProtocol | None = None
         self._memory: SemanticMemory | None = None
         self._memory_dir: Path | None = None
         self._initialized = False
@@ -159,6 +167,11 @@ class ClipboardToolkit(Toolkit):
         text = text.strip()
         if not text:
             return "The clipboard is empty."
+        if len(text) > MAX_CLIPBOARD_BYTES:
+            return (
+                f"Clipboard content truncated ({len(text)} chars > {MAX_CLIPBOARD_BYTES} limit):\n"
+                f"{text[:MAX_CLIPBOARD_BYTES]}..."
+            )
         return text
 
     @tool()

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from hive.agents.profile import AgentProfile, default_profiles_dir
+from hive.agents.profile import AgentProfile, resolve_profiles_dir
 from hive.agents.state import AgentState, AgentStatus
 from hive.daemon.loop import HiveDaemon
 from hive.daemon.setup import ensure_hive_dirs, initialize_hive
@@ -86,7 +86,7 @@ class Hive:
         model: str | None = None,
     ) -> str:
         """Spawn an agent from a preset profile. Returns agent_id."""
-        profiles_dir = default_profiles_dir()
+        profiles_dir = resolve_profiles_dir(self._hive_dir)
         profile = AgentProfile.from_preset(preset, profiles_dir)
         if model:
             profile.model = model
@@ -159,6 +159,9 @@ class Hive:
         agent_id = self._resolve_agent(agent)
         nudge_id = f"nudge-{uuid4().hex[:8]}"
         _run_sync(store.save_nudge(nudge_id, agent_id, message))
+        from hive.daemon.wakeup import touch_nudge_wake_file
+
+        touch_nudge_wake_file(self._hive_dir, nudge_id)
 
     def inspect(self, run_id: str) -> dict[str, Any] | None:
         """Get summary of a recorded run."""

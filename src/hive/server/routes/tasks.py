@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
 from hive.runtime.types import Task
@@ -26,7 +26,8 @@ async def run_task(
     """Run a single task on an agent now, independent of the heartbeat loop."""
     resolved = await resolve_agent_id(ctx.store, agent_id)
     agent = await ctx.store.get_agent(resolved)
-    assert agent is not None
+    if agent is None:
+        raise HTTPException(status_code=404, detail="agent not found")
     session_id = await ctx.sessions.resolve(
         user, resolved, body.instruction, body.session_id, body.session_key
     )
@@ -54,7 +55,8 @@ async def stream_task_endpoint(
     """Run a task and stream token deltas over Server-Sent Events."""
     resolved = await resolve_agent_id(ctx.store, agent_id)
     agent = await ctx.store.get_agent(resolved)
-    assert agent is not None
+    if agent is None:
+        raise HTTPException(status_code=404, detail="agent not found")
     session_id = await ctx.sessions.resolve(
         user, resolved, body.instruction, body.session_id, body.session_key
     )

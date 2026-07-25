@@ -1,9 +1,8 @@
 """Daemon-level human-in-the-loop: park on pending approval, resume on resolve.
 
 Drives ``_run_agent_cycle`` directly (one call == one heartbeat) rather than
-``start()``, because ``start()``'s resume path abandons active goals -- which would
-also discard a parked agent's goal between restarts. Per-cycle control lets us
-assert the park/resume transitions precisely.
+``start()``, because per-cycle control lets us assert park/resume transitions
+precisely without running the full heartbeat loop.
 """
 
 from __future__ import annotations

@@ -2,6 +2,31 @@
 
 Every extension point with copy-paste code examples.
 
+## Unified memory (daemon + tools)
+
+When `memory.unified: true` (default), agents have **one** semantic store at
+`.hive/memory/<agent_id>/` shared by the daemon pursuit loop, goal generation,
+`MemoryToolkit`, and `KnowledgeToolkit`. Legacy JSON KV files under
+`.hive/agent_memory/` migrate once on first access.
+
+```mermaid
+flowchart LR
+    MT["MemoryToolkit<br/>memory_set / memory_get"]
+    KT["KnowledgeToolkit<br/>knowledge_store"]
+    SM["SemanticMemory<br/>.hive/memory/agent_id/"]
+    DA["Daemon pursuit<br/>PersistentMemory recall"]
+    GG["Goal generation<br/>memory_snippets"]
+
+    MT --> SM
+    KT --> SM
+    DA --> SM
+    GG --> SM
+```
+
+Standalone SDK tasks can still attach `PersistentMemory(hive_dir=...)` directly;
+in daemon mode the adapter wraps the same `SemanticMemory` instance from
+`AgentContextCache`.
+
 ## 1. Custom Toolkit
 
 Create a `Toolkit` subclass with methods decorated by `@tool()`. JSON Schema is auto-extracted from type hints and docstrings.
@@ -213,30 +238,29 @@ async def test_brainstorm_pattern(tmp_path):
 ## 5. Custom Goal Strategy
 
 Implement the `GoalStrategy` protocol to control how agents generate goals when idle.
+Every call must return a `GeneratedGoal` with `cost_usd` and `tokens` set from any LLM
+work, even when `objective` is `None`.
 
 ```python
-from hive import GoalStrategy, GoalContext, Goal
-from uuid import uuid4
+from hive import GoalStrategy, GoalContext, GeneratedGoal
+from pathlib import Path
 
 class PrioritizedGoalStrategy:
     """Generate goals based on suffering and nudges."""
 
-    async def generate_goal(self, context: GoalContext) -> Goal | None:
+    async def generate_goal(self, context: GoalContext) -> GeneratedGoal:
         # Prioritize user nudges
         if context.nudges:
-            return Goal(
-                goal_id=f"goal-{uuid4().hex[:8]}",
+            return GeneratedGoal(
                 objective=f"Address user request: {context.nudges[0]}",
-                reasoning="User nudge takes priority",
             )
         # High suffering → self-care
         if context.suffering.cumulative_load > 0.7:
-            return Goal(
-                goal_id=f"goal-{uuid4().hex[:8]}",
+            return GeneratedGoal(
                 objective="Focus on resolving active stressors",
-                reasoning=f"Suffering load at {context.suffering.cumulative_load:.0%}",
             )
-        return None  # Fall through to default behavior
+        # LLM call with no actionable goal — still report spend
+        return GeneratedGoal(objective=None, cost_usd=0.0, tokens=0)
 
 # Pass to daemon
 from hive import HiveDaemon
@@ -246,7 +270,7 @@ daemon = HiveDaemon(hive_dir=Path(".hive"), goal_strategy=PrioritizedGoalStrateg
 ```python
 # Test
 import pytest
-from hive import GoalContext, GoalStrategy, SufferingState
+from hive import GoalContext, GeneratedGoal, SufferingState
 from hive.agents.profile import AgentProfile
 
 @pytest.mark.asyncio
@@ -261,9 +285,9 @@ async def test_prioritized_strategy():
         nudges=["Please write docs"],
         recent_goals=[],
     )
-    goal = await strategy.generate_goal(ctx)
-    assert goal is not None
-    assert "write docs" in goal.objective.lower()
+    result = await strategy.generate_goal(ctx)
+    assert result.objective is not None
+    assert "write docs" in result.objective.lower()
 ```
 
 ## 6. Daemon Hooks
@@ -304,6 +328,99 @@ async def test_hook_fires():
     hooks.on("goal_completed", lambda **kw: captured.append(kw))
     await hooks.emit("goal_completed", agent_id="a1", goal_id="g1")
     assert captured[0] == {"agent_id": "a1", "goal_id": "g1"}
+```
+
+## 6b. Phase Guards
+
+Veto entry into a cycle phase. The daemon divides each agent cycle into
+phases (`approval_gate`, `suffering_escalation`, `context_assembly`,
+`goal_pursuit`, `goal_generation`, `cleanup`); a guard registered for a
+phase can block it -- the cycle then returns `"guarded"` instead of running
+that phase. Built-ins: `CostBudgetGuard` (budget kill-switch on goal phases)
+and `ManualPauseGuard` (daemon freeze on all phases, wired by default).
+
+Safety-critical guards should pass `fail_closed=True` to `register_guard` so
+an internal error blocks the phase instead of allowing it through (the daemon
+applies this to built-in budget guards when `daemon.guards_fail_closed` is
+`true`).
+
+```python
+from hive.daemon.gates import CostBudgetGuard
+from hive.daemon.phase import CyclePhase, PhaseGate
+
+class NightShiftGuard:
+    """Only let agents burn tokens during office hours."""
+
+    async def should_proceed(self, gate: PhaseGate) -> bool:
+        from datetime import datetime
+        return 9 <= datetime.now().hour < 18
+
+daemon.hooks.register_guard(CyclePhase.GOAL_PURSUIT, NightShiftGuard())
+
+# Safety-critical example: block the phase if the guard raises
+daemon.hooks.register_guard(
+    CyclePhase.GOAL_PURSUIT, CostBudgetGuard(), fail_closed=True
+)
+```
+
+```python
+# Test
+import pytest
+from hive.daemon.hooks import HookRegistry
+from hive.daemon.phase import CyclePhase, PhaseGate
+
+@pytest.mark.asyncio
+async def test_guard_vetoes():
+    hooks = HookRegistry()
+
+    class Deny:
+        async def should_proceed(self, gate: PhaseGate) -> bool:
+            return False
+
+    hooks.register_guard(CyclePhase.GOAL_PURSUIT, Deny())
+    gate = PhaseGate(phase=CyclePhase.GOAL_PURSUIT, agent_id="a1", cycle_num=1)
+    assert await hooks.check_guards(gate) is False
+```
+
+## 6c. Custom Wake Source
+
+Wake the daemon before the heartbeat elapses. The daemon races every
+registered `WakeSource` against the heartbeat timer and starts the next
+cycle as soon as one fires. `A2AWakeSource` (A2A inbox) and `NudgeWakeSource`
+(nudge marker files) are wired by default; optional `daemon.watch_files` adds
+`FileWakeSource` per path. Implement `async def wait(self) -> str` returning a short
+event label:
+
+```python
+import asyncio
+
+class WebhookWakeSource:
+    """Wake when an external system drops a marker file."""
+
+    def __init__(self, marker: Path):
+        self._marker = marker
+
+    async def wait(self) -> str:
+        while not self._marker.exists():
+            await asyncio.sleep(1.0)
+        self._marker.unlink()
+        return "webhook"
+
+daemon.add_wake_source(WebhookWakeSource(Path(".hive/wake.marker")))
+```
+
+## 6d. Custom Swarm Policy
+
+Control how the daemon logs swarm-learning recommendations (e.g. role
+respecialization hints). `DefaultSwarmPolicy` emits verbose routing-hint logs;
+`PassiveSwarmPolicy` is the default (debug-level only). Neither policy mutates
+goals or routes tasks autonomously. Implement `handle_recommendation` and
+pass the policy to the daemon:
+
+```python
+from hive.agents.swarm_policy import PassiveSwarmPolicy
+
+daemon = HiveDaemon(hive_dir=Path(".hive"), swarm_policy=PassiveSwarmPolicy())
 ```
 
 ## 7. Custom Agent Profile
@@ -474,7 +591,18 @@ Implement the `Trigger` protocol for custom trigger types.
 
 ## 11. Plugin System
 
-Drop a Python file containing a `Toolkit` subclass in `.hive/plugins/`. It's auto-discovered and loaded every 10 daemon cycles.
+Drop a Python file containing a `Toolkit` subclass in `.hive/plugins/`. Enable
+plugin loading in `.hive/config.yaml` first (disabled by default for security --
+plugins execute arbitrary Python with full process privileges, and agents can
+write new plugin files that hot-load every 10 daemon cycles):
+
+```yaml
+plugins:
+  enabled: true
+  allowlist: []   # optional: restrict to named files/stems
+```
+
+Once enabled, plugins are auto-discovered and loaded every 10 daemon cycles.
 
 ```python
 # .hive/plugins/calculator.py

@@ -10,6 +10,8 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import uuid4
 
+from hive.tools._env import scrub_secrets_from_env
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,6 +88,7 @@ class ClaudeCodeSession:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=self._workspace,
+            env=scrub_secrets_from_env(workspace=self._workspace),
         )
 
     async def wait(self) -> SessionResult:
@@ -176,6 +179,7 @@ class CodexSession:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=self._workspace,
+            env=scrub_secrets_from_env(workspace=self._workspace),
         )
 
     async def wait(self) -> SessionResult:

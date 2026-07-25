@@ -51,6 +51,12 @@ tiers:
   `allow_dev_commands=False` (or set `tools.shell_allow_dev_commands: false`
   in config) to disable them for untrusted agents.
 
+**Path jail (restricted mode):** File paths must stay inside the workspace.
+Absolute paths outside the workspace, `../` escapes, tilde/env expansion
+(`~/foo`, `$HOME/foo`), and flag-value file operands (`grep -f /etc/passwd`,
+`sort -o /tmp/out`) are rejected before the command runs. Use
+workspace-relative paths only (`foo`, `./foo`, `sort -o out.txt lines.txt`).
+
 With dev commands enabled the workspace jail is advisory, not a security
 boundary -- `python -c` or `git` can reach outside the workspace. Run inside
 a container when the agent is untrusted.
@@ -124,12 +130,17 @@ tk = NotepadToolkit(preset=Preset.journal())
 
 ## MemoryToolkit
 
-Simple key-value persistent memory for agents.
+Key-value memory for agents. When `memory.unified: true` (default), reads and writes delegate to the same `SemanticMemory` backend as the daemon. Legacy JSON files under `.hive/agent_memory/` migrate once automatically.
 
 ```python
 from hive import MemoryToolkit
+from hive.memory.semantic import SemanticMemory
 
-tk = MemoryToolkit()
+# Daemon mode (shared backend):
+tk = MemoryToolkit(semantic=SemanticMemory(Path(".hive"), "my-agent"), hive_dir=Path(".hive"))
+
+# Legacy JSON-only (memory.unified: false):
+tk = MemoryToolkit(path=".hive/agent_memory")
 ```
 
 | Tool | Parameters | Description |
@@ -137,7 +148,7 @@ tk = MemoryToolkit()
 | `memory_set` | `key`, `value` | Store a value for later retrieval |
 | `memory_get` | `key` | Retrieve a previously stored value |
 
-For similarity-based memory search, see [Semantic Memory](daemon-mode.md#semantic-memory).
+For free-form notes and similarity search, use `KnowledgeToolkit`. Both share the semantic store when unified.
 
 ## CommsToolkit
 
@@ -240,7 +251,7 @@ from hive.tools.schedule.toolkit import ScheduleToolkit
 |------|-----------|-------------|
 | `schedule_goal` | `objective`, `every_n_cycles` | Create a recurring goal |
 | `list_schedules` | | List active schedules |
-| `cancel_schedule` | `schedule_id` | Cancel a schedule |
+| `cancel_schedule` | `schedule_id` | Cancel one of **your** schedules (ownership enforced) |
 
 ## WorldToolkit
 

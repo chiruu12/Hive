@@ -14,6 +14,7 @@ guardrails implement the ``Guardrail`` protocol; register them on
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,6 +23,12 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from hive.config import GuardrailConfig
+
+logger = logging.getLogger(__name__)
+
+INTER_AGENT_CONTENT_MAX_CHARS = 500
+OPERATOR_NUDGE_MAX_CHARS = 4096
+BLOCKED_INTER_AGENT_MESSAGE = "[Message blocked by guardrail]"
 
 
 class GuardrailStage(StrEnum):
@@ -151,6 +158,18 @@ _INJECTION_PATTERNS: dict[str, re.Pattern[str]] = {
         r"\byou\s+are\s+now\b|\bact\s+as\s+(?:a\s+)?(?:DAN|jailbroken)|\bdeveloper\s+mode\b",
         re.IGNORECASE,
     ),
+    "forget_instructions": re.compile(
+        r"\bforget\s+(?:all\s+)?(?:previous|prior|your)\s+(?:instructions?|context|rules?)\b",
+        re.IGNORECASE,
+    ),
+    "new_instructions": re.compile(
+        r"\b(?:new|updated|real|true|hidden)\s+(?:system\s+)?instructions?\s*:",
+        re.IGNORECASE,
+    ),
+    "ignore_previous_short": re.compile(
+        r"\bignore\s+previous\b|\bdisregard\s+previous\b",
+        re.IGNORECASE,
+    ),
 }
 
 
@@ -257,3 +276,75 @@ def build_guardrail_pipeline(
         if on and factory is not None:
             guardrails.append(factory(GuardrailAction(action)))
     return GuardrailPipeline(guardrails)
+
+
+def _strip_path_traversal_markers(content: str) -> str:
+    """Remove common path traversal sequences from untrusted inter-agent text."""
+    cleaned = content
+    for marker in ("../", "..\\"):
+        cleaned = cleaned.replace(marker, "")
+    return cleaned
+
+
+def _minimal_inter_agent_sanitize(content: str, max_length: int) -> str:
+    """Always-on baseline before guardrails: strip null bytes, path traversal, cap length."""
+    cleaned = content.replace("\x00", "")
+    cleaned = _strip_path_traversal_markers(cleaned)
+    return cleaned[:max_length]
+
+
+def _structural_sanitize(content: str, max_length: int) -> str:
+    """Always-on structural cleanup for operator-facing text (nudges, etc.)."""
+    cleaned = content.replace("\x00", "")
+    # Drop C0 controls except common whitespace (tab, LF, CR).
+    cleaned = "".join(ch for ch in cleaned if ch in "\n\r\t" or (ord(ch) >= 32 and ord(ch) != 127))
+    # Strip simple HTML tags that could smuggle markup into prompts.
+    cleaned = re.sub(r"<[^>]{0,200}>", "", cleaned)
+    cleaned = _strip_path_traversal_markers(cleaned)
+    return cleaned[:max_length]
+
+
+def sanitize_inter_agent_content(
+    content: str,
+    guardrails: GuardrailPipeline | None = None,
+    *,
+    max_length: int = INTER_AGENT_CONTENT_MAX_CHARS,
+    agent_id: str = "",
+) -> str:
+    """Sanitize inter-agent message content before LLM or nudge injection."""
+    text = _minimal_inter_agent_sanitize(content, max_length)
+    if not guardrails:
+        return text
+    finding = guardrails.run(text, GuardrailStage.INPUT)
+    if finding.triggered:
+        logger.info(
+            "Inter-agent guardrail triggered for agent %s: %s",
+            agent_id or "?",
+            ", ".join(finding.reasons) or finding.action.value,
+        )
+    if finding.blocked:
+        return BLOCKED_INTER_AGENT_MESSAGE
+    return finding.text
+
+
+def sanitize_operator_nudge(
+    content: str,
+    guardrails: GuardrailPipeline | None = None,
+    *,
+    max_length: int = OPERATOR_NUDGE_MAX_CHARS,
+    agent_id: str = "",
+) -> str:
+    """Sanitize operator/API nudges before goal-generation prompt assembly."""
+    text = _structural_sanitize(content, max_length)
+    if not guardrails:
+        return text
+    finding = guardrails.run(text, GuardrailStage.INPUT)
+    if finding.triggered:
+        logger.info(
+            "Operator nudge guardrail triggered for agent %s: %s",
+            agent_id or "?",
+            ", ".join(finding.reasons) or finding.action.value,
+        )
+    if finding.blocked:
+        return BLOCKED_INTER_AGENT_MESSAGE
+    return finding.text

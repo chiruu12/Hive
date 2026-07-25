@@ -213,30 +213,29 @@ async def test_brainstorm_pattern(tmp_path):
 ## 5. Custom Goal Strategy
 
 Implement the `GoalStrategy` protocol to control how agents generate goals when idle.
+Every call must return a `GeneratedGoal` with `cost_usd` and `tokens` set from any LLM
+work, even when `objective` is `None`.
 
 ```python
-from hive import GoalStrategy, GoalContext, Goal
-from uuid import uuid4
+from hive import GoalStrategy, GoalContext, GeneratedGoal
+from pathlib import Path
 
 class PrioritizedGoalStrategy:
     """Generate goals based on suffering and nudges."""
 
-    async def generate_goal(self, context: GoalContext) -> Goal | None:
+    async def generate_goal(self, context: GoalContext) -> GeneratedGoal:
         # Prioritize user nudges
         if context.nudges:
-            return Goal(
-                goal_id=f"goal-{uuid4().hex[:8]}",
+            return GeneratedGoal(
                 objective=f"Address user request: {context.nudges[0]}",
-                reasoning="User nudge takes priority",
             )
         # High suffering → self-care
         if context.suffering.cumulative_load > 0.7:
-            return Goal(
-                goal_id=f"goal-{uuid4().hex[:8]}",
+            return GeneratedGoal(
                 objective="Focus on resolving active stressors",
-                reasoning=f"Suffering load at {context.suffering.cumulative_load:.0%}",
             )
-        return None  # Fall through to default behavior
+        # LLM call with no actionable goal — still report spend
+        return GeneratedGoal(objective=None, cost_usd=0.0, tokens=0)
 
 # Pass to daemon
 from hive import HiveDaemon
@@ -246,7 +245,7 @@ daemon = HiveDaemon(hive_dir=Path(".hive"), goal_strategy=PrioritizedGoalStrateg
 ```python
 # Test
 import pytest
-from hive import GoalContext, GoalStrategy, SufferingState
+from hive import GoalContext, GeneratedGoal, SufferingState
 from hive.agents.profile import AgentProfile
 
 @pytest.mark.asyncio
@@ -261,9 +260,9 @@ async def test_prioritized_strategy():
         nudges=["Please write docs"],
         recent_goals=[],
     )
-    goal = await strategy.generate_goal(ctx)
-    assert goal is not None
-    assert "write docs" in goal.objective.lower()
+    result = await strategy.generate_goal(ctx)
+    assert result.objective is not None
+    assert "write docs" in result.objective.lower()
 ```
 
 ## 6. Daemon Hooks
@@ -357,7 +356,18 @@ def test_profile_loads():
 
 ## 8. Plugin System
 
-Drop a Python file containing a `Toolkit` subclass in `.hive/plugins/`. It's auto-discovered and loaded every 10 daemon cycles.
+Drop a Python file containing a `Toolkit` subclass in `.hive/plugins/`. Enable
+plugin loading in `.hive/config.yaml` first (disabled by default for security --
+plugins execute arbitrary Python with full process privileges, and agents can
+write new plugin files that hot-load every 10 daemon cycles):
+
+```yaml
+plugins:
+  enabled: true
+  allowlist: []   # optional: restrict to named files/stems
+```
+
+Once enabled, plugins are auto-discovered and loaded every 10 daemon cycles.
 
 ```python
 # .hive/plugins/calculator.py

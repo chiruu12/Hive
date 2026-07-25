@@ -82,5 +82,6 @@ async def resolve_approval(
             detail="approval not pending, does not exist, or does not belong to this agent",
         )
     row = await ctx.store.get_approval(approval_id)
-    assert row is not None
+    if row is None:
+        raise HTTPException(status_code=404, detail="approval not found after resolution")
     return _to_summary(row)

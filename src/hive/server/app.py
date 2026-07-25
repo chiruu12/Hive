@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI
 
-from hive.config import HiveConfig, load_config
+from hive.config import HiveConfig, load_config, resolve_logs_dir
 from hive.daemon.setup import ensure_hive_dirs
 from hive.memory.store import HiveStore
 from hive.server import ui
@@ -60,7 +60,10 @@ def create_app(root: Path | None = None, with_daemon: bool = False) -> FastAPI:
         if with_daemon:
             from hive.daemon.loop import HiveDaemon
 
-            ctx.daemon = HiveDaemon(hive_dir, logs_dir=project_root / "logs")
+            ctx.daemon = HiveDaemon(
+                hive_dir,
+                logs_dir=resolve_logs_dir(hive_dir),
+            )
             daemon_task = asyncio.create_task(ctx.daemon.start())
             logger.info("Started in-process daemon")
 

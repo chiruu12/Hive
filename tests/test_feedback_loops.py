@@ -162,12 +162,12 @@ class TestStatsInGoalPrompt:
 
     def test_condition_section_present_with_stats(self) -> None:
         loop = self._loop(AgentStats(agent_id="a1", health=0.3, energy=0.2, happiness=0.4))
-        prompt = loop._build_prompt(SufferingState(agent_id="a1"), [], [], "", [])
+        prompt = loop._build_prompt(SufferingState(agent_id="a1"), [], [], "", [], [])
         assert "current condition" in prompt.lower()
         assert "Health: 30%" in prompt
         assert "Energy: 20%" in prompt
 
     def test_condition_section_absent_without_stats(self) -> None:
         loop = self._loop(None)
-        prompt = loop._build_prompt(SufferingState(agent_id="a1"), [], [], "", [])
+        prompt = loop._build_prompt(SufferingState(agent_id="a1"), [], [], "", [], [])
         assert "current condition" not in prompt.lower()

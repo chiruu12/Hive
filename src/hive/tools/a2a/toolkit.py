@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from hive.interactions.a2a import (
@@ -11,11 +12,15 @@ from hive.interactions.a2a import (
     A2AMessageType,
     A2AStore,
 )
-from hive.memory.store import HiveStore
+from hive.memory.protocol import StoreProtocol
+from hive.runtime.guardrails import sanitize_inter_agent_content
 from hive.tools.base import Toolkit, tool
 
 if TYPE_CHECKING:
     from hive.agents.specialization import SpecializationTracker
+    from hive.runtime.guardrails import GuardrailPipeline
+
+logger = logging.getLogger(__name__)
 
 
 class A2AToolkit(Toolkit):
@@ -24,14 +29,20 @@ class A2AToolkit(Toolkit):
     def __init__(
         self,
         a2a_store: A2AStore,
-        hive_store: HiveStore,
+        hive_store: StoreProtocol,
         agent_id: str = "",
         specialization: SpecializationTracker | None = None,
+        guardrails: GuardrailPipeline | None = None,
     ):
         self._a2a = a2a_store
         self._agent_id = agent_id
         self._store = hive_store
         self._spec = specialization
+        self._guardrails = guardrails
+
+    def _sanitize_message(self, content: str) -> str:
+        """Run INPUT guardrails on inter-agent message content."""
+        return sanitize_inter_agent_content(content, self._guardrails, agent_id=self._agent_id)
 
     @tool()
     async def send_request(
@@ -105,9 +116,9 @@ class A2AToolkit(Toolkit):
         lines = []
         for m in messages:
             unread = " [UNREAD]" if not m.read else ""
+            subject = self._sanitize_message(m.subject)
             lines.append(
-                f"- {m.message_id}: [{m.type}] from={m.from_agent} "
-                f'subject="{m.subject[:50]}"{unread}'
+                f'- {m.message_id}: [{m.type}] from={m.from_agent} subject="{subject[:50]}"{unread}'
             )
         return "\n".join(lines)
 
@@ -124,8 +135,8 @@ class A2AToolkit(Toolkit):
                 "type": msg.type,
                 "from": msg.from_agent,
                 "to": msg.to_agent,
-                "subject": msg.subject,
-                "body": msg.body,
+                "subject": self._sanitize_message(msg.subject),
+                "body": self._sanitize_message(msg.body),
                 "reply_to": msg.reply_to,
                 "priority": msg.priority,
                 "expects_reply": msg.expects_reply,

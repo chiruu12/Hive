@@ -15,8 +15,22 @@ logger = logging.getLogger(__name__)
 class OrchestratorToolkit(Toolkit):
     """Tools for running and managing Claude Code / Codex CLI sessions."""
 
-    def __init__(self, manager: SessionManager):
+    def __init__(self, manager: SessionManager, workspace: Path | None = None) -> None:
         self._manager = manager
+        self._agent_workspace: Path | None = None
+        if workspace is not None:
+            self._agent_workspace = workspace.resolve()
+
+    def bind(self, agent_id: str) -> None:
+        super().bind(agent_id)
+
+    def set_workspace(self, workspace: Path) -> None:
+        """Set the agent's workspace directory for path containment.
+
+        Prefer passing ``workspace`` to ``__init__``; this method remains for
+        backward compatibility.
+        """
+        self._agent_workspace = workspace.resolve()
 
     @property
     def instructions(self) -> str:
@@ -46,6 +60,14 @@ class OrchestratorToolkit(Toolkit):
         workspace_path = Path(workspace).resolve()
         if not workspace_path.is_dir():
             return f"Error: workspace directory does not exist: {workspace}"
+
+        # Security: restrict workspace to agent's own workspace directory
+        if self._agent_workspace is not None:
+            if not workspace_path.is_relative_to(self._agent_workspace):
+                return (
+                    f"Error: workspace '{workspace}' is outside your allowed workspace. "
+                    f"Must be a subdirectory of: {self._agent_workspace}"
+                )
 
         session_id = await self._manager.create(
             task=task,

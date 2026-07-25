@@ -227,7 +227,7 @@ class TestShellToolkit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("FAKE_API_KEY", "sk-supersecret")
-        st = ShellToolkit(tmp_path, timeout=15)
+        st = ShellToolkit(tmp_path, timeout=15, allow_dev_commands=True)
         result = await st.shell_exec(
             "python3 -c \"print(__import__('os').environ.get('FAKE_API_KEY', 'MISSING'))\""
         )
@@ -239,7 +239,7 @@ class TestShellToolkit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("FAKE_API_KEY", "sk-supersecret")
-        st = ShellToolkit(tmp_path, timeout=15, pass_env=True)
+        st = ShellToolkit(tmp_path, timeout=15, pass_env=True, allow_dev_commands=True)
         result = await st.shell_exec(
             "python3 -c \"print(__import__('os').environ.get('FAKE_API_KEY', 'MISSING'))\""
         )
@@ -267,6 +267,41 @@ class TestShellToolkit:
         assert scrubbed["LANG"] == "en_US.UTF-8"
         assert scrubbed["HOME"] == str(st._workspace)
 
+    def test_scrub_covers_db_and_extra_credentials(self, tmp_path: Path) -> None:
+        # Regression: the original denylist missed DB URLs, bare *_KEY, SSH/GH
+        # creds, etc. -- an agent could read them via `env`.
+        st = ShellToolkit(tmp_path)
+        env = {
+            "DATABASE_URL": "postgres://u:p@h/db",
+            "REDIS_URL": "redis://h:6379",
+            "MONGODB_URI": "mongodb://u:p@h",
+            "PGPASSWORD": "p",
+            "STRIPE_KEY": "sk_live_x",
+            "SSH_PRIVATE_KEY": "----",
+            "GH_TOKEN": "ghp_x",
+            "SESSION_SECRET": "s",
+            "MY_SERVICE_PASS": "p",
+            "PATH": "/usr/bin",
+        }
+        with pytest.MonkeyPatch.context() as mp:
+            for k, v in env.items():
+                mp.setenv(k, v)
+            scrubbed = st._subprocess_env()
+        for secret in (
+            "DATABASE_URL",
+            "REDIS_URL",
+            "MONGODB_URI",
+            "PGPASSWORD",
+            "STRIPE_KEY",
+            "SSH_PRIVATE_KEY",
+            "GH_TOKEN",
+            "SESSION_SECRET",
+            "MY_SERVICE_PASS",
+        ):
+            assert secret not in scrubbed, secret
+        # Non-secret operational vars still pass through.
+        assert scrubbed["PATH"] == "/usr/bin"
+
     @pytest.mark.asyncio
     async def test_dev_commands_blocked_when_disabled(self, tmp_path: Path) -> None:
         st = ShellToolkit(tmp_path, allow_dev_commands=False)
@@ -276,7 +311,13 @@ class TestShellToolkit:
         result = await st.shell_exec("echo still works")
         assert "still works" in result
 
-    def test_dev_commands_allowed_by_default(self, st: ShellToolkit) -> None:
+    def test_dev_commands_blocked_by_default(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path)
+        assert "not in allowlist" in (st._check_command("git status") or "")
+        assert "not in allowlist" in (st._check_command("python3 --version") or "")
+
+    def test_dev_commands_allowed_when_enabled(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path, allow_dev_commands=True)
         assert st._check_command("git status") is None
         assert st._check_command("python3 --version") is None
 
@@ -311,6 +352,16 @@ class TestGitToolkit:
         (tmp_path / "readme.md").write_text("# Changed\n")
         result = gt.git_diff()
         assert "Changed" in result
+
+    def test_add_treats_dash_path_as_pathspec(self, gt: GitToolkit, tmp_path: Path) -> None:
+        # A leading-dash path must be staged as a file, not parsed as a git
+        # option (the toolkit inserts `--` before the pathspec).
+        (tmp_path / "-x.txt").write_text("tricky name")
+        gt.git_add("-x.txt")
+        # The commit only succeeds if the dash-named file was actually staged;
+        # without `--`, `git add -x.txt` would error and stage nothing.
+        result = gt.git_commit("add dash file")
+        assert "add dash file" in result
 
     def test_init_new_repo(self, tmp_path: Path) -> None:
         new_dir = tmp_path / "fresh"

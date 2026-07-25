@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from hive.agents.profile import AgentProfile, default_profiles_dir
+from hive.agents.profile import AgentProfile, resolve_profiles_dir
 from hive.agents.state import AgentState, AgentStatus
 from hive.memory.store import HiveStore
 
@@ -22,7 +22,6 @@ class HiveMCPServer:
         self._hive_dir = hive_dir or Path.cwd() / ".hive"
         self._store = HiveStore(self._hive_dir / "hive.db")
         self._daemon_task: asyncio.Task[None] | None = None
-        self._request_id = 0
 
     def _tools(self) -> list[dict[str, Any]]:
         return [
@@ -117,6 +116,13 @@ class HiveMCPServer:
             },
         ]
 
+    @staticmethod
+    def _require(args: dict[str, Any], *keys: str) -> None:
+        """Validate that required arguments are present (per the tool's schema)."""
+        missing = [k for k in keys if k not in args]
+        if missing:
+            raise ValueError(f"missing required argument(s): {', '.join(missing)}")
+
     async def handle_tool(self, name: str, args: dict[str, Any]) -> str:
         """Execute a tool and return the result as text."""
         if name == "hive_init":
@@ -131,12 +137,16 @@ class HiveMCPServer:
         if name == "hive_status":
             return await self._status()
         if name == "hive_spawn":
+            self._require(args, "profile")
             return await self._spawn(args["profile"])
         if name == "hive_kill":
+            self._require(args, "agent")
             return await self._kill(args["agent"])
         if name == "hive_nudge":
+            self._require(args, "agent", "message")
             return await self._nudge(args["agent"], args["message"])
         if name == "hive_logs":
+            self._require(args, "agent")
             return await self._logs(args["agent"], args.get("limit", 20))
         if name == "hive_models":
             return await self._models()
@@ -154,7 +164,14 @@ class HiveMCPServer:
         if self._daemon_task and not self._daemon_task.done():
             return "Daemon is already running."
 
+        from hive.config import resolve_logs_dir
         from hive.daemon.loop import HiveDaemon
+        from hive.daemon.run_lifecycle import DaemonAlreadyRunningError, check_no_live_daemon
+
+        try:
+            check_no_live_daemon(self._hive_dir)
+        except DaemonAlreadyRunningError as e:
+            return str(e)
 
         if not self._hive_dir.exists():
             from hive.daemon.setup import initialize_hive
@@ -162,7 +179,7 @@ class HiveMCPServer:
             initialize_hive(self._hive_dir.parent)
 
         await self._store.initialize()
-        profiles_dir = default_profiles_dir()
+        profiles_dir = resolve_profiles_dir(self._hive_dir)
         profile_names = [p.strip() for p in profiles_str.split(",")]
         spawned = []
 
@@ -186,7 +203,7 @@ class HiveMCPServer:
         daemon = HiveDaemon(
             self._hive_dir,
             heartbeat=heartbeat,
-            logs_dir=self._hive_dir.parent / "logs",
+            logs_dir=resolve_logs_dir(self._hive_dir),
             profiles=profile_names,
         )
         self._daemon_task = asyncio.create_task(daemon.start())
@@ -219,7 +236,7 @@ class HiveMCPServer:
         return "Agents:\n" + "\n".join(lines)
 
     async def _spawn(self, profile_name: str) -> str:
-        profiles_dir = default_profiles_dir()
+        profiles_dir = resolve_profiles_dir(self._hive_dir)
         try:
             profile = AgentProfile.from_preset(profile_name, profiles_dir)
         except FileNotFoundError:
@@ -263,6 +280,9 @@ class HiveMCPServer:
             return f"Agent not found: {agent_ref}"
         nudge_id = f"nudge-{uuid4().hex[:8]}"
         await self._store.save_nudge(nudge_id, target.agent_id, message)
+        from hive.daemon.wakeup import touch_nudge_wake_file
+
+        touch_nudge_wake_file(self._hive_dir, nudge_id)
         return f"Nudged {target.name}: {message}"
 
     async def _logs(self, agent_ref: str, limit: int) -> str:
@@ -317,13 +337,9 @@ class HiveMCPServer:
             writer_transport, writer_protocol, None, asyncio.get_event_loop()
         )
 
-        await self._send(
-            writer,
-            {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-            },
-        )
+        # Per the MCP lifecycle, `notifications/initialized` is sent by the
+        # *client* after it receives the server's `initialize` result -- the
+        # server must not emit it (and certainly not before initialize).
 
         while True:
             line = await reader.readline()

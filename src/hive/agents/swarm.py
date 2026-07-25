@@ -1,5 +1,6 @@
 """Swarm learning — collective intelligence from agent outcomes."""
 
+from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,6 +8,11 @@ from pydantic import BaseModel, Field
 
 from hive.agents.specialization import SpecializationTracker
 from hive.memory.store import HiveStore
+
+# Cap retained learning reports. SwarmLearning is a daemon-lifetime singleton
+# that appends one report per cycle; only the latest and the trend over recent
+# reports are ever read, so an uncapped list just leaked memory.
+MAX_REPORTS = 200
 
 
 class Recommendation(BaseModel):
@@ -31,6 +37,25 @@ class LearningReport(BaseModel):
     recommendations: list[Recommendation] = []
     deltas: dict[str, float] = {}
 
+    def to_summary(self) -> str:
+        """Return a human-readable summary of this report."""
+        lines = [
+            f"Cycle {self.cycle_id} | {self.agent_count} agents | "
+            f"success={self.swarm_success_rate:.0%} | "
+            f"goals={self.total_goals} (done={self.total_completed}, "
+            f"abandoned={self.total_abandoned}) | "
+            f"patterns={self.pattern_count} | "
+            f"spec_avg={self.specialization_avg:.2f}",
+        ]
+        if self.recommendations:
+            lines.append(f"  Recommendations ({len(self.recommendations)}):")
+            for rec in self.recommendations:
+                lines.append(f"    [{rec.category}] {rec.description}")
+        if self.deltas:
+            parts = [f"{k}={v:+.2f}" for k, v in self.deltas.items()]
+            lines.append(f"  Deltas: {', '.join(parts)}")
+        return "\n".join(lines)
+
 
 class SwarmPattern(BaseModel):
     pattern_id: str
@@ -51,7 +76,7 @@ class SwarmLearning:
         self._store = store
         self._tracker = tracker
         self._cycle_count = 0
-        self._reports: list[LearningReport] = []
+        self._reports: deque[LearningReport] = deque(maxlen=MAX_REPORTS)
         self._patterns: list[SwarmPattern] = []
 
     async def run_cycle(self, agent_ids: list[str]) -> LearningReport:

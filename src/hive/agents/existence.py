@@ -6,11 +6,16 @@ import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
+from hive.agents.goal_persistence import (
+    generation_spend_from_result,
+    save_generated_goal,
+    validate_goal,
+)
+from hive.agents.goal_strategy import GeneratedGoal
 from hive.agents.profile import AgentProfile
 from hive.agents.suffering import SufferingState
-from hive.logging.models import DecisionLog, GoalLog
+from hive.logging.models import DecisionLog
 from hive.logging.writer import LogWriter
 from hive.memory.events import EventLog, EventType, HiveEvent
 from hive.memory.store import HiveStore
@@ -85,12 +90,24 @@ class ExistenceLoop:
         suffering: SufferingState,
         peer_summaries: list[str],
         nudges: list[str],
-    ) -> str | None:
-        """Build context and ask the LLM what the agent should do next."""
+        memory_snippets: list[str] | None = None,
+        *,
+        persist: bool = True,
+    ) -> GeneratedGoal:
+        """Build context and ask the LLM what the agent should do next.
+
+        When ``persist`` is False, returns a validated objective without saving
+        (daemon path commits budget then saves via :func:`save_generated_goal`).
+        """
         recent_goals = await self._store.list_agent_goals(self._agent_id, limit=5)
 
         prompt = self._build_prompt(
-            suffering, peer_summaries, recent_goals, self._tools_description, nudges
+            suffering,
+            peer_summaries,
+            recent_goals,
+            self._tools_description,
+            nudges,
+            memory_snippets or [],
         )
 
         result = await self._provider.generate_with_metadata(
@@ -100,6 +117,8 @@ class ExistenceLoop:
                 ),
                 Message.user(prompt),
             ],
+            temperature=self._profile.temperature,
+            max_tokens=self._profile.max_tokens,
         )
 
         parsed = self._parse_json(result.message.content)
@@ -123,72 +142,49 @@ class ExistenceLoop:
                 )
             )
 
-        if not goal_text:
-            return None
-
-        recent_goals = await self._store.list_agent_goals(self._agent_id, limit=5)
-        rejection = self._validate_goal(goal_text, recent_goals)
-        if rejection:
-            logger.info("Goal rejected for %s: %s", self._agent_id, rejection)
-            return None
-
-        # Re-check immediately before saving: a goal may have appeared since the
-        # idle check that triggered this generation (a concurrent cycle, a
-        # delegation, or a fired schedule). Skip rather than pile up a duplicate.
-        if await self._store.get_active_goal(self._agent_id) is not None:
-            logger.info(
-                "Skipping generated goal for %s: an active goal already exists",
-                self._agent_id,
-            )
-            return None
-
-        goal_id = f"goal-{uuid4().hex[:8]}"
-        await self._store.save_goal(goal_id, self._agent_id, goal_text)
-
-        if self._log:
-            self._log.log_goal(
-                GoalLog(
-                    agent_id=self._agent_id,
-                    goal_id=goal_id,
-                    event="generated",
-                    objective=goal_text,
-                    reasoning=reasoning,
-                )
-            )
-
-        await self._emit(
-            EventType.GOAL_SET,
-            {
-                "goal_id": goal_id,
-                "objective": goal_text,
-            },
+        spend = generation_spend_from_result(
+            cost_usd=result.cost_usd,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
         )
 
-        return goal_text
+        if not goal_text:
+            return spend
 
-    @staticmethod
-    def _validate_goal(goal_text: str, recent_goals: list[dict[str, Any]]) -> str | None:
-        """Return rejection reason if goal is invalid, None if acceptable."""
-        if len(goal_text) < 10:
-            return "too short (< 10 chars)"
-        if len(goal_text) > 500:
-            return "too long (> 500 chars)"
+        recent_goals = await self._store.list_agent_goals(self._agent_id, limit=5)
+        rejection = validate_goal(goal_text, recent_goals)
+        if rejection:
+            logger.info("Goal rejected for %s: %s", self._agent_id, rejection)
+            return spend
 
-        goal_lower = goal_text.lower()
-        for g in recent_goals:
-            prev = g.get("objective", "").lower()
-            if not prev:
-                continue
-            if g.get("status") in ("abandoned", "active") and prev == goal_lower:
-                return f"duplicate of recent goal: {prev[:60]}"
-            words_new = set(goal_lower.split())
-            words_old = set(prev.split())
-            if words_old and words_new:
-                overlap = len(words_new & words_old) / max(len(words_new), len(words_old))
-                if overlap > 0.8 and g.get("status") == "abandoned":
-                    return f"too similar to recently abandoned goal ({overlap:.0%} overlap)"
+        if not persist:
+            return generation_spend_from_result(
+                cost_usd=result.cost_usd,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                objective=goal_text,
+            )
 
-        return None
+        goal_id = await save_generated_goal(
+            agent_id=self._agent_id,
+            objective=goal_text,
+            store=self._store,
+            recent_goals=recent_goals,
+            validate=False,
+            reasoning=str(reasoning) if reasoning is not None else None,
+            log_writer=self._log,
+            event_log=self._events,
+            session_id=self._session_id,
+        )
+        if goal_id is None:
+            return spend
+
+        return generation_spend_from_result(
+            cost_usd=result.cost_usd,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            objective=goal_text,
+        )
 
     def _build_prompt(
         self,
@@ -197,6 +193,7 @@ class ExistenceLoop:
         recent_goals: list[dict[str, Any]],
         tools_desc: str,
         nudges: list[str],
+        memory_snippets: list[str],
     ) -> str:
         identity_preamble = ""
         if self._hive_dir:
@@ -226,6 +223,10 @@ class ExistenceLoop:
 
         if self._notepad_content:
             sections.append(f"\n--- Your notepad ---\n{self._notepad_content}")
+
+        if memory_snippets:
+            mem_lines = "\n".join(f"• {s}" for s in memory_snippets[:3])
+            sections.append(f"\n--- Relevant memories ---\n{mem_lines}")
 
         if self._economy_enabled and self._world_status:
             sections.append(f"\n--- Your economic status ---\n{self._world_status}")

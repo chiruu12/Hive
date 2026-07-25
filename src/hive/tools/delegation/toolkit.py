@@ -5,13 +5,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from hive.runtime.guardrails import sanitize_inter_agent_content
 from hive.runtime.types import Task
 from hive.tools.base import Toolkit, tool
 
 if TYPE_CHECKING:
     from hive.agents.delegation import DelegationEngine
-    from hive.memory.store import HiveStore
+    from hive.memory.protocol import StoreProtocol
     from hive.runtime.agent import Agent
+    from hive.runtime.guardrails import GuardrailPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +24,18 @@ class DaemonDelegationToolkit(Toolkit):
     def __init__(
         self,
         delegation_engine: DelegationEngine,
-        store: HiveStore,
+        store: StoreProtocol,
         agent_id: str = "",
+        guardrails: GuardrailPipeline | None = None,
     ):
         self._engine = delegation_engine
         self._agent_id = agent_id
         self._store = store
+        self._guardrails = guardrails
+
+    def _sanitize_objective(self, objective: str, *, target_agent_id: str) -> str:
+        """Run INPUT guardrails on delegated goal text before peer queue write."""
+        return sanitize_inter_agent_content(objective, self._guardrails, agent_id=target_agent_id)
 
     @tool()
     async def delegate_task(
@@ -60,6 +68,7 @@ class DaemonDelegationToolkit(Toolkit):
             names = ", ".join(a.name for a in alive)
             return f"Agent not found: {agent_name}. Available: {names}"
 
+        objective = self._sanitize_objective(objective, target_agent_id=target.agent_id)
         record = await self._engine.delegate(
             self._agent_id,
             target.agent_id,

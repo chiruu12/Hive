@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from hive.runtime.guardrails import sanitize_inter_agent_content
 from hive.tools.base import Toolkit, tool
 
 if TYPE_CHECKING:
-    from hive.memory.store import HiveStore
+    from hive.memory.protocol import StoreProtocol
+    from hive.runtime.guardrails import GuardrailPipeline
 
 
 class ScheduleToolkit(Toolkit):
@@ -18,9 +20,19 @@ class ScheduleToolkit(Toolkit):
         # agent_id set via bind()
     """
 
-    def __init__(self, store: HiveStore, agent_id: str = ""):
+    def __init__(
+        self,
+        store: StoreProtocol,
+        agent_id: str = "",
+        guardrails: GuardrailPipeline | None = None,
+    ):
         self._store = store
         self._agent_id = agent_id
+        self._guardrails = guardrails
+
+    def _sanitize_objective(self, objective: str) -> str:
+        """Run INPUT guardrails on scheduled goal text before persistence."""
+        return sanitize_inter_agent_content(objective, self._guardrails, agent_id=self._agent_id)
 
     @tool()
     async def schedule_goal(self, objective: str, every_n_cycles: int) -> str:
@@ -35,6 +47,7 @@ class ScheduleToolkit(Toolkit):
         if every_n_cycles < 1:
             return "Cycle interval must be at least 1."
         sid = f"sched-{uuid4().hex[:8]}"
+        objective = self._sanitize_objective(objective)
         await self._store.save_schedule(sid, self._agent_id, objective, every_n_cycles)
         return f"Scheduled '{objective}' every {every_n_cycles} cycles (id={sid})."
 
@@ -60,5 +73,7 @@ class ScheduleToolkit(Toolkit):
         Args:
             schedule_id: The schedule ID to cancel.
         """
-        await self._store.disable_schedule(schedule_id)
+        ok = await self._store.disable_schedule(schedule_id, self._agent_id)
+        if not ok:
+            return f"Schedule {schedule_id} not found or not owned by you."
         return f"Schedule {schedule_id} cancelled."

@@ -42,6 +42,11 @@ class ConversationMemory:
     def clear(self) -> None:
         self._messages.clear()
 
+    @property
+    def messages(self) -> list[Message]:
+        """Return the non-system message buffer (for transcript persistence)."""
+        return list(self._messages)
+
     def _truncate(self) -> None:
         """Drop oldest message groups, preserving tool_use/tool_result pairs."""
         if len(self._messages) <= self._max_messages:
@@ -90,10 +95,16 @@ class ConversationMemory:
 class PersistentMemory:
     """Cross-session memory wrapping SemanticMemory."""
 
-    def __init__(self, agent_name: str, hive_dir: Path | None = None):
+    def __init__(
+        self,
+        agent_name: str,
+        hive_dir: Path | None = None,
+        *,
+        semantic: Any | None = None,
+    ):
         self._agent_name = agent_name
         self._hive_dir = hive_dir
-        self._semantic: Any = None
+        self._semantic = semantic
         self._fallback: dict[str, dict[str, Any]] = {}
 
     def _get_semantic(self) -> Any:

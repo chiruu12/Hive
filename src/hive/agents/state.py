@@ -12,6 +12,7 @@ class AgentStatus(StrEnum):
     IDLE = "idle"
     WORKING = "working"
     WAITING = "waiting_approval"
+    PAUSED = "paused"
     ERROR = "error"
     DEAD = "dead"
 

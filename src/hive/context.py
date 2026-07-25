@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from hive.memory.store import HiveStore
+from hive.memory.protocol import StoreProtocol
 
 if TYPE_CHECKING:
     from hive.world.state import WorldState
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class ExecutionContext:
     """Single source of injected state for tool execution."""
 
-    store: HiveStore
+    store: StoreProtocol
     comms_dir: Path
     memory_dir: Path
     world: WorldState | None = field(default=None)

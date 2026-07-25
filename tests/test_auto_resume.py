@@ -135,8 +135,14 @@ class TestShutdownCheckpoint:
         assert cps_a[0].label == "daemon_shutdown"
 
     @pytest.mark.asyncio
-    async def test_shutdown_abandons_active_goals(self, hive_dir: Path) -> None:
-        """Active goals are marked abandoned on shutdown."""
+    async def test_shutdown_abandons_active_goals_when_legacy_flag(self, hive_dir: Path) -> None:
+        """Legacy: active goals are abandoned on shutdown when preserve is false."""
+        cfg = HiveConfig()
+        cfg.economy.enabled = False
+        cfg.daemon.preserve_active_goals_on_restart = False
+        set_config(cfg)
+        cfg.save(hive_dir)
+
         store = HiveStore(hive_dir / "hive.db")
         await store.initialize()
         await _seed_agent(store, "agent-c")
@@ -157,6 +163,26 @@ class TestShutdownCheckpoint:
 
         goals = await store.list_agent_goals("agent-c")
         assert goals[0]["status"] == "abandoned"
+
+    @pytest.mark.asyncio
+    async def test_shutdown_preserves_active_goals_by_default(self, hive_dir: Path) -> None:
+        """Default policy keeps active goals on graceful shutdown."""
+        store = HiveStore(hive_dir / "hive.db")
+        await store.initialize()
+        await _seed_agent(store, "agent-p")
+        await store.save_goal("goal-p", "agent-p", "In-progress work")
+
+        daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs")
+        daemon._store = store
+        daemon._running = False
+
+        with patch("hive.daemon.loop.create_runtime_provider", side_effect=_mock_provider):
+            await daemon._shutdown()
+
+        active_after = await store.get_active_goal("agent-p")
+        assert active_after is not None
+        assert active_after["goal_id"] == "goal-p"
+        assert active_after["status"] == "active"
 
 
 class TestResumeOnStart:
@@ -274,8 +300,14 @@ class TestResumeOnStart:
         assert any("Could not restore suffering" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_resume_abandons_stale_goals(self, hive_dir: Path) -> None:
-        """Stale active goals are abandoned on resume."""
+    async def test_resume_abandons_stale_goals_when_legacy_flag(self, hive_dir: Path) -> None:
+        """Legacy: stale active goals are abandoned on resume when preserve is false."""
+        cfg = HiveConfig()
+        cfg.economy.enabled = False
+        cfg.daemon.preserve_active_goals_on_restart = False
+        set_config(cfg)
+        cfg.save(hive_dir)
+
         store = HiveStore(hive_dir / "hive.db")
         await store.initialize()
         await _seed_agent(store, "agent-s1")
@@ -296,3 +328,26 @@ class TestResumeOnStart:
 
         goals = await store.list_agent_goals("agent-s1")
         assert goals[0]["status"] == "abandoned"
+
+    @pytest.mark.asyncio
+    async def test_resume_preserves_active_goals_by_default(self, hive_dir: Path) -> None:
+        """Default policy keeps active goals when resuming from a previous run."""
+        store = HiveStore(hive_dir / "hive.db")
+        await store.initialize()
+        await _seed_agent(store, "agent-s2")
+        await store.save_goal("active-goal", "agent-s2", "Was mid-execution")
+
+        daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs", fresh=False)
+
+        async def _no_run(max_cycles: int | None = None) -> None:
+            daemon._running = False
+
+        daemon._run = _no_run  # type: ignore[assignment]
+
+        with patch("hive.daemon.loop.create_runtime_provider", side_effect=_mock_provider):
+            await daemon.start()
+
+        active = await store.get_active_goal("agent-s2")
+        assert active is not None
+        assert active["goal_id"] == "active-goal"
+        assert active["status"] == "active"

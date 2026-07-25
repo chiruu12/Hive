@@ -8,6 +8,21 @@ Complete reference for all `hive` CLI commands.
 
 Initialize a new hive in the current directory. Creates `.hive/` with config, database, and directory structure.
 
+### `hive new`
+
+Scaffold a new Hive project directory from a template.
+
+```bash
+hive new my-swarm                    # minimal template
+hive new my-swarm --template team
+hive new my-swarm --force            # overwrite an existing .hive/
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-t`, `--template` | `minimal` | Template: `minimal`, `team`, `research` |
+| `-f`, `--force` | `false` | Overwrite an existing `.hive/` directory |
+
 ### `hive start`
 
 Start the daemon with agents.
@@ -22,6 +37,41 @@ hive start --fresh  # ignore saved state, start clean
 | `-p`, `--profiles` | `coder` | Comma-separated profile names |
 | `-b`, `--heartbeat` | `10` | Seconds between cycles |
 | `--fresh` | `false` | Ignore saved state |
+
+### `hive stop`
+
+Stop a running daemon from another terminal. Reads `.hive/daemon.pid`, sends
+SIGTERM, and waits for a graceful shutdown; escalates to SIGKILL after the
+timeout.
+
+```bash
+hive stop
+hive stop --timeout 60
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-t`, `--timeout` | `30` | Seconds to wait before SIGKILL |
+
+### `hive restart`
+
+Stop the running daemon (if any) and start a new one. Accepts the same
+`--profiles`, `--heartbeat`, and `--fresh` flags as `hive start`.
+
+```bash
+hive restart -p coder,researcher
+```
+
+### `hive daemon`
+
+Show daemon health: PID, uptime, agent counts, and budget. Reads the PID file
+and, when the REST server is reachable (`http://127.0.0.1:8000` by default;
+override with `HIVE_SERVER_URL`), queries `/status` and `/budget` for richer
+detail. Exits non-zero when the daemon is not running.
+
+```bash
+hive daemon
+```
 
 ### `hive spawn`
 
@@ -47,6 +97,46 @@ Give direction to an agent. The agent receives this as a high-priority nudge in 
 
 ```bash
 hive nudge coder "write tests for the auth module"
+```
+
+### `hive edit`
+
+Change an agent's model or role after spawn. The daemon's provider cache
+picks up model changes on the next cycle.
+
+```bash
+hive edit coder --model claude-sonnet-4-6
+hive edit coder --role "senior reviewer"
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-m`, `--model` | | New model name |
+| `-r`, `--role` | | New role description |
+
+### `hive pause` / `hive resume`
+
+Pause an agent (the daemon skips it each heartbeat until resumed) or resume
+it back to idle. Paused agents stay paused across daemon restarts.
+
+For a **daemon-wide freeze** that blocks all agent cycles, use
+``hive daemon pause`` / ``hive daemon resume`` (see ``hive daemon`` below).
+
+```bash
+hive pause coder
+hive pause --all       # pause every live agent (per-agent status, not daemon freeze)
+hive resume coder
+hive resume --all      # resume every paused agent
+```
+
+### `hive daemon`
+
+Daemon health and daemon-wide freeze controls.
+
+```bash
+hive daemon            # PID, uptime, agent counts, budget (default)
+hive daemon pause      # freeze all cycles (ManualPauseGuard)
+hive daemon resume     # clear daemon-wide freeze
 ```
 
 ## Monitoring
@@ -75,6 +165,17 @@ hive watch --screenshot ./shots --screenshot-interval 10
 
 Check environment health -- API keys, model availability, database state, directory structure.
 
+### `hive budget`
+
+Show the daemon-level cost budget: USD and token spend against the configured
+limits (`daemon.budget_usd` / `daemon.budget_tokens`). Requires the in-process
+daemon behind the REST server (`hive serve --with-daemon`); override the
+server address with `HIVE_SERVER_URL`.
+
+```bash
+hive budget
+```
+
 ## History & Inspection
 
 ### `hive runs`
@@ -91,12 +192,13 @@ hive inspect <run-id>
 
 ### `hive trace`
 
-Render a run's span tree -- run -> agent -> goal -> decision/tool -- derived
-from the structured logs. Goals show their outcome, decisions their token
-counts, tools a success/failure mark.
+Display the span-tree trace for a recorded run (run -> agent -> goal ->
+decision/tool). Goals show their outcome, decisions their token counts, tools
+a success/failure mark.
 
 ```bash
 hive trace <run-id>
+hive trace <run-id> --full   # include all span attributes
 ```
 
 ### `hive replay`
@@ -106,6 +208,19 @@ Replay a past session step by step.
 ```bash
 hive replay <session-id>
 ```
+
+### `hive history`
+
+Show an agent's goal history -- completed, abandoned, and in-progress goals.
+
+```bash
+hive history coder
+hive history coder --limit 50
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-n`, `--limit` | `20` | Number of entries |
 
 ### `hive lives`
 
@@ -151,6 +266,31 @@ hive threads
 hive threads --agent coder
 ```
 
+## Configuration & Profiles
+
+### `hive config`
+
+View, set, or validate `.hive/config.yaml` without opening an editor. Set
+values are validated against the config schema before saving.
+
+```bash
+hive config                          # show all config
+hive config daemon.heartbeat         # show one key
+hive config daemon.heartbeat 30      # set a value
+hive config --validate               # validate without starting the daemon
+```
+
+### `hive profiles`
+
+List available agent profiles, or show one profile's YAML.
+
+```bash
+hive profiles              # table of name, role, model
+hive profiles coder        # print coder.yaml
+```
+
+Looks in `./profiles/` first, then `.hive/profiles/`.
+
 ## Models & Benchmarking
 
 ### `hive models`
@@ -187,17 +327,15 @@ hive export <run-id> --output report.html
 
 ## Demos
 
-### `hive demo survival`
+### `hive demo`
 
-3 agents (coder, gambler, philosopher) compete in a simulated economy for 30 cycles. Economy enabled, random events firing.
-
-### `hive demo detective`
-
-Multi-model murder mystery investigation.
+Run a demo from the demo registry. Omit the name to list what's available.
 
 ```bash
-hive demo detective
-hive demo detective --model claude-sonnet-4-6
+hive demo               # list available demos
+hive demo survival      # 3 agents, 30 cycles, economy on
+hive demo detective     # multi-model murder mystery
+hive demo survival -q   # suppress output
 ```
 
 ## Interactive Agent

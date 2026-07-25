@@ -233,3 +233,9 @@ launch/
 poker-engine/
 hive-arena/
 hum/
+
+# macOS
+.DS_Store
+
+# Local agent-tool state
+.commandcode/

@@ -105,6 +105,9 @@ src/hive/
 | Custom A2A pattern | Subclass `A2APattern`, `PatternRegistry.default().register(name, instance)` | `src/hive/interactions/registry.py` |
 | Custom goal strategy | Implement `GoalStrategy` protocol, pass to `HiveDaemon` | `src/hive/agents/goal_strategy.py` |
 | Daemon hooks | `daemon.hooks.on("event", callback)` | `src/hive/daemon/hooks.py` |
+| Phase guard | `PhaseGuard` protocol, `daemon.hooks.register_guard(phase, guard)` | `src/hive/daemon/gates.py` |
+| Wake source | `WakeSource` protocol, `daemon.add_wake_source(...)` | `src/hive/daemon/wakeup.py` |
+| Swarm policy | `SwarmPolicy` protocol, `HiveDaemon(swarm_policy=...)` | `src/hive/agents/swarm_policy.py` |
 | Agent profile | YAML in `profiles/` | `src/hive/agents/profile.py` |
 | Plugin toolkit | Drop in `.hive/plugins/` | `src/hive/runtime/plugin_loader.py` |
 | Custom STT provider | Implement `STTProvider` protocol | `src/hive/stt/base.py` |

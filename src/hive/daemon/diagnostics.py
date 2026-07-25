@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from hive.config import get_env
+from hive.agents.profile import resolve_profiles_dir
+from hive.config import HiveConfig, get_env
+from hive.daemon.budget import budget_ledger_path, read_budget_snapshot
 
 
 @dataclass
@@ -113,6 +116,118 @@ def check_hive_dir(hive_dir: Path) -> CheckResult:
     return CheckResult(".hive directory", "ok", "Present and valid")
 
 
+def check_stale_pid(hive_dir: Path) -> CheckResult:
+    pid_file = hive_dir / "daemon.pid"
+    if not pid_file.exists():
+        return CheckResult("Daemon PID file", "ok", "Not present (daemon not running)")
+    try:
+        pid = int(pid_file.read_text().strip())
+    except ValueError:
+        return CheckResult(
+            "Daemon PID file",
+            "fail",
+            "Invalid PID contents",
+            fix="Remove .hive/daemon.pid or run `hive stop`",
+        )
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return CheckResult(
+            "Daemon PID file",
+            "fail",
+            f"Stale PID {pid} (process not running)",
+            fix="Remove .hive/daemon.pid or run `hive stop`",
+        )
+    except PermissionError:
+        return CheckResult(
+            "Daemon PID file",
+            "warn",
+            f"PID {pid} exists but cannot signal process",
+        )
+    return CheckResult("Daemon PID file", "ok", f"Daemon running (PID {pid})")
+
+
+def check_budget_ledger(hive_dir: Path) -> CheckResult:
+    ledger = budget_ledger_path(hive_dir)
+    cfg = HiveConfig.load(hive_dir)
+    if not cfg.daemon.budget_persist:
+        return CheckResult(
+            "Budget ledger",
+            "ok",
+            "Persistence disabled (budget_persist=false)",
+        )
+    if not ledger.exists():
+        return CheckResult(
+            "Budget ledger",
+            "ok",
+            f"No ledger yet ({ledger.name} created on first spend)",
+        )
+    try:
+        summary = read_budget_snapshot(hive_dir)
+        spent = f"${summary.spent_usd:.4f}, {summary.spent_tokens:,} tokens"
+        return CheckResult("Budget ledger", "ok", f"Readable at {ledger} ({spent})")
+    except Exception as exc:
+        return CheckResult(
+            "Budget ledger",
+            "fail",
+            f"Unreadable: {exc}",
+            fix=f"Inspect or remove {ledger}",
+        )
+
+
+def check_profiles_dir(hive_dir: Path) -> CheckResult:
+    profiles = resolve_profiles_dir(hive_dir)
+    if not profiles.exists():
+        return CheckResult(
+            "Profiles directory",
+            "fail",
+            f"Not found: {profiles}",
+            fix="Run `hive new` or set profiles_dir in .hive/config.yaml",
+        )
+    count = len(list(profiles.glob("*.yaml")))
+    if count == 0:
+        return CheckResult(
+            "Profiles directory",
+            "warn",
+            f"No YAML profiles in {profiles}",
+            fix="Add agent profiles or copy from templates",
+        )
+    return CheckResult("Profiles directory", "ok", f"{profiles} ({count} profiles)")
+
+
+def check_plugins_dir(hive_dir: Path) -> CheckResult:
+    plugins = hive_dir / "plugins"
+    if not plugins.exists():
+        return CheckResult("Plugins directory", "ok", "Not present (optional)")
+    py_files = list(plugins.glob("*.py"))
+    if not py_files:
+        return CheckResult("Plugins directory", "ok", f"Empty ({plugins})")
+    errors: list[str] = []
+    if HiveConfig.load(hive_dir).plugins.enabled:
+        from hive.runtime.plugin_loader import PluginLoader
+
+        loader = PluginLoader([plugins], enabled=True)
+        try:
+            toolkits = loader.discover()
+        except Exception as exc:
+            return CheckResult(
+                "Plugins directory",
+                "fail",
+                f"Load error: {exc}",
+                fix="Fix plugin syntax or disable plugins.enabled",
+            )
+        if not toolkits and py_files:
+            errors.append("no Toolkit subclasses found")
+    msg = f"{plugins} ({len(py_files)} file(s))"
+    if errors:
+        return CheckResult(
+            "Plugins directory",
+            "warn",
+            f"{msg}; {', '.join(errors)}",
+        )
+    return CheckResult("Plugins directory", "ok", msg)
+
+
 def check_sqlite_integrity(hive_dir: Path) -> CheckResult:
     db_path = hive_dir / "hive.db"
     if not db_path.exists():
@@ -122,9 +237,8 @@ def check_sqlite_integrity(hive_dir: Path) -> CheckResult:
             "No database yet",
         )
     try:
-        conn = sqlite3.connect(str(db_path))
-        result = conn.execute("PRAGMA integrity_check").fetchone()
-        conn.close()
+        with sqlite3.connect(str(db_path)) as conn:
+            result = conn.execute("PRAGMA integrity_check").fetchone()
         if result and result[0] == "ok":
             return CheckResult(
                 "SQLite database",
@@ -169,8 +283,6 @@ def check_dependencies() -> CheckResult:
 def check_config_valid(hive_dir: Path | None = None) -> CheckResult:
     """Validate config values against field validators."""
     try:
-        from hive.config import HiveConfig
-
         cfg = HiveConfig.load(hive_dir)
         env_warnings = cfg.validate_environment()
         if env_warnings:
@@ -202,5 +314,9 @@ def run_all_checks(hive_dir: Path | None = None) -> list[CheckResult]:
         check_local_model("Ollama", "http://localhost:11434/v1"),
         check_local_model("LM Studio", "http://localhost:1234/v1"),
         check_hive_dir(hive),
+        check_stale_pid(hive),
+        check_budget_ledger(hive),
+        check_profiles_dir(hive),
+        check_plugins_dir(hive),
         check_sqlite_integrity(hive),
     ]
