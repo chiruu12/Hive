@@ -190,6 +190,17 @@ Show detailed summary of a recorded run -- goals, decisions, tool usage.
 hive inspect <run-id>
 ```
 
+### `hive trace`
+
+Display the span-tree trace for a recorded run (run -> agent -> goal ->
+decision/tool). Goals show their outcome, decisions their token counts, tools
+a success/failure mark.
+
+```bash
+hive trace <run-id>
+hive trace <run-id> --full   # include all span attributes
+```
+
 ### `hive replay`
 
 Replay a past session step by step.
@@ -210,16 +221,6 @@ hive history coder --limit 50
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-n`, `--limit` | `20` | Number of entries |
-
-### `hive trace`
-
-Display the span-tree trace for a recorded run (agents, goals, decisions,
-tool calls as nested spans).
-
-```bash
-hive trace <run-id>
-hive trace <run-id> --full   # include all span attributes
-```
 
 ### `hive lives`
 

@@ -1,14 +1,9 @@
 """Shared URL validation and safe HTTP fetch helpers (SSRF protection).
 
-HTTP requests pin the resolved IP in the request URL and send the original
-hostname in the ``Host`` header, closing DNS-rebinding TOCTOU for cleartext
-fetches.
-
-HTTPS requests validate that the hostname resolves to a public address but
-connect via the hostname (SNI/TLS). IP pinning is **not** applied for HTTPS
-because pinning would require custom TLS/CONNECT handling and breaks many CDN
-hostnames. Treat HTTPS as a smaller TOCTOU window, not zero risk; restrict
-high-sensitivity deployments with an allowlist or a dedicated fetch proxy.
+HTTP and HTTPS requests pin the resolved IP in the request URL and send the
+original hostname in the ``Host`` header. HTTPS also sets ``sni_hostname`` so
+TLS connects to the pinned address while validating the certificate for the
+original hostname, closing DNS-rebinding TOCTOU for both schemes.
 """
 
 from __future__ import annotations
@@ -84,12 +79,13 @@ def build_pinned_request(
     validated_ip: str | None,
     *,
     user_agent: str = DEFAULT_USER_AGENT,
-) -> tuple[str, dict[str, str]]:
-    """Build request URL and headers with HTTP IP pinning when applicable."""
+) -> tuple[str, dict[str, str], dict[str, bytes]]:
+    """Build request URL, headers, and httpx extensions with IP pinning when applicable."""
     parsed = urlparse(url)
     headers = {"User-Agent": user_agent}
+    extensions: dict[str, bytes] = {}
     request_url = url
-    if parsed.scheme == "http" and validated_ip:
+    if validated_ip:
         host_header = parsed.hostname or ""
         if parsed.port:
             host_header = f"{host_header}:{parsed.port}"
@@ -98,7 +94,9 @@ def build_pinned_request(
         if parsed.port:
             netloc_ip = f"{validated_ip}:{parsed.port}"
         request_url = parsed._replace(netloc=netloc_ip).geturl()
-    return request_url, headers
+        if parsed.scheme == "https" and parsed.hostname:
+            extensions["sni_hostname"] = parsed.hostname.encode("idna")
+    return request_url, headers, extensions
 
 
 def _read_body_sync(response: httpx.Response, max_bytes: int) -> str:
@@ -170,28 +168,29 @@ def request_url_safe_sync(
             blocked, validated_ip = validate_url(current)
             if blocked:
                 return SafeFetchResult(ok=False, error=blocked)
-            request_url, headers = build_pinned_request(
+            request_url, headers, extensions = build_pinned_request(
                 current, validated_ip, user_agent=user_agent
             )
-            with httpx.stream(
-                method,
-                request_url,
-                params=params if current == url else None,
-                data=data if current == url else None,
-                timeout=timeout,
-                follow_redirects=False,
-                headers=headers,
-            ) as resp:
-                if resp.is_redirect:
-                    location = resp.headers.get("location")
-                    if not location:
-                        break
-                    current = str(httpx.URL(current).join(location))
-                    continue
-                resp.raise_for_status()
-                content_type = resp.headers.get("content-type", "")
-                text = _read_body_sync(resp, max_response_bytes)
-                return SafeFetchResult(ok=True, text=text, content_type=content_type)
+            with httpx.Client(timeout=timeout) as client:
+                with client.stream(
+                    method,
+                    request_url,
+                    params=params if current == url else None,
+                    data=data if current == url else None,
+                    follow_redirects=False,
+                    headers=headers,
+                    extensions=extensions or None,
+                ) as resp:
+                    if resp.is_redirect:
+                        location = resp.headers.get("location")
+                        if not location:
+                            break
+                        current = str(httpx.URL(current).join(location))
+                        continue
+                    resp.raise_for_status()
+                    content_type = resp.headers.get("content-type", "")
+                    text = _read_body_sync(resp, max_response_bytes)
+                    return SafeFetchResult(ok=True, text=text, content_type=content_type)
         return SafeFetchResult(ok=False, error="Blocked: too many redirects.")
     except httpx.HTTPStatusError as e:
         return SafeFetchResult(
@@ -217,7 +216,7 @@ async def fetch_url_safe(
             blocked, validated_ip = validate_url(current)
             if blocked:
                 return SafeFetchResult(ok=False, error=blocked)
-            request_url, headers = build_pinned_request(
+            request_url, headers, extensions = build_pinned_request(
                 current, validated_ip, user_agent=user_agent
             )
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -226,6 +225,7 @@ async def fetch_url_safe(
                     request_url,
                     follow_redirects=False,
                     headers=headers,
+                    extensions=extensions or None,
                 ) as resp:
                     if resp.is_redirect:
                         location = resp.headers.get("location")

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -189,7 +189,13 @@ class TestWebSearchRedirectSSRF:
             def __exit__(self, *args: object) -> bool:
                 return False
 
-        with patch("hive.tools.url_safety.httpx.stream", return_value=_FakeSyncStreamResp()):
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = False
+        mock_client.stream.return_value.__enter__.return_value = _FakeSyncStreamResp()
+        mock_client.stream.return_value.__exit__.return_value = False
+
+        with patch("hive.tools.url_safety.httpx.Client", return_value=mock_client):
             result = toolkit.web_search("test query")
 
         assert "Blocked" in result

@@ -149,6 +149,8 @@ jobs:
 
       - name: Build from git archive
         run: |
+          rm -rf /tmp/hive-ci-build
+          mkdir -p /tmp/hive-ci-build
           git archive HEAD | tar -x -C /tmp/hive-ci-build
           cd /tmp/hive-ci-build && uv build
 

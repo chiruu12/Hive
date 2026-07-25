@@ -161,13 +161,31 @@ class TestSSRFGuard:
         assert err is None
         assert ip == "93.184.216.34"
 
-    @patch("hive.tools.url_safety.httpx.stream")
-    def test_web_fetch_refuses_internal_redirect(self, mock_stream: MagicMock):
+    def test_https_pins_ip_and_sets_sni_hostname(self):
+        from hive.tools.url_safety import build_pinned_request
+
+        request_url, headers, extensions = build_pinned_request(
+            "https://example.com/path",
+            "93.184.216.34",
+        )
+        assert request_url.startswith("https://93.184.216.34/")
+        assert headers["Host"] == "example.com"
+        assert extensions["sni_hostname"] == b"example.com"
+
+    @patch("hive.tools.url_safety.httpx.Client")
+    def test_web_fetch_refuses_internal_redirect(self, mock_client_cls: MagicMock):
         # A public URL that redirects to an internal address must be refused at
         # the second hop, not followed.
-        mock_stream.return_value = _FakeStreamResp(
+        fake_resp = _FakeStreamResp(
             is_redirect=True, location="http://169.254.169.254/"
         )
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value = mock_client
+        mock_client.__exit__.return_value = False
+        mock_client.stream.return_value.__enter__.return_value = fake_resp
+        mock_client.stream.return_value.__exit__.return_value = False
+        mock_client_cls.return_value = mock_client
+
         tk = WebToolkit()
         result = tk.web_fetch("https://8.8.8.8/redir")
         assert "Blocked" in result

@@ -89,48 +89,47 @@ async def get_run_trace(run_id: str, ctx: ServerContext = Depends(get_context)) 
     return tree.to_dict()
 
 
-@router.get("/metrics")
+@router.get("/metrics", response_class=Response)
 async def metrics(ctx: ServerContext = Depends(get_context)) -> Response:
-    """Prometheus-compatible metrics endpoint."""
-    agents = await ctx.store.list_agents()
-    goals = await ctx.store.get_active_goals_map()
+    """Prometheus text-format metrics: agent statuses plus latest-run counters.
 
-    active_count = sum(1 for a in agents if a.status.value not in ("dead",))
-    working_count = sum(1 for a in agents if a.status.value == "working")
-    idle_count = sum(1 for a in agents if a.status.value == "idle")
-    waiting_count = sum(1 for a in agents if a.status.value == "waiting_approval")
-    paused_count = sum(1 for a in agents if a.status.value == "paused")
-    dead_count = sum(1 for a in agents if a.status.value == "dead")
-    goal_count = sum(1 for g in goals.values() if g is not None)
+    Rendered by hand -- the exposition text format is trivial and not worth a
+    dependency. The per-run values are snapshots of the most recent run's log
+    summary, exposed as gauges (they reset when a new run starts, so they are
+    deliberately NOT counters -- don't apply rate()/increase() to them).
+    """
+    from hive.logging.reader import LogReader
+
+    agents = await ctx.store.list_agents()
+    by_status: dict[str, int] = {}
+    for a in agents:
+        by_status[a.status.value] = by_status.get(a.status.value, 0) + 1
+
+    reader = LogReader(ctx.root / "logs")
+    runs = await asyncio.to_thread(reader.list_runs)
+    summary: dict[str, Any] = {}
+    if runs:
+        summary = await asyncio.to_thread(reader.get_summary, runs[0].run_id)
 
     lines = [
-        "# HELP hive_agents_total Total number of agents",
-        "# TYPE hive_agents_total gauge",
-        f"hive_agents_total {len(agents)}",
-        "# HELP hive_agents_active Agents not dead",
-        "# TYPE hive_agents_active gauge",
-        f"hive_agents_active {active_count}",
-        "# HELP hive_agents_working Agents currently working",
-        "# TYPE hive_agents_working gauge",
-        f"hive_agents_working {working_count}",
-        "# HELP hive_agents_idle Agents currently idle",
-        "# TYPE hive_agents_idle gauge",
-        f"hive_agents_idle {idle_count}",
-        "# HELP hive_agents_waiting Agents waiting for approval",
-        "# TYPE hive_agents_waiting gauge",
-        f"hive_agents_waiting {waiting_count}",
-        "# HELP hive_agents_paused Agents paused by an operator",
-        "# TYPE hive_agents_paused gauge",
-        f"hive_agents_paused {paused_count}",
-        "# HELP hive_agents_dead Dead agents",
-        "# TYPE hive_agents_dead gauge",
-        f"hive_agents_dead {dead_count}",
-        "# HELP hive_goals_active Currently active goals",
-        "# TYPE hive_goals_active gauge",
-        f"hive_goals_active {goal_count}",
+        "# HELP hive_agents Agents known to the store, by status.",
+        "# TYPE hive_agents gauge",
     ]
-
-    return Response(content="\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
+    for status_value, count in sorted(by_status.items()):
+        lines.append(f'hive_agents{{status="{status_value}"}} {count}')
+    snapshot_help = {
+        "goals_generated": "Goals generated in the latest run (snapshot; resets each run).",
+        "goals_completed": "Goals completed in the latest run (snapshot; resets each run).",
+        "goals_abandoned": "Goals abandoned in the latest run (snapshot; resets each run).",
+        "tool_calls": "Tool calls in the latest run (snapshot; resets each run).",
+        "total_tokens": "Tokens consumed in the latest run (snapshot; resets each run).",
+        "total_cost_usd": "Estimated cost (USD) of the latest run (snapshot; resets each run).",
+    }
+    for key, help_text in snapshot_help.items():
+        lines.append(f"# HELP hive_{key} {help_text}")
+        lines.append(f"# TYPE hive_{key} gauge")
+        lines.append(f"hive_{key} {summary.get(key, 0)}")
+    return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
 
 @router.post("/daemon/pause", status_code=200)

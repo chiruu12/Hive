@@ -112,7 +112,7 @@ Interactive docs are auto-generated at `/docs` (Swagger) and `/redoc`.
 | `GET` | `/config` | Current config (secrets redacted) |
 | `PATCH` | `/config` | Merge fields into `.hive/config.yaml`; returns `reload` map |
 | `GET` | `/runs`, `/runs/{id}` | Structured run logs |
-| `GET` | `/runs/{id}/trace` | Span-tree trace for a run |
+| `GET` | `/runs/{run_id}/trace` | Span tree derived from run logs (run -> agent -> goal -> decision/tool) |
 | `GET` | `/approvals` | Global pending-approval queue |
 | `GET` | `/agents/{id}/approvals` | Pending approvals for one agent |
 | `POST` | `/agents/{id}/approvals/{approval_id}` | Approve or deny |
