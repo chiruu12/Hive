@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 
-from hive.agents.goal_strategy import Goal, GoalContext, GoalStrategy
+from hive.agents.goal_strategy import GeneratedGoal, GoalContext, GoalStrategy
 from hive.agents.profile import AgentProfile
 from hive.agents.suffering import SufferingState
 
@@ -28,39 +26,39 @@ def _make_context(**overrides) -> GoalContext:
 class FixedGoalStrategy:
     """Always returns the same goal."""
 
-    def __init__(self, objective: str = "Do the thing"):
+    def __init__(self, objective: str = "Do the thing", cost_usd: float = 0.0, tokens: int = 0):
         self._objective = objective
+        self._cost_usd = cost_usd
+        self._tokens = tokens
 
-    async def generate_goal(self, context: GoalContext) -> Goal | None:
-        return Goal(
-            goal_id=f"goal-{uuid4().hex[:8]}",
+    async def generate_goal(self, context: GoalContext) -> GeneratedGoal:
+        return GeneratedGoal(
             objective=self._objective,
-            reasoning="Because I said so",
+            cost_usd=self._cost_usd,
+            tokens=self._tokens,
         )
 
 
 class NullGoalStrategy:
-    """Never generates a goal."""
+    """Never generates a goal but may still report spend."""
 
-    async def generate_goal(self, context: GoalContext) -> Goal | None:
-        return None
+    def __init__(self, cost_usd: float = 0.0, tokens: int = 0):
+        self._cost_usd = cost_usd
+        self._tokens = tokens
+
+    async def generate_goal(self, context: GoalContext) -> GeneratedGoal:
+        return GeneratedGoal(objective=None, cost_usd=self._cost_usd, tokens=self._tokens)
 
 
 class ContextAwareStrategy:
     """Generates goal based on context."""
 
-    async def generate_goal(self, context: GoalContext) -> Goal | None:
+    async def generate_goal(self, context: GoalContext) -> GeneratedGoal:
         if context.suffering.cumulative_load > 0.5:
-            return Goal(
-                goal_id=f"goal-{uuid4().hex[:8]}",
-                objective="Address suffering",
-            )
+            return GeneratedGoal(objective="Address suffering")
         if context.nudges:
-            return Goal(
-                goal_id=f"goal-{uuid4().hex[:8]}",
-                objective=f"Respond to: {context.nudges[0]}",
-            )
-        return None
+            return GeneratedGoal(objective=f"Respond to: {context.nudges[0]}")
+        return GeneratedGoal(objective=None)
 
 
 def test_fixed_strategy_satisfies_protocol():
@@ -73,21 +71,22 @@ def test_null_strategy_satisfies_protocol():
 
 @pytest.mark.asyncio
 async def test_fixed_strategy_returns_goal():
-    strategy = FixedGoalStrategy("Build a website")
+    strategy = FixedGoalStrategy("Build a website", cost_usd=0.02, tokens=30)
     ctx = _make_context()
-    goal = await strategy.generate_goal(ctx)
-    assert goal is not None
-    assert goal.objective == "Build a website"
-    assert goal.reasoning == "Because I said so"
-    assert goal.goal_id.startswith("goal-")
+    result = await strategy.generate_goal(ctx)
+    assert result.objective == "Build a website"
+    assert result.cost_usd == 0.02
+    assert result.tokens == 30
 
 
 @pytest.mark.asyncio
-async def test_null_strategy_returns_none():
-    strategy = NullGoalStrategy()
+async def test_null_strategy_returns_no_objective():
+    strategy = NullGoalStrategy(cost_usd=0.01, tokens=12)
     ctx = _make_context()
-    goal = await strategy.generate_goal(ctx)
-    assert goal is None
+    result = await strategy.generate_goal(ctx)
+    assert result.objective is None
+    assert result.cost_usd == 0.01
+    assert result.tokens == 12
 
 
 @pytest.mark.asyncio
@@ -98,26 +97,26 @@ async def test_context_aware_strategy_suffering():
     suffering = SufferingState(agent_id="test")
     suffering.add_stressor(StressorType.FUTILITY, "stuck", "finish", initial_severity=0.6)
     ctx = _make_context(suffering=suffering)
-    goal = await strategy.generate_goal(ctx)
-    assert goal is not None
-    assert "suffering" in goal.objective.lower()
+    result = await strategy.generate_goal(ctx)
+    assert result.objective is not None
+    assert "suffering" in result.objective.lower()
 
 
 @pytest.mark.asyncio
 async def test_context_aware_strategy_nudges():
     strategy = ContextAwareStrategy()
     ctx = _make_context(nudges=["Please write tests"])
-    goal = await strategy.generate_goal(ctx)
-    assert goal is not None
-    assert "write tests" in goal.objective.lower()
+    result = await strategy.generate_goal(ctx)
+    assert result.objective is not None
+    assert "write tests" in result.objective.lower()
 
 
 @pytest.mark.asyncio
 async def test_context_aware_strategy_idle():
     strategy = ContextAwareStrategy()
     ctx = _make_context()
-    goal = await strategy.generate_goal(ctx)
-    assert goal is None
+    result = await strategy.generate_goal(ctx)
+    assert result.objective is None
 
 
 def test_goal_context_has_all_fields():
@@ -135,13 +134,15 @@ def test_goal_context_has_all_fields():
     assert ctx.extra == {}
 
 
-def test_goal_dataclass():
-    g = Goal(goal_id="g1", objective="Do X", reasoning="Because Y")
-    assert g.goal_id == "g1"
+def test_generated_goal_dataclass():
+    g = GeneratedGoal(objective="Do X", cost_usd=0.05, tokens=100)
     assert g.objective == "Do X"
-    assert g.reasoning == "Because Y"
+    assert g.cost_usd == 0.05
+    assert g.tokens == 100
 
 
-def test_goal_default_reasoning():
-    g = Goal(goal_id="g2", objective="Do Z")
-    assert g.reasoning is None
+def test_generated_goal_defaults():
+    g = GeneratedGoal(objective=None)
+    assert g.objective is None
+    assert g.cost_usd == 0.0
+    assert g.tokens == 0

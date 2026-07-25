@@ -59,6 +59,9 @@ cd Hive
 uv sync
 ```
 
+Before opening stability or hardening PRs, run the adversarial merge gate:
+`uv run pytest tests/adversarial/ -v --tb=short` (also enforced in CI via the `resilience` job).
+
 ---
 
 ## Quickstart
@@ -898,7 +901,11 @@ Steps can use either an `agent` or a custom `fn` (async callable). The instructi
 
 ## Persistent Memory
 
-Give agents cross-session memory that persists between runs. The `PersistentMemory` class wraps a semantic memory store backed by SQLite.
+Give agents cross-session memory that persists between runs. The
+`PersistentMemory` class wraps the same semantic store the daemon uses at
+`.hive/memory/<agent_id>/` when `memory.unified: true` (default). Standalone SDK
+runs attach it directly; daemon pursuit wires it automatically via
+`AgentContextCache`.
 
 ```python
 import asyncio
@@ -927,7 +934,10 @@ async def main():
 asyncio.run(main())
 ```
 
-When an agent with `PersistentMemory` starts a task, it automatically recalls up to 3 relevant memories based on semantic similarity to the current instruction and injects them as system context.
+When an agent with `PersistentMemory` starts a task, it automatically recalls up
+to 3 relevant memories based on semantic similarity to the current instruction
+and injects them as system context. The daemon goal-generation path uses the
+same backend for `memory_snippets` in the existence prompt.
 
 **PersistentMemory methods:**
 

@@ -46,7 +46,7 @@ async def _make_loop(tmp_path: Any) -> tuple[ExistenceLoop, HiveStore]:
 async def test_generates_goal_when_idle(tmp_path: Any) -> None:
     loop, store = await _make_loop(tmp_path)
     goal = await loop.generate_goal(SufferingState(agent_id="a1"), [], [])
-    assert goal == "Write the docs"
+    assert goal.objective == "Write the docs"
     assert await store.get_active_goal("a1") is not None
 
 
@@ -58,7 +58,7 @@ async def test_skips_when_active_goal_already_exists(tmp_path: Any) -> None:
 
     goal = await loop.generate_goal(SufferingState(agent_id="a1"), [], [])
 
-    assert goal is None
+    assert goal.objective is None
     # Still exactly one active goal -- no duplicate piled on.
     active = await store.get_active_goal("a1")
     assert active is not None

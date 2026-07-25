@@ -110,6 +110,7 @@ class Agent:
         # pursued (set by the daemon; empty for standalone/one-shot runs).
         self._goal_id = goal_id
         self._current_step = 0
+        self._last_conversation_messages: list[Message] = []
         self._max_cost_usd = max_cost_usd
         self._max_tokens = max_tokens
         self._gen_max_tokens = max_tokens or 4096
@@ -191,6 +192,11 @@ class Agent:
         """
         self._on_tool = callback
 
+    @property
+    def last_conversation_messages(self) -> list[Message]:
+        """Non-system messages from the most recent ``run()`` call."""
+        return list(self._last_conversation_messages)
+
     def get_tools(self) -> list[Tool]:
         """Return all tools available to this agent."""
         all_tools: list[Tool] = list(self._extra_tools)
@@ -208,12 +214,37 @@ class Agent:
             )
         return all_tools
 
-    async def _prepare_conversation(self, task: Task, max_steps: int) -> ConversationMemory:
+    async def _prepare_conversation(
+        self,
+        task: Task,
+        max_steps: int,
+        *,
+        resume_messages: list[Message] | None = None,
+        continuation_context: str = "",
+        conversation_max_messages: int | None = None,
+    ) -> ConversationMemory:
         """Build the initial conversation with system prompt, memories, and task."""
+        if resume_messages:
+            mem_cap = (
+                conversation_max_messages
+                if conversation_max_messages is not None
+                else max_steps * 4
+            )
+        else:
+            mem_cap = max_steps * 4
         conversation = ConversationMemory(
             system_prompt=self._system_prompt,
-            max_messages=max_steps * 4,
+            max_messages=mem_cap,
         )
+
+        if resume_messages:
+            for msg in resume_messages:
+                conversation.add(msg)
+            if continuation_context:
+                conversation.add(
+                    Message.system(f"Updated pursuit context:\n{continuation_context}")
+                )
+            return conversation
 
         if self._memory:
             try:
@@ -489,23 +520,43 @@ class Agent:
             cost_usd=estimate_cost(self._model.model, 0, output_est),
         )
 
-    async def run(self, task: Task) -> TaskResult:
+    async def run(
+        self,
+        task: Task,
+        *,
+        resume_messages: list[Message] | None = None,
+        continuation_context: str = "",
+        conversation_max_messages: int | None = None,
+    ) -> TaskResult:
         """Execute a task using the ReAct loop.
 
         Thin wrapper over the loop that stamps the run's accumulated cost and token
         totals onto the result (handy for evals and budgeting).
         """
-        result = await self._run_loop(task)
+        result = await self._run_loop(
+            task,
+            resume_messages=resume_messages,
+            continuation_context=continuation_context,
+            conversation_max_messages=conversation_max_messages,
+        )
         return result.model_copy(
             update={"cost_usd": self._total_cost, "total_tokens": self._total_tokens}
         )
 
-    async def _run_loop(self, task: Task) -> TaskResult:
+    async def _run_loop(
+        self,
+        task: Task,
+        *,
+        resume_messages: list[Message] | None = None,
+        continuation_context: str = "",
+        conversation_max_messages: int | None = None,
+    ) -> TaskResult:
         """Execute a task using the ReAct loop."""
         self._total_cost = 0.0
         self._total_tokens = 0
         self._cost_warned = False
         self._tokens_warned = False
+        self._last_conversation_messages = []
         t0 = time.time()
 
         # Pre-hook: inspect the task input before the model sees it. A blocking
@@ -537,7 +588,17 @@ class Agent:
         tool_schemas = [t.to_schema() for t in tools] if tools else None
         max_steps = task.max_steps or self._max_steps
 
-        conversation = await self._prepare_conversation(task, max_steps)
+        conversation = await self._prepare_conversation(
+            task,
+            max_steps,
+            resume_messages=resume_messages,
+            continuation_context=continuation_context,
+            conversation_max_messages=conversation_max_messages,
+        )
+
+        def _finish(result: TaskResult) -> TaskResult:
+            self._last_conversation_messages = conversation.messages
+            return result
 
         steps = 0
         tool_calls_total = 0
@@ -556,14 +617,16 @@ class Agent:
                 budget_msg = self._check_budget()
                 if budget_msg:
                     self._write_conversation_log(task.id, conversation.get_messages(), "failed")
-                    return TaskResult(
-                        task_id=task.id,
-                        status=TaskStatus.FAILED,
-                        output=response.content,
-                        error=budget_msg,
-                        steps_taken=steps,
-                        tool_calls_made=tool_calls_total,
-                        duration_seconds=time.time() - t0,
+                    return _finish(
+                        TaskResult(
+                            task_id=task.id,
+                            status=TaskStatus.FAILED,
+                            output=response.content,
+                            error=budget_msg,
+                            steps_taken=steps,
+                            tool_calls_made=tool_calls_total,
+                            duration_seconds=time.time() - t0,
+                        )
                     )
             except Exception as e:
                 logger.error(
@@ -576,14 +639,16 @@ class Agent:
                 )
                 self._log_decision_failure(steps, e)
                 self._write_conversation_log(task.id, conversation.get_messages(), "failed")
-                return TaskResult(
-                    task_id=task.id,
-                    status=TaskStatus.FAILED,
-                    output="",
-                    error=str(e),
-                    steps_taken=steps,
-                    tool_calls_made=tool_calls_total,
-                    duration_seconds=time.time() - t0,
+                return _finish(
+                    TaskResult(
+                        task_id=task.id,
+                        status=TaskStatus.FAILED,
+                        output="",
+                        error=str(e),
+                        steps_taken=steps,
+                        tool_calls_made=tool_calls_total,
+                        duration_seconds=time.time() - t0,
+                    )
                 )
 
             conversation.add(response)
@@ -599,13 +664,15 @@ class Agent:
                 if output != response.content:
                     log_messages = [*log_messages[:-1], Message.assistant(output)]
                 self._write_conversation_log(task.id, log_messages, "completed")
-                return TaskResult(
-                    task_id=task.id,
-                    status=TaskStatus.COMPLETED,
-                    output=output,
-                    steps_taken=steps,
-                    tool_calls_made=tool_calls_total,
-                    duration_seconds=time.time() - t0,
+                return _finish(
+                    TaskResult(
+                        task_id=task.id,
+                        status=TaskStatus.COMPLETED,
+                        output=output,
+                        steps_taken=steps,
+                        tool_calls_made=tool_calls_total,
+                        duration_seconds=time.time() - t0,
+                    )
                 )
 
             try:
@@ -616,24 +683,28 @@ class Agent:
                 self._write_conversation_log(
                     task.id, conversation.get_messages(), "waiting_approval"
                 )
-                return TaskResult(
-                    task_id=task.id,
-                    status=TaskStatus.WAITING_APPROVAL,
-                    output="Awaiting human approval: " + ", ".join(signal.approval_ids),
-                    approval_ids=list(signal.approval_ids),
-                    steps_taken=steps,
-                    tool_calls_made=tool_calls_total,
-                    duration_seconds=time.time() - t0,
+                return _finish(
+                    TaskResult(
+                        task_id=task.id,
+                        status=TaskStatus.WAITING_APPROVAL,
+                        output="Awaiting human approval: " + ", ".join(signal.approval_ids),
+                        approval_ids=list(signal.approval_ids),
+                        steps_taken=steps,
+                        tool_calls_made=tool_calls_total,
+                        duration_seconds=time.time() - t0,
+                    )
                 )
 
         self._write_conversation_log(task.id, conversation.get_messages(), "max_steps")
-        return TaskResult(
-            task_id=task.id,
-            status=TaskStatus.MAX_STEPS,
-            output=f"Reached maximum steps ({max_steps})",
-            steps_taken=steps,
-            tool_calls_made=tool_calls_total,
-            duration_seconds=time.time() - t0,
+        return _finish(
+            TaskResult(
+                task_id=task.id,
+                status=TaskStatus.MAX_STEPS,
+                output=f"Reached maximum steps ({max_steps})",
+                steps_taken=steps,
+                tool_calls_made=tool_calls_total,
+                duration_seconds=time.time() - t0,
+            )
         )
 
     def _apply_input_guardrail(self, text: str) -> tuple[str | None, str]:

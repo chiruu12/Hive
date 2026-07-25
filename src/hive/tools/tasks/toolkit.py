@@ -9,7 +9,7 @@ from uuid import uuid4
 from hive.tools.base import Toolkit, tool
 
 if TYPE_CHECKING:
-    from hive.memory.store import HiveStore
+    from hive.memory.protocol import StoreProtocol
 
 
 class TaskToolkit(Toolkit):
@@ -25,7 +25,7 @@ class TaskToolkit(Toolkit):
 
     def __init__(
         self,
-        store: HiveStore | None = None,
+        store: StoreProtocol | None = None,
         db_path: str | Path | None = None,
     ):
         self._initialized = False

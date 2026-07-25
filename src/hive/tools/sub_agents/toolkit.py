@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from hive.agents.state import AgentState, AgentStatus
-from hive.memory.store import HiveStore
+from hive.memory.protocol import StoreProtocol
+from hive.runtime.guardrails import sanitize_inter_agent_content, sanitize_operator_nudge
 from hive.tools.base import Toolkit, tool
 
 if TYPE_CHECKING:
+    from hive.runtime.guardrails import GuardrailPipeline
     from hive.tools.notepad import NotepadManager
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,7 @@ MAX_CHILDREN = 5
 class SubAgentManager:
     """Lifecycle management for sub-agents."""
 
-    def __init__(self, store: HiveStore, hive_dir: Path):
+    def __init__(self, store: StoreProtocol, hive_dir: Path):
         self._store = store
         self._hive_dir = hive_dir
 
@@ -151,14 +153,23 @@ class SubAgentToolkit(Toolkit):
     def __init__(
         self,
         manager: SubAgentManager,
-        store: HiveStore,
+        store: StoreProtocol,
         agent_id: str = "",
         notepad_manager: NotepadManager | None = None,
+        guardrails: GuardrailPipeline | None = None,
     ):
         self._manager = manager
         self._agent_id = agent_id
         self._store = store
         self._notepad = notepad_manager
+        self._guardrails = guardrails
+
+    def _sanitize_task(self, task: str, *, sub_agent_id: str) -> str:
+        return sanitize_inter_agent_content(
+            task,
+            self._guardrails,
+            agent_id=sub_agent_id,
+        )
 
     @tool()
     async def spawn_sub_agent(
@@ -170,6 +181,7 @@ class SubAgentToolkit(Toolkit):
     ) -> str:
         """Spawn a sub-agent to handle a subtask. Returns sub-agent ID."""
         try:
+            task = self._sanitize_task(task, sub_agent_id=self._agent_id)
             state = await self._manager.spawn(
                 parent_agent_id=self._agent_id,
                 name=name,
@@ -245,6 +257,11 @@ class SubAgentToolkit(Toolkit):
         if sub["parent_agent_id"] != self._agent_id:
             return "You can only instruct your own sub-agents."
         nudge_id = f"nudge-{uuid4().hex[:8]}"
+        instruction = sanitize_operator_nudge(
+            instruction,
+            self._guardrails,
+            agent_id=sub_agent_id,
+        )
         await self._store.save_nudge(nudge_id, sub_agent_id, instruction)
         return f"Instruction sent to {sub_agent_id}."
 

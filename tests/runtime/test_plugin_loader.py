@@ -220,3 +220,51 @@ class BetaToolkit(Toolkit):
         assert len(found) == 2
         names = {t.__name__ for t in found}
         assert names == {"AlphaToolkit", "BetaToolkit"}
+
+
+class TestPluginConfigWiring:
+    """Daemon reads ``plugins.enabled`` from config; opt-in path must still load."""
+
+    _PLUGIN = """
+from hive.tools import Toolkit, tool
+
+class WiredToolkit(Toolkit):
+    @tool()
+    def ping(self) -> str:
+        return "pong"
+"""
+
+    def test_default_config_disables_daemon_plugin_discovery(self, tmp_path: Path) -> None:
+        from hive.config import HiveConfig
+        from hive.daemon.loop import HiveDaemon
+        from hive.daemon.setup import initialize_hive
+
+        initialize_hive(tmp_path)
+        plugins_dir = tmp_path / ".hive" / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "wired.py").write_text(self._PLUGIN)
+
+        assert HiveConfig().plugins.enabled is False
+        daemon = HiveDaemon(tmp_path / ".hive", heartbeat=0, logs_dir=tmp_path / "logs")
+        assert daemon._plugin_loader._enabled is False
+        assert daemon._plugin_loader.discover() == []
+
+    def test_enabled_config_loads_plugins_in_daemon(self, tmp_path: Path) -> None:
+        from hive.config import HiveConfig
+        from hive.daemon.loop import HiveDaemon
+        from hive.daemon.setup import initialize_hive
+
+        initialize_hive(tmp_path)
+        plugins_dir = tmp_path / ".hive" / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "wired.py").write_text(self._PLUGIN)
+
+        cfg = HiveConfig()
+        cfg.plugins.enabled = True
+        cfg.save(tmp_path / ".hive")
+
+        daemon = HiveDaemon(tmp_path / ".hive", heartbeat=0, logs_dir=tmp_path / "logs")
+        assert daemon._plugin_loader._enabled is True
+        found = daemon._plugin_loader.discover()
+        assert len(found) == 1
+        assert found[0].__name__ == "WiredToolkit"

@@ -227,7 +227,7 @@ class TestShellToolkit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("FAKE_API_KEY", "sk-supersecret")
-        st = ShellToolkit(tmp_path, timeout=15)
+        st = ShellToolkit(tmp_path, timeout=15, allow_dev_commands=True)
         result = await st.shell_exec(
             "python3 -c \"print(__import__('os').environ.get('FAKE_API_KEY', 'MISSING'))\""
         )
@@ -239,7 +239,7 @@ class TestShellToolkit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("FAKE_API_KEY", "sk-supersecret")
-        st = ShellToolkit(tmp_path, timeout=15, pass_env=True)
+        st = ShellToolkit(tmp_path, timeout=15, pass_env=True, allow_dev_commands=True)
         result = await st.shell_exec(
             "python3 -c \"print(__import__('os').environ.get('FAKE_API_KEY', 'MISSING'))\""
         )
@@ -311,7 +311,13 @@ class TestShellToolkit:
         result = await st.shell_exec("echo still works")
         assert "still works" in result
 
-    def test_dev_commands_allowed_by_default(self, st: ShellToolkit) -> None:
+    def test_dev_commands_blocked_by_default(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path)
+        assert "not in allowlist" in (st._check_command("git status") or "")
+        assert "not in allowlist" in (st._check_command("python3 --version") or "")
+
+    def test_dev_commands_allowed_when_enabled(self, tmp_path: Path) -> None:
+        st = ShellToolkit(tmp_path, allow_dev_commands=True)
         assert st._check_command("git status") is None
         assert st._check_command("python3 --version") is None
 

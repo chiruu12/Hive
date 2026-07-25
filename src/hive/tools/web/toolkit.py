@@ -2,61 +2,22 @@
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import re
-import socket
-from urllib.parse import urlparse
 
-import httpx
 from bs4 import BeautifulSoup
 
 from hive.tools.base import Toolkit, tool
+from hive.tools.url_safety import (
+    MAX_REDIRECTS,
+    REQUEST_TIMEOUT,
+    fetch_url_safe_sync,
+    request_url_safe_sync,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_CONTENT_CHARS = 4000
-REQUEST_TIMEOUT = 10
-MAX_REDIRECTS = 5
-# Hard cap on bytes read off the wire before decoding -- prevents a huge or
-# never-ending response from exhausting memory (the text is truncated to
-# MAX_CONTENT_CHARS afterwards anyway).
-MAX_RESPONSE_BYTES = 5_000_000
-
-
-def _validate_url(url: str) -> str | None:
-    """Return an error string if ``url`` is unsafe to fetch (SSRF guard), else None.
-
-    Rejects non-http(s) schemes and any host that resolves to a non-public
-    address (loopback, private, link-local incl. the cloud metadata IP
-    169.254.169.254, reserved, multicast, or unspecified).
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        return f"Blocked: only http/https URLs are allowed (got '{parsed.scheme or 'none'}')."
-    host = parsed.hostname
-    if not host:
-        return "Blocked: URL has no host."
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    try:
-        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror as e:
-        return f"Blocked: cannot resolve host '{host}': {e}"
-    for info in infos:
-        try:
-            ip = ipaddress.ip_address(info[4][0])
-        except ValueError:
-            continue
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            return f"Blocked: '{host}' resolves to a non-public address ({ip})."
-    return None
 
 
 def _html_to_markdown(html: str) -> str:
@@ -91,45 +52,12 @@ class WebToolkit(Toolkit):
         err = self._check_limit()
         if err:
             return err
-        # Redirects are followed manually so each hop is re-validated -- otherwise
-        # a public URL could redirect to an internal/metadata address (SSRF).
-        try:
-            current = url
-            for _ in range(MAX_REDIRECTS + 1):
-                blocked = _validate_url(current)
-                if blocked:
-                    return blocked
-                with httpx.stream(
-                    "GET",
-                    current,
-                    timeout=REQUEST_TIMEOUT,
-                    follow_redirects=False,
-                    headers={"User-Agent": "HiveAgent/1.0"},
-                ) as resp:
-                    if resp.is_redirect:
-                        location = resp.headers.get("location")
-                        if not location:
-                            break
-                        current = str(resp.url.join(location))
-                        continue
-                    resp.raise_for_status()
-                    content_type = resp.headers.get("content-type", "")
-                    chunks: list[bytes] = []
-                    total = 0
-                    for chunk in resp.iter_bytes():
-                        chunks.append(chunk)
-                        total += len(chunk)
-                        if total >= MAX_RESPONSE_BYTES:
-                            break
-                    text = b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
-                    if "html" in content_type:
-                        return _html_to_markdown(text)
-                    return text[:MAX_CONTENT_CHARS]
-            return "Blocked: too many redirects."
-        except httpx.HTTPStatusError as e:
-            return f"HTTP error {e.response.status_code}: {e.response.reason_phrase}"
-        except httpx.RequestError as e:
-            return f"Request failed: {e}"
+        result = fetch_url_safe_sync(url, timeout=REQUEST_TIMEOUT, max_redirects=MAX_REDIRECTS)
+        if not result.ok:
+            return result.error or "Request failed."
+        if "html" in result.content_type:
+            return _html_to_markdown(result.text)
+        return result.text[:MAX_CONTENT_CHARS]
 
     @tool()
     def web_search(self, query: str) -> str:
@@ -141,16 +69,17 @@ class WebToolkit(Toolkit):
         err = self._check_limit()
         if err:
             return err
+        result = request_url_safe_sync(
+            "https://html.duckduckgo.com/html/",
+            method="POST",
+            data={"q": query},
+            timeout=REQUEST_TIMEOUT,
+            max_redirects=MAX_REDIRECTS,
+        )
+        if not result.ok:
+            return result.error or "Search failed."
         try:
-            resp = httpx.get(
-                "https://html.duckduckgo.com/html/",
-                params={"q": query},
-                timeout=REQUEST_TIMEOUT,
-                headers={"User-Agent": "HiveAgent/1.0"},
-                follow_redirects=True,
-            )
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(result.text, "html.parser")
             results = []
             for r in soup.select(".result")[:5]:
                 title_el = r.select_one(".result__title")
@@ -162,5 +91,5 @@ class WebToolkit(Toolkit):
                 if title:
                     results.append(f"- {title}\n  {link}\n  {snippet}")
             return "\n\n".join(results) if results else "No results found."
-        except httpx.RequestError as e:
+        except Exception as e:
             return f"Search failed: {e}"

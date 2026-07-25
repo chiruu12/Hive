@@ -1,0 +1,28 @@
+# Secure deployment config template for `.hive/config.yaml`.
+#
+# Copy the sections you need into your hive config. Global defaults stay
+# permissive for local-first dev; this file opts into tighter collaboration
+# safety without changing out-of-the-box behavior.
+#
+# Validate: `python -c "from pathlib import Path; import yaml; from hive.config import HiveConfig; HiveConfig(**yaml.safe_load(Path('profiles/_secure.yaml.example').read_text()))"`
+
+guardrails:
+  enabled: true
+  pii: true
+  prompt_injection: true
+  pii_action: redact
+  injection_action: block
+
+approval:
+  enabled: true
+
+tools:
+  shell_allow_dev_commands: false
+  shell_pass_env: false
+
+plugins:
+  enabled: false
+
+server:
+  # Set via env or here before exposing REST beyond localhost.
+  api_key: "change-me-before-deploy"

@@ -13,6 +13,30 @@ git checkout -b ci/improvement    # CI/CD changes
 
 Open a PR to `main`, wait for CI to pass, then merge.
 
+## Merge gate (CI)
+
+Every PR runs the **fast gate**; pushes to `main`/`dev` also run the **full merge gate**. See [framework stabilization index](plans/framework-stabilization-index.md) for measured baselines.
+
+### PR fast gate (required)
+
+```bash
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run mypy src/
+uv run pytest tests/ -v --ignore=tests/adversarial/
+uv run pytest tests/adversarial/ -v --tb=short
+uv run mkdocs build --strict
+```
+
+### Merge gate (push to main / dev)
+
+```bash
+uv run pytest tests/ -v --cov=hive --cov-report=term --cov-fail-under=77
+git archive HEAD | tar -x -C /tmp/hive-ci-build && cd /tmp/hive-ci-build && uv build
+```
+
+A weekly scheduled **soak** job repeats the wake-source leak test 50× and runs the full suite for ordering sensitivity.
+
 ## Development Setup
 
 ```bash
@@ -67,7 +91,6 @@ src/hive/
 ## Pull Request Guidelines
 
 - One logical change per PR
-- Tests must pass: `uv run pytest`
-- Lint must pass: `uv run ruff check src tests`
+- All [merge gate](#merge-gate-ci) commands must pass locally before opening a PR
 - Include a clear description of what changed and why
 - Reference any related issues

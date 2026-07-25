@@ -1,11 +1,21 @@
 """Comms toolkit — inter-agent messaging via inbox files."""
 
+from __future__ import annotations
+
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from hive.runtime.guardrails import sanitize_inter_agent_content
 from hive.tools.base import Toolkit, tool
+
+if TYPE_CHECKING:
+    from hive.runtime.guardrails import GuardrailPipeline
+
+logger = logging.getLogger(__name__)
 
 
 class CommsToolkit(Toolkit):
@@ -16,10 +26,20 @@ class CommsToolkit(Toolkit):
         tk = CommsToolkit(path="/my/comms/dir")       # explicit path
     """
 
-    def __init__(self, path: str | Path | None = None, agent_id: str = ""):
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        agent_id: str = "",
+        guardrails: GuardrailPipeline | None = None,
+    ):
         self._comms_dir = Path(path) if path else Path.cwd() / ".hive" / "comms"
         self._comms_dir.mkdir(parents=True, exist_ok=True)
         self._agent_id = agent_id
+        self._guardrails = guardrails
+
+    def _sanitize_message(self, content: str) -> str:
+        """Run INPUT guardrails on inter-agent message content."""
+        return sanitize_inter_agent_content(content, self._guardrails, agent_id=self._agent_id)
 
     def _ensure_id(self) -> str:
         if not self._agent_id:
@@ -59,7 +79,8 @@ class CommsToolkit(Toolkit):
         for line in lines:
             try:
                 msg = json.loads(line)
-                messages.append(f"[{msg.get('ts', '?')}] {msg['from']}: {msg['message']}")
+                body = self._sanitize_message(msg.get("message", ""))
+                messages.append(f"[{msg.get('ts', '?')}] {msg['from']}: {body}")
             except json.JSONDecodeError:
                 continue
         return "\n".join(messages) if messages else "No messages."

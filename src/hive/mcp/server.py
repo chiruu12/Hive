@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from hive.agents.profile import AgentProfile, default_profiles_dir
+from hive.agents.profile import AgentProfile, resolve_profiles_dir
 from hive.agents.state import AgentState, AgentStatus
 from hive.memory.store import HiveStore
 
@@ -164,7 +164,14 @@ class HiveMCPServer:
         if self._daemon_task and not self._daemon_task.done():
             return "Daemon is already running."
 
+        from hive.config import resolve_logs_dir
         from hive.daemon.loop import HiveDaemon
+        from hive.daemon.run_lifecycle import DaemonAlreadyRunningError, check_no_live_daemon
+
+        try:
+            check_no_live_daemon(self._hive_dir)
+        except DaemonAlreadyRunningError as e:
+            return str(e)
 
         if not self._hive_dir.exists():
             from hive.daemon.setup import initialize_hive
@@ -172,7 +179,7 @@ class HiveMCPServer:
             initialize_hive(self._hive_dir.parent)
 
         await self._store.initialize()
-        profiles_dir = default_profiles_dir()
+        profiles_dir = resolve_profiles_dir(self._hive_dir)
         profile_names = [p.strip() for p in profiles_str.split(",")]
         spawned = []
 
@@ -196,7 +203,7 @@ class HiveMCPServer:
         daemon = HiveDaemon(
             self._hive_dir,
             heartbeat=heartbeat,
-            logs_dir=self._hive_dir.parent / "logs",
+            logs_dir=resolve_logs_dir(self._hive_dir),
             profiles=profile_names,
         )
         self._daemon_task = asyncio.create_task(daemon.start())
@@ -229,7 +236,7 @@ class HiveMCPServer:
         return "Agents:\n" + "\n".join(lines)
 
     async def _spawn(self, profile_name: str) -> str:
-        profiles_dir = default_profiles_dir()
+        profiles_dir = resolve_profiles_dir(self._hive_dir)
         try:
             profile = AgentProfile.from_preset(profile_name, profiles_dir)
         except FileNotFoundError:
@@ -273,6 +280,9 @@ class HiveMCPServer:
             return f"Agent not found: {agent_ref}"
         nudge_id = f"nudge-{uuid4().hex[:8]}"
         await self._store.save_nudge(nudge_id, target.agent_id, message)
+        from hive.daemon.wakeup import touch_nudge_wake_file
+
+        touch_nudge_wake_file(self._hive_dir, nudge_id)
         return f"Nudged {target.name}: {message}"
 
     async def _logs(self, agent_ref: str, limit: int) -> str:

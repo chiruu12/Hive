@@ -19,6 +19,7 @@ def ensure_hive_dirs(target: Path | None = None) -> Path:
     hive_dir.mkdir(exist_ok=True)
     (hive_dir / "sessions").mkdir(exist_ok=True)
     (hive_dir / "workspaces").mkdir(exist_ok=True)
+    (hive_dir / "nudges").mkdir(exist_ok=True)
 
     config_path = hive_dir / "config.yaml"
     if not config_path.exists():

@@ -127,6 +127,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "adversarial: stability and abuse tests (required CI merge gate)",
+]
 
 # Single source of truth for dev tooling (uv installs this group by default with
 # `uv sync`). There is intentionally no `[project.optional-dependencies].dev` --

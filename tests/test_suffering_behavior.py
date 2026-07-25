@@ -89,7 +89,7 @@ class TestExistenceLoopBehavioralContext:
         )
 
         suffering = SufferingState(agent_id="coder-1")
-        prompt = existence._build_prompt(suffering, [], [], "", [])
+        prompt = existence._build_prompt(suffering, [], [], "", [], [])
         assert "behavioral state" in prompt.lower()
         assert "80%" in prompt
         assert "Build software" in prompt

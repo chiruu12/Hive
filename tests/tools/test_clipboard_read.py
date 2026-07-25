@@ -38,6 +38,48 @@ async def test_read_clipboard_unavailable(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_read_clipboard_under_limit_pass_through(monkeypatch):
+    text = "x" * cb.MAX_CLIPBOARD_BYTES
+
+    async def fake() -> str:
+        return text
+
+    monkeypatch.setattr(cb, "_read_from_system_clipboard", fake)
+    tk = cb.ClipboardToolkit()
+    assert await tk.read_clipboard() == text
+
+
+@pytest.mark.asyncio
+async def test_read_clipboard_truncates_over_limit(monkeypatch):
+    over = cb.MAX_CLIPBOARD_BYTES + 500
+
+    async def fake() -> str:
+        return "y" * over
+
+    monkeypatch.setattr(cb, "_read_from_system_clipboard", fake)
+    tk = cb.ClipboardToolkit()
+    result = await tk.read_clipboard()
+
+    assert f"truncated ({over} chars > {cb.MAX_CLIPBOARD_BYTES} limit)" in result
+    assert result.endswith("...")
+    assert len(result.split("\n", 1)[1]) == cb.MAX_CLIPBOARD_BYTES + 3  # content + "..."
+
+
+@pytest.mark.asyncio
+async def test_read_clipboard_binary_replaced(monkeypatch):
+    """Invalid UTF-8 from the OS clipboard is decoded with replacement chars."""
+
+    async def fake() -> str:
+        return b"\xff\xfebinary blob\xff".decode("utf-8", errors="replace")
+
+    monkeypatch.setattr(cb, "_read_from_system_clipboard", fake)
+    tk = cb.ClipboardToolkit()
+    result = await tk.read_clipboard()
+    assert "\ufffd" in result
+    assert "binary blob" in result
+
+
+@pytest.mark.asyncio
 async def test_read_clipboard_exposed_as_tool() -> None:
     tk = cb.ClipboardToolkit()
     tk.bind("agent")

@@ -187,9 +187,7 @@ class _DenyGate:
         from hive.runtime.approval import ApprovalDecision, ApprovalResult
 
         self.checked.append(tool_name)
-        return ApprovalResult(
-            decision=ApprovalDecision.DENIED, approval_id="ap-1", reason="nope"
-        )
+        return ApprovalResult(decision=ApprovalDecision.DENIED, approval_id="ap-1", reason="nope")
 
 
 class TestRunOnceApprovalGate:

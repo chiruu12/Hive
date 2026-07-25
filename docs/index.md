@@ -83,8 +83,10 @@ Dramatic agent personalities for the simulation:
 
 ## Next Steps
 
+- [System Overview](guide/system-overview.md) -- surfaces, capabilities, and safety defaults
 - [Installation](getting-started/installation.md) -- set up Hive
 - [SDK Quickstart](getting-started/quickstart.md) -- build your first agent
 - [CLI Quickstart](getting-started/cli-quickstart.md) -- run the autonomous simulation
 - [Developer Guide](guide/developer-guide.md) -- comprehensive SDK reference
+- [Prompt Assembly](guide/prompt-assembly.md) -- what goes into each LLM call
 - [Architecture](guide/architecture.md) -- how Hive works under the hood

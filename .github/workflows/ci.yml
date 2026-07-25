@@ -5,6 +5,9 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  schedule:
+    # Weekly soak: wake-source leak stress (Phase 6 slice 6.3)
+    - cron: "0 6 * * 0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,6 +16,7 @@ concurrency:
 jobs:
   lint:
     name: Lint & Type Check
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +30,6 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        # The dev dependency-group is installed by `uv sync` automatically.
         run: uv sync --extra api
 
       - name: Ruff lint
@@ -38,8 +41,30 @@ jobs:
       - name: Mypy
         run: uv run mypy src/
 
-  test:
-    name: Test (Python ${{ matrix.python-version }})
+  test-fast:
+    name: Test (fast — PR gate)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra api
+
+      - name: Run tests (excluding adversarial)
+        run: uv run pytest tests/ -v --ignore=tests/adversarial/ -x
+
+  test-full:
+    name: Test (full — merge gate, Python ${{ matrix.python-version }})
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -57,7 +82,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        # The dev dependency-group is installed by `uv sync` automatically.
         run: uv sync --extra api
 
       - name: Run tests
@@ -68,10 +92,32 @@ jobs:
         # Coverage gating on one matrix leg only; ratchet the floor up as
         # coverage rises -- never lower it.
         if: matrix.python-version == '3.12'
-        run: uv run pytest tests/ -v --cov=hive --cov-report=term --cov-fail-under=73
+        run: uv run pytest tests/ -v --cov=hive --cov-report=term --cov-fail-under=77
+
+  resilience:
+    name: Adversarial / resilience gate
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra api
+
+      - name: Adversarial / resilience gate
+        run: uv run pytest tests/adversarial/ -v --tb=short
 
   docs:
     name: Docs build
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -86,8 +132,9 @@ jobs:
       - name: Build docs (strict)
         run: uv run mkdocs build --strict
 
-  build:
-    name: Build wheel
+  build-clean:
+    name: Build (clean checkout)
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,11 +143,46 @@ jobs:
         with:
           version: "latest"
 
-      - name: Build
-        run: uv build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build from git archive
+        run: |
+          git archive HEAD | tar -x -C /tmp/hive-ci-build
+          cd /tmp/hive-ci-build && uv build
 
       - name: Verify wheel contents
         run: |
+          cd /tmp/hive-ci-build
           python3 -m zipfile -l dist/*.whl | grep -q "hive/models.yaml"
           python3 -m zipfile -l dist/*.whl | grep -q "hive/profiles/"
           echo "Wheel contents verified"
+
+  soak:
+    name: Scheduled soak
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra api
+
+      - name: Wake-source stress (50x)
+        run: |
+          for i in $(seq 1 50); do
+            echo "=== iteration $i/50 ==="
+            uv run pytest tests/adversarial/test_resource_exhaustion.py::TestWakeSourceCleanup::test_wake_source_does_not_leak_tasks -q --tb=short
+          done
+
+      - name: Full suite (ordering sensitivity)
+        run: uv run pytest tests/ -v --tb=short

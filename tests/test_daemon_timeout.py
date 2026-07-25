@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -42,10 +41,14 @@ async def _seed_agent(store: HiveStore, name: str = "hang") -> AgentState:
 
 
 @pytest.mark.asyncio
-async def test_cycle_timeout_abandons_goal(tmp_dir: Any, hive_dir: Any, store: HiveStore) -> None:
+async def test_cycle_timeout_abandons_goal_when_legacy_flag(
+    tmp_dir: Any, hive_dir: Any, store: HiveStore
+) -> None:
     cfg = HiveConfig()
     cfg.daemon.cycle_timeout = 1
+    cfg.daemon.preserve_active_goals_on_timeout = False
     set_config(cfg)
+    cfg.save(hive_dir)
 
     agent_state = await _seed_agent(store)
     await store.save_goal("goal-1", agent_state.agent_id, "Do something slow")
@@ -55,31 +58,18 @@ async def test_cycle_timeout_abandons_goal(tmp_dir: Any, hive_dir: Any, store: H
     daemon = HiveDaemon(hive_dir, heartbeat=0)
     daemon._store = store
 
-    async def _hanging_inner(agent: Any, suffering: Any) -> str:
+    async def _hanging_cycle(agent: AgentState) -> str:
         await asyncio.sleep(10)
         return "completed"
 
-    with patch.object(daemon, "_run_agent_cycle_inner", side_effect=_hanging_inner):
-        daemon._running = True
-        daemon._cycle_count = 0
+    daemon._run_agent_cycle = _hanging_cycle  # type: ignore[method-assign]
 
-        agents = await store.list_agents()
-        alive = [a for a in agents if a.is_alive()]
-        assert len(alive) == 1
+    sem = asyncio.Semaphore(8)
+    result = await daemon._cycle_runner.run_guarded(
+        agent_state, cycle_timeout=cfg.daemon.cycle_timeout, sem=sem
+    )
 
-        agent = alive[0]
-        cycle_timeout = cfg.daemon.cycle_timeout
-
-        try:
-            await asyncio.wait_for(
-                daemon._run_agent_cycle(agent),
-                timeout=cycle_timeout,
-            )
-        except TimeoutError:
-            active_goal = await store.get_active_goal(agent.agent_id)
-            if active_goal:
-                await store.abandon_goal(active_goal["goal_id"])
-            await store.update_agent_status(agent.agent_id, AgentStatus.IDLE)
+    assert result is None
 
     updated = await store.get_agent(agent_state.agent_id)
     assert updated is not None
@@ -87,6 +77,64 @@ async def test_cycle_timeout_abandons_goal(tmp_dir: Any, hive_dir: Any, store: H
 
     active = await store.get_active_goal(agent_state.agent_id)
     assert active is None
+
+
+@pytest.mark.asyncio
+async def test_cycle_timeout_preserves_goal_and_transcript(
+    tmp_dir: Any, hive_dir: Any, store: HiveStore
+) -> None:
+    """Default policy parks on timeout without abandoning goal or transcript."""
+    cfg = HiveConfig()
+    cfg.daemon.cycle_timeout = 1
+    cfg.daemon.preserve_active_goals_on_timeout = True
+    set_config(cfg)
+    cfg.save(hive_dir)
+
+    agent_state = await _seed_agent(store)
+    goal_id = "goal-timeout"
+    await store.save_goal(goal_id, agent_state.agent_id, "Do something slow")
+
+    from hive.memory.pursuit_transcript import PursuitTranscriptStore, message_to_dict
+    from hive.runtime.types import Message
+
+    transcript_store = PursuitTranscriptStore(store)
+    await transcript_store.save_messages(
+        goal_id,
+        agent_state.agent_id,
+        [Message.user("partial"), Message.assistant("working")],
+    )
+    before = await transcript_store.load_messages(goal_id, agent_state.agent_id)
+    assert len(before) == 2
+
+    from hive.daemon.loop import HiveDaemon
+
+    daemon = HiveDaemon(hive_dir, heartbeat=0)
+    daemon._store = store
+
+    async def _hanging_cycle(agent: AgentState) -> str:
+        await asyncio.sleep(10)
+        return "completed"
+
+    daemon._run_agent_cycle = _hanging_cycle  # type: ignore[method-assign]
+
+    sem = asyncio.Semaphore(8)
+    result = await daemon._cycle_runner.run_guarded(
+        agent_state, cycle_timeout=cfg.daemon.cycle_timeout, sem=sem
+    )
+
+    assert result is None
+
+    updated = await store.get_agent(agent_state.agent_id)
+    assert updated is not None
+    assert updated.status == AgentStatus.IDLE
+
+    active = await store.get_active_goal(agent_state.agent_id)
+    assert active is not None
+    assert active["goal_id"] == goal_id
+
+    after = await transcript_store.load_messages(goal_id, agent_state.agent_id)
+    assert len(after) == len(before)
+    assert message_to_dict(after[0]) == message_to_dict(before[0])
 
 
 @pytest.mark.asyncio

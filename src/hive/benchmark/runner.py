@@ -93,10 +93,10 @@ class BenchmarkRunner:
                         economy_enabled=False,
                     )
                     try:
-                        goal = await existence.generate_goal(suffering, [], [])
-                        if goal:
+                        generated = await existence.generate_goal(suffering, [], [])
+                        if generated.objective:
                             mr.goals_completed += 1
-                            mr.responses.append({"cycle": cycle, "goal": goal})
+                            mr.responses.append({"cycle": cycle, "goal": generated.objective})
                         else:
                             mr.goals_abandoned += 1
                     except Exception as e:

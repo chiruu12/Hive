@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_delegations_to ON delegations(to_agent);
 """
 
 # Latest schema version. Bump and append a step to _MIGRATIONS for each change.
-LATEST_SCHEMA_VERSION = 4
+LATEST_SCHEMA_VERSION = 5
 
 
 def _paginate(limit: int | None, offset: int = 0) -> str:
@@ -432,12 +432,33 @@ async def _migration_4(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _migration_5(db: aiosqlite.Connection) -> None:
+    """Add pursuit_transcripts for cross-heartbeat ReAct resume."""
+    await db.execute(
+        """CREATE TABLE IF NOT EXISTS pursuit_transcripts (
+            goal_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            seq INTEGER NOT NULL,
+            message_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (goal_id, seq),
+            FOREIGN KEY (goal_id) REFERENCES goals(goal_id) ON DELETE CASCADE,
+            FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+        )"""
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pursuit_transcripts_goal "
+        "ON pursuit_transcripts(goal_id, seq)"
+    )
+
+
 # Ordered (target_version, migration) steps applied when a DB is below target.
 _MIGRATIONS: list[tuple[int, Callable[[aiosqlite.Connection], Awaitable[None]]]] = [
     (1, _migration_1),
     (2, _migration_2),
     (3, _migration_3),
     (4, _migration_4),
+    (5, _migration_5),
 ]
 
 
@@ -777,6 +798,7 @@ class HiveStore:
                 (datetime.now(UTC).isoformat(), goal_id),
             )
             await db.commit()
+        await self.delete_pursuit_transcript(goal_id)
 
     async def update_goal_progress(self, goal_id: str, steps_done: int, steps_failed: int) -> None:
         async with self._connect() as db:
@@ -793,6 +815,60 @@ class HiveStore:
                 (datetime.now(UTC).isoformat(), goal_id),
             )
             await db.commit()
+        await self.delete_pursuit_transcript(goal_id)
+
+    async def load_pursuit_messages(
+        self,
+        goal_id: str,
+        agent_id: str,
+        limit: int | None = None,
+    ) -> list[str]:
+        """Return serialized pursuit messages for a goal, ordered by seq."""
+        goal = await self.get_goal_by_id(goal_id)
+        if goal is not None and goal["agent_id"] != agent_id:
+            return []
+        async with self._connect() as db:
+            db.row_factory = aiosqlite.Row
+            query = (
+                "SELECT message_json FROM pursuit_transcripts "
+                "WHERE goal_id = ? AND agent_id = ? ORDER BY seq ASC"
+            )
+            params: list[Any] = [goal_id, agent_id]
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(int(limit))
+            async with db.execute(query, params) as cursor:
+                return [row["message_json"] async for row in cursor]
+
+    async def save_pursuit_messages(
+        self,
+        goal_id: str,
+        agent_id: str,
+        message_json_rows: list[str],
+    ) -> None:
+        """Replace the pursuit transcript for a goal."""
+        goal = await self.get_goal_by_id(goal_id)
+        if goal is not None and goal["agent_id"] != agent_id:
+            raise ValueError(f"Goal {goal_id} belongs to agent {goal['agent_id']}, not {agent_id}")
+        now = datetime.now(UTC).isoformat()
+        async with self._connect() as db:
+            await db.execute(
+                "DELETE FROM pursuit_transcripts WHERE goal_id = ? AND agent_id = ?",
+                (goal_id, agent_id),
+            )
+            for seq, message_json in enumerate(message_json_rows):
+                await db.execute(
+                    """INSERT INTO pursuit_transcripts
+                       (goal_id, agent_id, seq, message_json, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (goal_id, agent_id, seq, message_json, now),
+                )
+            await db.commit()
+
+    async def delete_pursuit_transcript(self, goal_id: str) -> None:
+        async with self._connect() as db:
+            await db.execute("DELETE FROM pursuit_transcripts WHERE goal_id = ?", (goal_id,))
+            await db.commit()
 
     async def list_agent_goals(self, agent_id: str, limit: int = 10) -> list[dict[str, Any]]:
         async with self._connect() as db:
@@ -804,6 +880,9 @@ class HiveStore:
                 return [dict(row) async for row in cursor]
 
     async def save_nudge(self, nudge_id: str, agent_id: str, message: str) -> None:
+        from hive.runtime.guardrails import OPERATOR_NUDGE_MAX_CHARS
+
+        message = message[:OPERATOR_NUDGE_MAX_CHARS]
         async with self._connect() as db:
             await db.execute(
                 "INSERT INTO nudges (nudge_id, agent_id, message, created_at) VALUES (?, ?, ?, ?)",
@@ -882,13 +961,14 @@ class HiveStore:
             )
             await db.commit()
 
-    async def disable_schedule(self, schedule_id: str) -> None:
+    async def disable_schedule(self, schedule_id: str, agent_id: str) -> bool:
         async with self._connect() as db:
-            await db.execute(
-                "UPDATE schedules SET enabled = 0 WHERE schedule_id = ?",
-                (schedule_id,),
+            cursor = await db.execute(
+                "UPDATE schedules SET enabled = 0 WHERE schedule_id = ? AND agent_id = ?",
+                (schedule_id, agent_id),
             )
             await db.commit()
+            return cursor.rowcount > 0
 
     async def save_sub_agent(
         self,

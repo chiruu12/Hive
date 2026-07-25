@@ -39,7 +39,7 @@ class TestMigration4:
                     await db.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 ).fetchall()
             }
-        assert version == LATEST_SCHEMA_VERSION == 4
+        assert version == LATEST_SCHEMA_VERSION == 5
         assert "delegations" in tables
 
     @pytest.mark.asyncio
@@ -173,9 +173,7 @@ class TestRetentionJanitor:
         # save_session must populate created_at (not NULL) for the janitor.
         async with aiosqlite.connect(db_path) as db:
             row = await (
-                await db.execute(
-                    "SELECT created_at FROM sessions WHERE session_id = 's-daemon'"
-                )
+                await db.execute("SELECT created_at FROM sessions WHERE session_id = 's-daemon'")
             ).fetchone()
             assert row[0] is not None
             # Age it past the retention window.

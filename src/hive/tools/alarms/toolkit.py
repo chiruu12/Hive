@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from hive.tools._process import kill_and_reap
 from hive.tools.base import Toolkit, tool
 
 if TYPE_CHECKING:
-    from hive.memory.store import HiveStore
+    from hive.memory.protocol import StoreProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ async def fire_notification(description: str, title: str = "Hive Alarm") -> bool
     )
     escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
     script = f'display notification "{escaped}" with title "{escaped_title}" sound name "Glass"'
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             "osascript",
@@ -40,6 +42,7 @@ async def fire_notification(description: str, title: str = "Hive Alarm") -> bool
         await asyncio.wait_for(proc.communicate(), timeout=5)
         return proc.returncode == 0
     except Exception as e:
+        await kill_and_reap(proc)
         logger.warning("Alarm notification failed: %s", e)
         return False
 
@@ -57,7 +60,7 @@ class AlarmToolkit(Toolkit):
 
     def __init__(
         self,
-        store: HiveStore | None = None,
+        store: StoreProtocol | None = None,
         db_path: str | Path | None = None,
     ):
         self._initialized = False

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from hive.agents.state import AgentState, AgentStatus
-from hive.config import HiveConfig, set_config
+from hive.config import HiveConfig
 from hive.daemon.loop import HiveDaemon
 
 
@@ -48,10 +48,13 @@ class TestProfileCache:
         pfile = profiles_dir / "coder.yaml"
         pfile.write_text("name: coder\nrole: engineer\n")
 
-        daemon = _daemon(tmp_path)
+        hive = tmp_path / ".hive"
+        hive.mkdir()
         cfg = HiveConfig()
         cfg.profiles_dir = str(profiles_dir)
-        set_config(cfg)
+        cfg.save(hive)
+
+        daemon = _daemon(tmp_path)
 
         pr1 = daemon._load_profile("coder")
         pr2 = daemon._load_profile("coder")
@@ -68,11 +71,14 @@ class TestProfileCache:
         assert pr3.role == "senior engineer"
 
     def test_missing_profile_falls_back_and_caches(self, tmp_path) -> None:
-        daemon = _daemon(tmp_path)
+        hive = tmp_path / ".hive"
+        hive.mkdir()
         cfg = HiveConfig()
         cfg.profiles_dir = str(tmp_path / "empty")
         (tmp_path / "empty").mkdir()
-        set_config(cfg)
+        cfg.save(hive)
+
+        daemon = _daemon(tmp_path)
 
         pr1 = daemon._load_profile("ghost")
         pr2 = daemon._load_profile("ghost")

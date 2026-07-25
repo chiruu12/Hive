@@ -19,6 +19,7 @@ def test_default_config():
     assert cfg.suffering.threshold_crisis == 0.90
     assert cfg.economy.starting_balance == 100.0
     assert cfg.model.default_model == "claude-haiku-4-5"
+    assert cfg.tools.sub_agent_toolkits is None
 
 
 def test_config_from_yaml(tmp_dir):
@@ -50,6 +51,14 @@ def test_event_log_fsync_default_off():
     assert HiveConfig().event_log_fsync is False
 
 
+def test_shell_allow_dev_commands_default_off():
+    assert HiveConfig().tools.shell_allow_dev_commands is False
+
+
+def test_plugins_enabled_default_off():
+    assert HiveConfig().plugins.enabled is False
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [("1", True), ("true", True), ("YES", True), ("on", True), ("0", False), ("false", False)],
@@ -76,6 +85,70 @@ def test_load_config_sets_global(tmp_dir):
     config_path.write_text("daemon:\n  heartbeat: 55\n")
     load_config(tmp_dir)
     assert get_config().daemon.heartbeat == 55
+
+
+def test_classify_config_reload_hot_and_restart():
+    from hive.config import classify_config_reload
+
+    status = classify_config_reload(
+        {"daemon.heartbeat", "daemon.cycle_timeout", "guardrails.enabled"}
+    )
+    assert status["daemon.heartbeat"] == "applied"
+    assert status["daemon.cycle_timeout"] == "applied"
+    assert status["guardrails.enabled"] == "restart_required"
+
+
+def test_classify_config_reload_unwired_keys_restart_required():
+    from hive.config import classify_config_reload
+
+    status = classify_config_reload(
+        {
+            "logs_dir",
+            "daemon.max_retries",
+        }
+    )
+    assert status["logs_dir"] == "restart_required"
+    assert status["daemon.max_retries"] == "restart_required"
+
+
+def test_flatten_patch_keys_nested():
+    from hive.config import flatten_patch_keys
+
+    keys = flatten_patch_keys({"daemon": {"heartbeat": 5, "budget_usd": 1.0}})
+    assert keys == {"daemon.heartbeat", "daemon.budget_usd"}
+
+
+def test_reload_config_from_disk(tmp_dir):
+    from hive.config import get_config, reload_config_from_disk, set_config
+
+    config_path = tmp_dir / "config.yaml"
+    config_path.write_text("daemon:\n  heartbeat: 33\n  cycle_timeout: 120\n")
+    set_config(HiveConfig())
+    reload_config_from_disk(tmp_dir)
+    assert get_config().daemon.heartbeat == 33
+    assert get_config().daemon.cycle_timeout == 120
+
+
+def test_daemon_reload_config_refreshes_cycle_timeout(tmp_dir):
+    from hive.config import get_config
+    from hive.daemon.loop import HiveDaemon
+
+    config_path = tmp_dir / "config.yaml"
+    config_path.write_text("daemon:\n  cycle_timeout: 60\n")
+    daemon = HiveDaemon(tmp_dir, heartbeat=0, logs_dir=tmp_dir / "logs")
+    assert get_config().daemon.cycle_timeout == 60
+
+    config_path.write_text("daemon:\n  cycle_timeout: 45\n")
+    daemon.reload_config()
+    assert get_config().daemon.cycle_timeout == 45
+
+
+def test_wake_poll_interval_default():
+    assert DaemonConfig().wake_poll_interval == 1.0
+
+
+def test_toolkit_cache_default_on():
+    assert DaemonConfig().toolkit_cache is True
 
 
 # --- Threshold ordering validation ---
@@ -212,3 +285,65 @@ def test_validate_environment_warns_fireworks_missing_key(monkeypatch):
     cfg.model.default_model = "fireworks:llama-v2"
     warnings = cfg.validate_environment()
     assert any("FIREWORKS_API_KEY" in w for w in warnings)
+
+
+def test_secure_profile_example_validates():
+    from pathlib import Path
+
+    import yaml
+
+    path = Path(__file__).resolve().parents[1] / "profiles" / "_secure.yaml.example"
+    data = yaml.safe_load(path.read_text())
+    cfg = HiveConfig(**data)
+    assert cfg.guardrails.enabled is True
+    assert cfg.approval.enabled is True
+    assert cfg.tools.shell_allow_dev_commands is False
+    assert cfg.plugins.enabled is False
+
+
+def test_resolve_logs_dir_from_config(tmp_dir):
+    from hive.config import resolve_logs_dir
+
+    config_path = tmp_dir / "config.yaml"
+    config_path.write_text("logs_dir: custom-logs\n")
+    resolved = resolve_logs_dir(tmp_dir)
+    assert resolved == tmp_dir.parent / "custom-logs"
+
+
+def test_config_truth_views(tmp_dir):
+    from hive.config import config_truth_views, set_config
+
+    config_path = tmp_dir / "config.yaml"
+    config_path.write_text("daemon:\n  heartbeat: 12\n")
+    set_config(HiveConfig())
+    views = config_truth_views(tmp_dir)
+    assert views["persisted"]["daemon"]["heartbeat"] == 12
+    assert views["effective"]["daemon"]["heartbeat"] == 12
+    assert "restart_required_fields" in views
+
+
+def test_apply_config_patch_writes_and_classifies(tmp_dir):
+    from hive.config import apply_config_patch
+
+    config_path = tmp_dir / "config.yaml"
+    config_path.write_text("daemon:\n  heartbeat: 10\n")
+    data, reload = apply_config_patch(tmp_dir, {"daemon": {"heartbeat": 20, "budget_usd": 5.0}})
+    assert data["daemon"]["heartbeat"] == 20
+    assert reload["daemon.heartbeat"] == "applied"
+    assert reload["daemon.budget_usd"] == "restart_required"
+
+
+def test_start_persists_cli_heartbeat(tmp_dir, monkeypatch):
+    from hive.daemon.setup import initialize_hive
+
+    monkeypatch.chdir(tmp_dir)
+    initialize_hive(tmp_dir)
+    hive_dir = tmp_dir / ".hive"
+
+    cfg_before = HiveConfig.load(hive_dir)
+    assert cfg_before.daemon.heartbeat == 10
+
+    cfg_before.daemon.heartbeat = 7
+    cfg_before.save(hive_dir)
+    loaded = HiveConfig.load(hive_dir)
+    assert loaded.daemon.heartbeat == 7

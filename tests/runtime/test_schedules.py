@@ -47,10 +47,18 @@ class TestScheduleStore:
     @pytest.mark.asyncio
     async def test_disable_schedule(self, store: HiveStore):
         await store.save_schedule("s-1", "agent-a", "Task", 5)
-        await store.disable_schedule("s-1")
+        assert await store.disable_schedule("s-1", "agent-a") is True
 
         schedules = await store.list_schedules("agent-a")
         assert len(schedules) == 0
+
+    @pytest.mark.asyncio
+    async def test_disable_schedule_wrong_agent(self, store: HiveStore):
+        await store.save_schedule("s-1", "agent-a", "Task", 5)
+        assert await store.disable_schedule("s-1", "agent-b") is False
+
+        schedules = await store.list_schedules("agent-a")
+        assert len(schedules) == 1
 
 
 class TestScheduleToolkit:
@@ -85,6 +93,19 @@ class TestScheduleToolkit:
 
         listing = await tk.list_schedules()
         assert "No scheduled goals" in listing
+
+    @pytest.mark.asyncio
+    async def test_cancel_other_agents_schedule_fails(self, store: HiveStore):
+        tk_a = ScheduleToolkit(store, "agent-a")
+        tk_b = ScheduleToolkit(store, "agent-b")
+        await tk_a.schedule_goal("Agent A task", 5)
+        sid = (await store.list_schedules("agent-a"))[0]["schedule_id"]
+
+        result = await tk_b.cancel_schedule(sid)
+        assert "not found or not owned" in result
+
+        schedules = await store.list_schedules("agent-a")
+        assert len(schedules) == 1
 
     @pytest.mark.asyncio
     async def test_reject_zero_interval(self, store: HiveStore):

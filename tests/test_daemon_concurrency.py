@@ -27,13 +27,15 @@ async def _seed(store: HiveStore, agent_id: str) -> None:
 
 
 def _daemon(tmp_path: Path, max_concurrent: int, cycle_timeout: int = 0) -> HiveDaemon:
-    # The daemon loads config in __init__, so set the global config AFTER
-    # construction (read by _run at runtime) and disable economy on the instance.
-    daemon = HiveDaemon(tmp_path / ".hive", heartbeat=0, logs_dir=tmp_path / "logs")
+    hive_dir = tmp_path / ".hive"
+    hive_dir.mkdir(parents=True, exist_ok=True)
     cfg = HiveConfig()
     cfg.daemon.max_concurrent_agents = max_concurrent
     cfg.daemon.cycle_timeout = cycle_timeout
+    cfg.save(hive_dir)
     set_config(cfg)
+    # Heartbeat reloads config from disk each cycle via reload_config().
+    daemon = HiveDaemon(hive_dir, heartbeat=0, logs_dir=tmp_path / "logs")
     daemon._economy_enabled = False  # avoid life-event provider calls
     return daemon
 
@@ -95,7 +97,7 @@ class TestConcurrentCycles:
 
     @pytest.mark.asyncio
     async def test_timeout_isolates_slow_agent(self, tmp_path: Path) -> None:
-        """A timed-out cycle abandons that agent's goal and frees it; siblings finish.
+        """A timed-out cycle parks that agent without abandoning; siblings finish.
 
         Drives the real _run_agent_cycle_guarded timeout path (not an inline copy).
         """
@@ -121,7 +123,7 @@ class TestConcurrentCycles:
         slow = await daemon._store.get_agent("slow")
         assert slow is not None and slow.status == AgentStatus.IDLE  # freed, not stuck
         goal = await daemon._store.get_goal_by_id("g-slow")
-        assert goal is not None and goal["status"] == "abandoned"
+        assert goal is not None and goal["status"] == "active"
 
 
 class TestConcurrencyConfig:

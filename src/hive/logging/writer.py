@@ -1,6 +1,8 @@
 """Structured log writer — appends typed records to JSONL files."""
 
 import json
+import logging
+import shutil
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +19,7 @@ from hive.logging.models import (
 )
 
 _lock = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 class LogWriter:
@@ -135,3 +138,27 @@ class LogWriter:
     def _write_json(self, path: Path, content: str) -> None:
         with _lock:
             path.write_text(content)
+
+    def cleanup_old_runs(self, max_runs: int) -> int:
+        """Delete the oldest run directories, keeping at most ``max_runs``.
+
+        Returns the number of directories deleted.  ``max_runs <= 0`` means
+        unlimited (no cleanup).
+        """
+        if max_runs <= 0:
+            return 0
+        runs_dir = self._logs_dir
+        if not runs_dir.exists():
+            return 0
+        run_dirs = sorted(
+            [d for d in runs_dir.iterdir() if d.is_dir()],
+            key=lambda d: d.name,
+        )
+        to_delete = run_dirs[:-max_runs] if len(run_dirs) > max_runs else []
+        for d in to_delete:
+            try:
+                shutil.rmtree(d)
+                logger.info("Cleaned up old run: %s", d.name)
+            except OSError:
+                logger.warning("Failed to clean up run: %s", d.name)
+        return len(to_delete)

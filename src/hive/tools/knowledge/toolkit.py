@@ -94,7 +94,8 @@ class KnowledgeToolkit(Toolkit):
             query: What to search for.
             limit: Maximum number of results.
         """
-        assert self._memory is not None
+        if self._memory is None:
+            raise RuntimeError("KnowledgeToolkit is not bound to an agent yet.")
         results = await self._memory.search(query, top_k=int(float(limit)))
         if not results:
             return "No matching notes found."
@@ -112,7 +113,8 @@ class KnowledgeToolkit(Toolkit):
         Args:
             limit: How many notes to show.
         """
-        assert self._memory is not None
+        if self._memory is None:
+            raise RuntimeError("KnowledgeToolkit is not bound to an agent yet.")
         notes = self._memory.recent(int(float(limit)))
         if not notes:
             return "No notes yet."
@@ -131,7 +133,8 @@ class KnowledgeToolkit(Toolkit):
         Args:
             note_id: The note ID to delete.
         """
-        assert self._memory is not None
+        if self._memory is None:
+            raise RuntimeError("KnowledgeToolkit is not bound to an agent yet.")
         existing = await self._memory.recall(note_id)
         if existing is None:
             return f"Note {note_id} not found."
@@ -147,7 +150,8 @@ class KnowledgeToolkit(Toolkit):
             content: New content (leave empty to keep current).
             tags: New comma-separated tags (leave empty to keep current).
         """
-        assert self._memory is not None
+        if self._memory is None:
+            raise RuntimeError("KnowledgeToolkit is not bound to an agent yet.")
         text = content or None
         meta = {"tags": tags} if tags else None
         if text is None and meta is None:

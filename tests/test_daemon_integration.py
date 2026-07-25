@@ -92,6 +92,7 @@ def hive_dir(tmp_path: Path) -> Path:
     (hive / "workspaces").mkdir()
     (hive / "comms").mkdir()
     (hive / "agent_memory").mkdir()
+    (hive / "checkpoints").mkdir()
 
     cfg = HiveConfig()
     cfg.economy.enabled = False
@@ -242,8 +243,8 @@ class TestDaemonIntegration:
         )
 
         goal = await existence.generate_goal(suffering, [], [])
-        assert goal is not None
-        assert "research" in goal.lower()
+        assert goal.objective is not None
+        assert "research" in goal.objective.lower()
 
         goals = await store.list_agent_goals("test-001", limit=5)
         assert len(goals) == 1
@@ -286,3 +287,35 @@ class TestDaemonIntegration:
         assert len(jsonl_files) == 1
         content = jsonl_files[0].read_text().strip()
         assert "test goal" in content
+
+    @pytest.mark.asyncio
+    async def test_restart_preserves_active_goal(self, hive_dir: Path) -> None:
+        """Shutdown + resume keeps an in-flight goal (default preserve policy)."""
+        store = HiveStore(hive_dir / "hive.db")
+        await store.initialize()
+        agent = await _seed_agent(store)
+        await store.save_goal("g-restart-int", agent.agent_id, "Finish research")
+
+        daemon1 = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs")
+        daemon1._store = store
+        daemon1._running = False
+        await daemon1._shutdown()
+
+        assert await store.get_active_goal(agent.agent_id) is not None
+
+        daemon2 = HiveDaemon(hive_dir, heartbeat=0, logs_dir=hive_dir.parent / "logs2", fresh=False)
+
+        async def _no_run(max_cycles: int | None = None) -> None:
+            daemon2._running = False
+
+        daemon2._run = _no_run  # type: ignore[assignment]
+
+        with patch(
+            "hive.daemon.loop.create_runtime_provider",
+            side_effect=_mock_create_provider,
+        ):
+            await daemon2.start()
+
+        active = await store.get_active_goal(agent.agent_id)
+        assert active is not None
+        assert active["goal_id"] == "g-restart-int"

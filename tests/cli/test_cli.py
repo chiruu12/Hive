@@ -132,3 +132,200 @@ class TestHelp:
         result = runner.invoke(app, [])
         # no_args_is_help=True -> usage shown, non-crashing exit.
         assert "Usage" in result.output or "Commands" in result.output
+
+
+class TestStopCommand:
+    def test_stop_without_pidfile(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        result = runner.invoke(app, ["stop"])
+        assert result.exit_code == 1
+        assert "no daemon" in result.output.lower() or "not running" in result.output.lower()
+
+    def test_stop_with_stale_pidfile(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        pid_file = in_tmp_cwd / ".hive" / "daemon.pid"
+        pid_file.write_text("99999999")  # PID that almost certainly doesn't exist
+        result = runner.invoke(app, ["stop"])
+        assert result.exit_code == 0
+        assert "not found" in result.output.lower() or "stale" in result.output.lower()
+        assert not pid_file.exists()
+
+    def test_stop_with_invalid_pidfile(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        pid_file = in_tmp_cwd / ".hive" / "daemon.pid"
+        pid_file.write_text("not_a_number")
+        result = runner.invoke(app, ["stop"])
+        assert result.exit_code == 1
+        assert "invalid" in result.output.lower()
+
+
+class TestRestartCommand:
+    def test_restart_guard_requires_init(self, in_tmp_cwd: Path) -> None:
+        result = runner.invoke(app, ["restart"])
+        assert result.exit_code == 1
+        assert "init" in result.output.lower()
+
+
+class TestBudgetStandalone:
+    def test_budget_status_from_ledger_without_rest(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        config = in_tmp_cwd / ".hive" / "config.yaml"
+        config.write_text(
+            "daemon:\n  budget_persist: true\n  budget_usd: 5.0\n  budget_tokens: 1000\n"
+        )
+        ledger = in_tmp_cwd / ".hive" / "budget.json"
+        ledger.write_text('{"spent_usd": 1.25, "spent_tokens": 200}\n')
+        result = runner.invoke(app, ["budget"])
+        assert result.exit_code == 0
+        assert "1.2500" in result.output
+        assert "standalone" in result.output.lower()
+
+    def test_budget_reset_writes_ledger(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        config = in_tmp_cwd / ".hive" / "config.yaml"
+        config.write_text("daemon:\n  budget_persist: true\n")
+        ledger = in_tmp_cwd / ".hive" / "budget.json"
+        ledger.write_text('{"spent_usd": 9.0, "spent_tokens": 900}\n')
+        result = runner.invoke(app, ["budget", "reset"])
+        assert result.exit_code == 0
+        import json
+
+        data = json.loads(ledger.read_text())
+        assert data["spent_usd"] == 0.0
+        assert data["spent_tokens"] == 0
+
+    def test_budget_status_falls_back_on_non_200(self, in_tmp_cwd: Path, monkeypatch) -> None:
+        """503 from serve-without-daemon falls through to ledger snapshot."""
+        _init(in_tmp_cwd)
+        config = in_tmp_cwd / ".hive" / "config.yaml"
+        config.write_text(
+            "daemon:\n  budget_persist: true\n  budget_usd: 5.0\n  budget_tokens: 1000\n"
+        )
+        ledger = in_tmp_cwd / ".hive" / "budget.json"
+        ledger.write_text('{"spent_usd": 2.5, "spent_tokens": 400}\n')
+
+        class _FakeResponse:
+            status_code = 503
+
+            def json(self) -> dict[str, object]:
+                return {}
+
+        class _FakeClient:
+            def get(self, *args: object, **kwargs: object) -> _FakeResponse:
+                return _FakeResponse()
+
+        monkeypatch.setattr("httpx.get", _FakeClient().get)
+        result = runner.invoke(app, ["budget"])
+        assert result.exit_code == 0
+        assert "2.5000" in result.output
+        assert "standalone" in result.output.lower()
+
+
+class TestSpawnBundledProfiles:
+    def test_spawn_uses_config_profiles_dir(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        repo_profiles = Path(__file__).resolve().parents[2] / "profiles"
+        config = in_tmp_cwd / ".hive" / "config.yaml"
+        config.write_text(f'profiles_dir: "{repo_profiles}"\n')
+        result = runner.invoke(app, ["spawn", "researcher"])
+        assert result.exit_code == 0
+        assert "Spawned" in result.output
+
+
+class TestConfigTruth:
+    def test_config_effective_flag(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        result = runner.invoke(app, ["config", "--effective"])
+        assert result.exit_code == 0
+        assert "Effective Configuration" in result.output
+
+    def test_config_set_shows_restart_warning(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        result = runner.invoke(app, ["config", "guardrails.enabled", "true"])
+        assert result.exit_code == 0
+        assert "restart required" in result.output.lower()
+
+
+class TestDoctorExitCode:
+    def test_doctor_fails_on_stale_pid(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        (in_tmp_cwd / ".hive" / "daemon.pid").write_text("99999999")
+        result = runner.invoke(app, ["doctor"])
+        assert result.exit_code == 1
+        assert "Stale" in result.output or "critical" in result.output.lower()
+
+
+class TestDaemonHealthCommand:
+    def test_daemon_not_running(self, in_tmp_cwd: Path) -> None:
+        _init(in_tmp_cwd)
+        result = runner.invoke(app, ["daemon"])
+        assert result.exit_code == 1
+        assert "not running" in result.output.lower()
+
+    def test_daemon_status_budget_ledger_fallback(
+        self, in_tmp_cwd: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When REST budget returns 503, daemon status shows ledger fallback."""
+        import os
+
+        _init(in_tmp_cwd)
+        config = in_tmp_cwd / ".hive" / "config.yaml"
+        config.write_text(
+            "daemon:\n  budget_persist: true\n  budget_usd: 5.0\n  budget_tokens: 1000\n"
+        )
+        ledger = in_tmp_cwd / ".hive" / "budget.json"
+        ledger.write_text('{"spent_usd": 0.75, "spent_tokens": 150}\n')
+        (in_tmp_cwd / ".hive" / "daemon.pid").write_text(str(os.getpid()))
+
+        class _Budget503:
+            status_code = 503
+
+            def json(self) -> dict[str, object]:
+                return {}
+
+        class _Status404:
+            status_code = 404
+
+            def json(self) -> list[object]:
+                return []
+
+        def _fake_get(url: str, *args: object, **kwargs: object) -> object:
+            if url.endswith("/budget"):
+                return _Budget503()
+            return _Status404()
+
+        monkeypatch.setattr("httpx.get", _fake_get)
+        result = runner.invoke(app, ["daemon"])
+        assert result.exit_code == 0
+        assert "0.7500" in result.output
+        assert "ledger fallback" in result.output.lower()
+
+
+class TestNewCommand:
+    def test_new_minimal(self, in_tmp_cwd: Path) -> None:
+        result = runner.invoke(app, ["new", "myproject", "--template", "minimal"])
+        assert result.exit_code == 0
+        # scaffold_project creates .hive/ directly in cwd, not in a subdirectory
+        assert (in_tmp_cwd / ".hive" / "config.yaml").exists()
+        assert (in_tmp_cwd / "profiles" / "assistant.yaml").exists()
+
+    def test_new_team(self, in_tmp_cwd: Path) -> None:
+        result = runner.invoke(app, ["new", "teamproject", "--template", "team"])
+        assert result.exit_code == 0
+        profiles = in_tmp_cwd / "profiles"
+        assert (profiles / "architect.yaml").exists()
+        assert (profiles / "developer.yaml").exists()
+        assert (profiles / "reviewer.yaml").exists()
+
+    def test_new_invalid_name(self, in_tmp_cwd: Path) -> None:
+        result = runner.invoke(app, ["new", "bad name!", "--template", "minimal"])
+        assert result.exit_code == 1
+
+    def test_new_invalid_template(self, in_tmp_cwd: Path) -> None:
+        result = runner.invoke(app, ["new", "proj", "--template", "nonexistent"])
+        assert result.exit_code == 1
+
+    def test_new_existing_dir_without_force(self, in_tmp_cwd: Path) -> None:
+        runner.invoke(app, ["new", "proj", "--template", "minimal"])
+        result = runner.invoke(app, ["new", "proj", "--template", "minimal"])
+        assert result.exit_code == 1

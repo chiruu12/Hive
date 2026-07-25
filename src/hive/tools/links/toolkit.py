@@ -5,18 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
 from bs4 import BeautifulSoup
 
 from hive.tools.base import Toolkit, tool
 from hive.tools.links.store import NamedLinkStore
+from hive.tools.url_safety import REQUEST_TIMEOUT, fetch_url_safe
 from hive.tools.web.toolkit import MAX_CONTENT_CHARS, _html_to_markdown
 
 if TYPE_CHECKING:
     from hive.memory.semantic import SemanticMemory
 
 _LINK_TYPE = "link"
-_REQUEST_TIMEOUT = 10
 _SUMMARY_CHARS = 500
 
 
@@ -118,27 +117,22 @@ class LinkToolkit(Toolkit):
         if self._memory is None:
             raise RuntimeError("LinkToolkit is not bound to an agent yet.")
 
+        result = await fetch_url_safe(url, timeout=REQUEST_TIMEOUT)
+
         title = ""
         summary = ""
-        try:
-            async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
-                resp = await client.get(
-                    url,
-                    follow_redirects=True,
-                    headers={"User-Agent": "HiveAgent/1.0"},
-                )
-                resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "")
-            if "html" in content_type:
-                soup = BeautifulSoup(resp.text, "html.parser")
-                title_tag = soup.find("title")
-                if title_tag:
-                    title = title_tag.get_text(strip=True)
-                summary = _html_to_markdown(resp.text)[:_SUMMARY_CHARS]
-            else:
-                summary = resp.text[:_SUMMARY_CHARS]
-        except (httpx.HTTPError, httpx.RequestError):
+        if not result.ok:
+            if result.error and result.error.startswith("Blocked:"):
+                return result.error
             summary = "(could not fetch)"
+        elif "html" in result.content_type:
+            soup = BeautifulSoup(result.text, "html.parser")
+            title_tag = soup.find("title")
+            if title_tag:
+                title = title_tag.get_text(strip=True)
+            summary = _html_to_markdown(result.text)[:_SUMMARY_CHARS]
+        else:
+            summary = result.text[:_SUMMARY_CHARS]
 
         thought = f"{title}\n{url}\n{notes}\n{summary}".strip()
         metadata = {
@@ -210,22 +204,12 @@ class LinkToolkit(Toolkit):
         Args:
             url: The URL to scrape.
         """
-        try:
-            async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
-                resp = await client.get(
-                    url,
-                    follow_redirects=True,
-                    headers={"User-Agent": "HiveAgent/1.0"},
-                )
-                resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "")
-            if "html" in content_type:
-                return _html_to_markdown(resp.text)
-            return resp.text[:MAX_CONTENT_CHARS]
-        except httpx.HTTPStatusError as e:
-            return f"HTTP error {e.response.status_code}: {e.response.reason_phrase}"
-        except httpx.RequestError as e:
-            return f"Request failed: {e}"
+        result = await fetch_url_safe(url, timeout=REQUEST_TIMEOUT)
+        if not result.ok:
+            return result.error or "Request failed."
+        if "html" in result.content_type:
+            return _html_to_markdown(result.text)
+        return result.text[:MAX_CONTENT_CHARS]
 
     @tool()
     async def save_named_link(self, name: str, url: str) -> str:

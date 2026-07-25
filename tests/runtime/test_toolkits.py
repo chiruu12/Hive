@@ -2,50 +2,60 @@
 
 from pathlib import Path
 
+import pytest
+
+from hive.config import HiveConfig, MemoryConfig, set_config
 from hive.tools.comms import CommsToolkit
 from hive.tools.memory import MemoryToolkit
 
 
+@pytest.fixture
+def legacy_config() -> HiveConfig:
+    cfg = HiveConfig(memory=MemoryConfig(unified=False))
+    set_config(cfg)
+    return cfg
+
+
 class TestMemoryToolkit:
-    def test_set_and_get(self, tmp_path: Path):
-        tk = MemoryToolkit(path=tmp_path, agent_id="agent-1")
+    def test_set_and_get(self, tmp_path: Path, legacy_config: HiveConfig):
+        tk = MemoryToolkit(path=tmp_path, agent_id="agent-1", unified=False)
         tools = tk.get_tools()
         names = {t.name for t in tools}
         assert "memory_set" in names
         assert "memory_get" in names
 
-    def test_set_get_roundtrip(self, tmp_path: Path):
-        tk = MemoryToolkit(path=tmp_path, agent_id="agent-1")
+    def test_set_get_roundtrip(self, tmp_path: Path, legacy_config: HiveConfig):
+        tk = MemoryToolkit(path=tmp_path, agent_id="agent-1", unified=False)
         tk.memory_set("color", "blue")
         result = tk.memory_get("color")
         assert result == "blue"
 
-    def test_get_missing_key(self, tmp_path: Path):
-        tk = MemoryToolkit(path=tmp_path, agent_id="agent-1")
+    def test_get_missing_key(self, tmp_path: Path, legacy_config: HiveConfig):
+        tk = MemoryToolkit(path=tmp_path, agent_id="agent-1", unified=False)
         result = tk.memory_get("nonexistent")
         assert "not found" in result.lower()
 
-    def test_persistence(self, tmp_path: Path):
-        tk1 = MemoryToolkit(path=tmp_path, agent_id="agent-1")
+    def test_persistence(self, tmp_path: Path, legacy_config: HiveConfig):
+        tk1 = MemoryToolkit(path=tmp_path, agent_id="agent-1", unified=False)
         tk1.memory_set("key", "value")
 
-        tk2 = MemoryToolkit(path=tmp_path, agent_id="agent-1")
+        tk2 = MemoryToolkit(path=tmp_path, agent_id="agent-1", unified=False)
         assert tk2.memory_get("key") == "value"
 
-    def test_auto_generates_id(self, tmp_path: Path):
-        tk = MemoryToolkit(path=tmp_path)
+    def test_auto_generates_id(self, tmp_path: Path, legacy_config: HiveConfig):
+        tk = MemoryToolkit(path=tmp_path, unified=False)
         tk.memory_set("test", "value")
         assert tk._agent_id.startswith("agent-")
 
-    def test_bind_sets_id(self, tmp_path: Path):
-        tk = MemoryToolkit(path=tmp_path)
+    def test_bind_sets_id(self, tmp_path: Path, legacy_config: HiveConfig):
+        tk = MemoryToolkit(path=tmp_path, unified=False)
         tk.bind("my-agent")
         tk.memory_set("key", "val")
         assert (tmp_path / "my-agent.json").exists()
 
-    def test_no_args(self):
-        tk = MemoryToolkit()
-        assert tk._dir.exists()
+    def test_no_args(self, legacy_config: HiveConfig):
+        tk = MemoryToolkit(unified=False)
+        assert tk._legacy_dir.exists()
 
 
 class TestCommsToolkit:

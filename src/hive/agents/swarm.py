@@ -37,6 +37,25 @@ class LearningReport(BaseModel):
     recommendations: list[Recommendation] = []
     deltas: dict[str, float] = {}
 
+    def to_summary(self) -> str:
+        """Return a human-readable summary of this report."""
+        lines = [
+            f"Cycle {self.cycle_id} | {self.agent_count} agents | "
+            f"success={self.swarm_success_rate:.0%} | "
+            f"goals={self.total_goals} (done={self.total_completed}, "
+            f"abandoned={self.total_abandoned}) | "
+            f"patterns={self.pattern_count} | "
+            f"spec_avg={self.specialization_avg:.2f}",
+        ]
+        if self.recommendations:
+            lines.append(f"  Recommendations ({len(self.recommendations)}):")
+            for rec in self.recommendations:
+                lines.append(f"    [{rec.category}] {rec.description}")
+        if self.deltas:
+            parts = [f"{k}={v:+.2f}" for k, v in self.deltas.items()]
+            lines.append(f"  Deltas: {', '.join(parts)}")
+        return "\n".join(lines)
+
 
 class SwarmPattern(BaseModel):
     pattern_id: str

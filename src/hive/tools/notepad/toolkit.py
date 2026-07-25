@@ -72,9 +72,16 @@ class NotepadManager:
         self._journals_dir.mkdir(parents=True, exist_ok=True)
 
     def _agent_dir(self, agent_id: str) -> Path:
+        self._validate_id(agent_id)
         d = self._journals_dir / agent_id
         d.mkdir(parents=True, exist_ok=True)
         return d
+
+    @staticmethod
+    def _validate_id(agent_id: str) -> None:
+        """Reject agent IDs that could traverse the filesystem."""
+        if not agent_id or "/" in agent_id or "\\" in agent_id or ".." in agent_id:
+            raise ValueError(f"Invalid agent ID: {agent_id!r}")
 
     def read(self, agent_id: str) -> str:
         path = self._agent_dir(agent_id) / "notepad.md"

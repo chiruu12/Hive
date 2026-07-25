@@ -21,6 +21,18 @@ def default_profiles_dir() -> Path:
         return cwd_profiles
 
 
+def resolve_profiles_dir(hive_dir: Path | None = None) -> Path:
+    """Unified profile directory: ``profiles_dir`` config/env, then bundled defaults."""
+    from hive.config import HiveConfig
+
+    cfg = HiveConfig.load(hive_dir)
+    if cfg.profiles_dir:
+        path = Path(cfg.profiles_dir).expanduser()
+        root = hive_dir.parent if hive_dir else Path.cwd()
+        return path if path.is_absolute() else (root / path)
+    return default_profiles_dir()
+
+
 class Personality(BaseModel):
     """Agent personality configuration."""
 

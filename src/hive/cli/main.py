@@ -20,6 +20,31 @@ app = typer.Typer(
 console = Console()
 
 
+def _server_base_url() -> str:
+    """Base URL of the local `hive serve` instance (default port 8000)."""
+    import os
+
+    return os.environ.get("HIVE_SERVER_URL", "http://127.0.0.1:8000")
+
+
+def _server_headers() -> dict[str, str]:
+    """Auth headers for the local REST server, if an API key is configured."""
+    import os
+
+    key = os.environ.get("HIVE_API_KEY", "")
+    if not key:
+        cfg_path = Path.cwd() / ".hive" / "config.yaml"
+        if cfg_path.exists():
+            import yaml
+
+            try:
+                data = yaml.safe_load(cfg_path.read_text()) or {}
+                key = (data.get("server") or {}).get("api_key", "") or ""
+            except Exception:
+                key = ""
+    return {"X-Hive-Key": key} if key else {}
+
+
 @app.command()
 def init() -> None:
     """Initialize a new hive in the current directory."""
@@ -42,9 +67,11 @@ def start(
     fresh: bool = typer.Option(False, "--fresh", help="Ignore saved state, start clean"),
 ) -> None:
     """Start the hive daemon. Agents come alive autonomously."""
-    from hive.agents.profile import AgentProfile
+    from hive.agents.profile import AgentProfile, resolve_profiles_dir
     from hive.agents.state import AgentState, AgentStatus
+    from hive.config import HiveConfig, load_config, resolve_logs_dir
     from hive.daemon.loop import HiveDaemon
+    from hive.daemon.run_lifecycle import DaemonAlreadyRunningError
     from hive.memory.store import HiveStore
 
     hive_dir = Path.cwd() / ".hive"
@@ -59,8 +86,14 @@ def start(
     resumable = [a for a in existing if a.status != AgentStatus.DEAD]
     resuming = not fresh and len(resumable) > 0
 
-    profiles_dir = Path.cwd() / "profiles"
+    profiles_dir = resolve_profiles_dir(hive_dir)
     profile_names = [p.strip() for p in profiles.split(",")]
+
+    cfg = HiveConfig.load(hive_dir)
+    if cfg.daemon.heartbeat != heartbeat:
+        cfg.daemon.heartbeat = heartbeat
+        cfg.save(hive_dir)
+    load_config(hive_dir)
 
     if resuming:
         console.print(f"[cyan]Resuming {len(resumable)} agents from previous run.[/cyan]")
@@ -85,7 +118,7 @@ def start(
     daemon = HiveDaemon(
         hive_dir,
         heartbeat=heartbeat,
-        logs_dir=Path.cwd() / "logs",
+        logs_dir=resolve_logs_dir(hive_dir),
         profiles=profile_names,
         fresh=fresh,
     )
@@ -111,11 +144,327 @@ def start(
 
     try:
         loop.run_until_complete(daemon.start())
+    except DaemonAlreadyRunningError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
     except KeyboardInterrupt:
         pass
     finally:
         loop.close()
         console.print("[dim]Hive stopped.[/dim]")
+
+
+@app.command()
+def stop(
+    timeout: int = typer.Option(
+        30, "--timeout", "-t", help="Seconds to wait for graceful shutdown"
+    ),
+) -> None:
+    """Stop a running daemon from another terminal."""
+    import os
+    import time
+
+    hive_dir = Path.cwd() / ".hive"
+    pid_file = hive_dir / "daemon.pid"
+
+    if not pid_file.exists():
+        console.print("[yellow]No daemon.pid found. Daemon may not be running.[/yellow]")
+        raise typer.Exit(1)
+
+    try:
+        pid = int(pid_file.read_text().strip())
+    except ValueError:
+        console.print("[red]Invalid daemon.pid file.[/red]")
+        pid_file.unlink(missing_ok=True)
+        raise typer.Exit(1)
+
+    # Check if process is alive
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        console.print("[yellow]Daemon process not found. Cleaning up stale pidfile.[/yellow]")
+        pid_file.unlink(missing_ok=True)
+        raise typer.Exit(0)
+    except PermissionError:
+        console.print(f"[red]No permission to signal PID {pid}.[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"Sending SIGTERM to daemon (PID {pid})...")
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        console.print("[yellow]Process already exited.[/yellow]")
+        pid_file.unlink(missing_ok=True)
+        raise typer.Exit(0)
+
+    # Wait for graceful shutdown
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            console.print("[green]Daemon stopped.[/green]")
+            pid_file.unlink(missing_ok=True)
+            raise typer.Exit(0)
+        time.sleep(0.5)
+
+    console.print(f"[red]Daemon did not exit within {timeout}s. Sending SIGKILL...[/red]")
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    pid_file.unlink(missing_ok=True)
+    console.print("[yellow]Daemon killed.[/yellow]")
+
+
+@app.command()
+def restart(
+    heartbeat: int = typer.Option(10, "--heartbeat", "-b", help="Seconds between cycles"),
+    profiles: str = typer.Option("coder", "--profiles", "-p", help="Comma-separated profiles"),
+    fresh: bool = typer.Option(False, "--fresh", help="Ignore saved state"),
+    timeout: int = typer.Option(15, "--timeout", "-t", help="Seconds to wait for stop"),
+) -> None:
+    """Stop a running daemon and start a new one."""
+    import os
+    import time as _time
+
+    hive_dir = Path.cwd() / ".hive"
+    pid_file = hive_dir / "daemon.pid"
+
+    # Stop existing daemon if running
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 0)
+            console.print(f"[yellow]Stopping daemon (PID {pid})...[/yellow]")
+            os.kill(pid, signal.SIGTERM)
+            deadline = _time.monotonic() + timeout
+            while _time.monotonic() < deadline:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    break
+                _time.sleep(0.5)
+            else:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            pid_file.unlink(missing_ok=True)
+            console.print("[green]Daemon stopped.[/green]")
+        except (ValueError, ProcessLookupError, PermissionError):
+            pid_file.unlink(missing_ok=True)
+
+    # Start new daemon
+    start(heartbeat=heartbeat, profiles=profiles, fresh=fresh)
+
+
+daemon_app = typer.Typer(
+    name="daemon",
+    help="Daemon control: status, freeze, resume.",
+    invoke_without_command=True,
+)
+app.add_typer(daemon_app, name="daemon")
+
+
+@daemon_app.callback()
+def daemon_status(ctx: typer.Context) -> None:
+    """Show daemon health: PID, uptime, cycles, budget, agents."""
+    if ctx.invoked_subcommand is not None:
+        return
+    import os
+
+    import httpx
+
+    hive_dir = Path.cwd() / ".hive"
+    pid_file = hive_dir / "daemon.pid"
+
+    # Check PID file
+    pid = None
+    pid_alive = False
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 0)
+            pid_alive = True
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+
+    if not pid_alive:
+        console.print(
+            Panel(
+                "[bold red]Daemon not running[/bold red]\n\n"
+                f"  PID file: {'exists (stale)' if pid_file.exists() else 'not found'}\n"
+                f"  PID: {pid or 'n/a'}\n\n"
+                "[dim]Start with: hive start[/dim]",
+                title="Daemon Status",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+    # Gather info
+    lines = [
+        f"[bold]PID:[/bold]  {pid}",
+        "[bold]Status:[/bold]  [green]running[/green]",
+    ]
+
+    pause_file = hive_dir / "daemon.paused"
+    if pause_file.exists():
+        lines.append("[bold]Daemon freeze:[/bold]  [yellow]PAUSED[/yellow]")
+
+    # Try to get process uptime
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["ps", "-o", "etime=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            lines.append(f"[bold]Uptime:[/bold]  {result.stdout.strip()}")
+    except Exception:
+        pass
+
+    # Query server for richer info
+    try:
+        resp = httpx.get(f"{_server_base_url()}/status", headers=_server_headers(), timeout=3)
+        if resp.status_code == 200:
+            agents = resp.json()
+            working = sum(1 for a in agents if a.get("status") == "working")
+            idle = sum(1 for a in agents if a.get("status") == "idle")
+            waiting = sum(1 for a in agents if a.get("status") == "waiting_approval")
+            paused = sum(1 for a in agents if a.get("status") == "paused")
+            lines.append(
+                f"[bold]Agents:[/bold]  {len(agents)} total"
+                f" ({working} working, {idle} idle, {waiting} waiting, {paused} paused)"
+            )
+    except Exception:
+        lines.append("[bold]Agents:[/bold]  [dim]server not reachable[/dim]")
+
+    try:
+        resp = httpx.get(f"{_server_base_url()}/budget", headers=_server_headers(), timeout=3)
+        if resp.status_code == 200:
+            b = resp.json()
+            budget_str = f"${b['spent_usd']:.4f}"
+            if b.get("unlimited") or not b["budget_usd"]:
+                budget_str += " [yellow](unlimited — budget_usd=0)[/yellow]"
+            else:
+                budget_str += f" / ${b['budget_usd']:.2f}"
+            exceeded = " [red]EXCEEDED[/red]" if b["exceeded"] else ""
+            lines.append(f"[bold]Budget:[/bold]  {budget_str}{exceeded}")
+        elif hive_dir.exists():
+            from hive.daemon.budget import budget_snapshot_to_dict, read_budget_snapshot
+
+            snap = budget_snapshot_to_dict(read_budget_snapshot(hive_dir))
+            budget_str = f"${snap['spent_usd']:.4f}"
+            if snap.get("unlimited") or not snap["budget_usd"]:
+                budget_str += " [yellow](unlimited — budget_usd=0)[/yellow]"
+            else:
+                budget_str += f" / ${snap['budget_usd']:.2f}"
+            exceeded = " [red]EXCEEDED[/red]" if snap["exceeded"] else ""
+            lines.append(
+                f"[bold]Budget:[/bold]  {budget_str}{exceeded} [dim](ledger fallback)[/dim]"
+            )
+    except Exception:
+        if hive_dir.exists():
+            try:
+                from hive.daemon.budget import budget_snapshot_to_dict, read_budget_snapshot
+
+                snap = budget_snapshot_to_dict(read_budget_snapshot(hive_dir))
+                budget_str = f"${snap['spent_usd']:.4f}"
+                if snap.get("unlimited") or not snap["budget_usd"]:
+                    budget_str += " [yellow](unlimited — budget_usd=0)[/yellow]"
+                else:
+                    budget_str += f" / ${snap['budget_usd']:.2f}"
+                exceeded = " [red]EXCEEDED[/red]" if snap["exceeded"] else ""
+                lines.append(
+                    f"[bold]Budget:[/bold]  {budget_str}{exceeded} [dim](ledger fallback)[/dim]"
+                )
+            except Exception:
+                pass
+
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title="Daemon Status",
+            border_style="green",
+        )
+    )
+
+
+@daemon_app.command("pause")
+def daemon_pause() -> None:
+    """Freeze the whole daemon (ManualPauseGuard). Distinct from ``hive pause <agent>``."""
+    import httpx
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    pause_file = hive_dir / "daemon.paused"
+    pause_file.write_text("1\n")
+
+    try:
+        resp = httpx.post(
+            f"{_server_base_url()}/daemon/pause",
+            headers=_server_headers(),
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            console.print("[yellow]Daemon frozen[/yellow] (in-process guard + pause file).")
+            return
+        if resp.status_code == 503:
+            console.print(
+                "[yellow]Daemon freeze set[/yellow] via `.hive/daemon.paused` "
+                "(standalone `hive start` picks this up on the next heartbeat)."
+            )
+            return
+        console.print(f"[red]Server returned {resp.status_code}[/red]")
+    except httpx.ConnectError:
+        console.print(
+            "[yellow]Daemon freeze set[/yellow] via `.hive/daemon.paused` "
+            "(no REST server; running daemon syncs on next heartbeat)."
+        )
+
+
+@daemon_app.command("resume")
+def daemon_resume() -> None:
+    """Clear the daemon-wide freeze (``ManualPauseGuard``)."""
+    import httpx
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    pause_file = hive_dir / "daemon.paused"
+    pause_file.unlink(missing_ok=True)
+
+    try:
+        resp = httpx.post(
+            f"{_server_base_url()}/daemon/resume",
+            headers=_server_headers(),
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            console.print("[green]Daemon resumed[/green].")
+            return
+        if resp.status_code == 503:
+            console.print(
+                "[green]Pause file cleared[/green] "
+                "(standalone `hive start` resumes on the next heartbeat)."
+            )
+            return
+        console.print(f"[red]Server returned {resp.status_code}[/red]")
+    except httpx.ConnectError:
+        console.print(
+            "[green]Pause file cleared[/green] "
+            "(no REST server; running daemon syncs on next heartbeat)."
+        )
 
 
 @app.command()
@@ -146,6 +495,7 @@ def status() -> None:
         "idle": "[dim]idle[/dim]",
         "working": "[bold yellow]working[/bold yellow]",
         "waiting_approval": "[magenta]waiting approval[/magenta]",
+        "paused": "[blue]paused[/blue]",
         "error": "[red]error[/red]",
         "dead": "[dim strikethrough]dead[/dim strikethrough]",
     }
@@ -166,7 +516,7 @@ def spawn(
     profile: str = typer.Argument(help="Profile to spawn (coder, reviewer, researcher, tester)"),
 ) -> None:
     """Add a new agent to the hive."""
-    from hive.agents.profile import AgentProfile
+    from hive.agents.profile import AgentProfile, resolve_profiles_dir
     from hive.agents.state import AgentState, AgentStatus
     from hive.memory.store import HiveStore
 
@@ -175,7 +525,7 @@ def spawn(
         console.print("[red]Run `hive init` first.[/red]")
         raise typer.Exit(1)
 
-    profiles_dir = Path.cwd() / "profiles"
+    profiles_dir = resolve_profiles_dir(hive_dir)
     try:
         p = AgentProfile.from_preset(profile, profiles_dir)
     except FileNotFoundError:
@@ -223,6 +573,191 @@ def kill(agent: str = typer.Argument(help="Agent name or ID to terminate")) -> N
 
 
 @app.command()
+def edit(
+    agent: str = typer.Argument(help="Agent name or ID"),
+    model: str = typer.Option("", "--model", "-m", help="New model name"),
+    role: str = typer.Option("", "--role", "-r", help="New role description"),
+) -> None:
+    """Edit an agent's model or role after spawn."""
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+    agents = asyncio.run(store.list_agents())
+    target = None
+    for a in agents:
+        if a.agent_id == agent or a.name == agent or a.agent_id.startswith(agent):
+            target = a
+            break
+    if not target:
+        console.print(f"[red]Agent not found: {agent}[/red]")
+        raise typer.Exit(1)
+
+    changes = []
+    if model:
+        target.model = model
+        changes.append(f"model → {model}")
+    if role:
+        target.role = role
+        changes.append(f"role → {role}")
+
+    if not changes:
+        console.print("[yellow]No changes specified. Use --model or --role.[/yellow]")
+        raise typer.Exit(1)
+
+    asyncio.run(store.save_agent(target))
+    console.print(f"[green]✓[/green] Updated {target.name}: {', '.join(changes)}")
+
+
+@app.command()
+def pause(
+    agent: str = typer.Argument("", help="Agent name or ID (omit for --all)"),
+    all_agents: bool = typer.Option(False, "--all", "-a", help="Pause all agents"),
+) -> None:
+    """Pause one or all agents (per-agent status in SQLite).
+
+    For a daemon-wide freeze that blocks all cycles, use ``hive daemon pause``.
+    """
+    from hive.agents.state import AgentStatus
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+
+    if all_agents:
+        agents = asyncio.run(store.list_agents())
+        count = 0
+        for a in agents:
+            if a.status not in (AgentStatus.DEAD, AgentStatus.PAUSED):
+                asyncio.run(store.update_agent_status(a.agent_id, AgentStatus.PAUSED))
+                count += 1
+        console.print(f"[yellow]Paused {count} agents.[/yellow]")
+        return
+
+    if not agent:
+        console.print("[red]Specify an agent or use --all.[/red]")
+        raise typer.Exit(1)
+
+    agents = asyncio.run(store.list_agents())
+    target = None
+    for a in agents:
+        if a.agent_id == agent or a.name == agent or a.agent_id.startswith(agent):
+            target = a
+            break
+    if not target:
+        console.print(f"[red]Agent not found: {agent}[/red]")
+        raise typer.Exit(1)
+
+    asyncio.run(store.update_agent_status(target.agent_id, AgentStatus.PAUSED))
+    console.print(f"[yellow]Paused[/yellow] {target.name}")
+
+
+@app.command()
+def resume(
+    agent: str = typer.Argument("", help="Agent name or ID (omit for --all)"),
+    all_agents: bool = typer.Option(False, "--all", "-a", help="Resume all agents"),
+) -> None:
+    """Resume a paused agent or all agents."""
+    from hive.agents.state import AgentStatus
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+
+    if all_agents:
+        agents = asyncio.run(store.list_agents())
+        count = 0
+        for a in agents:
+            if a.status == AgentStatus.PAUSED:
+                asyncio.run(store.update_agent_status(a.agent_id, AgentStatus.IDLE))
+                count += 1
+        console.print(f"[green]Resumed {count} agents.[/green]")
+        return
+
+    if not agent:
+        console.print("[red]Specify an agent or use --all.[/red]")
+        raise typer.Exit(1)
+
+    agents = asyncio.run(store.list_agents())
+    target = None
+    for a in agents:
+        if a.agent_id == agent or a.name == agent or a.agent_id.startswith(agent):
+            target = a
+            break
+    if not target:
+        console.print(f"[red]Agent not found: {agent}[/red]")
+        raise typer.Exit(1)
+
+    if target.status != AgentStatus.PAUSED:
+        console.print(f"[yellow]{target.name} is {target.status.value}, not paused.[/yellow]")
+        raise typer.Exit(1)
+
+    asyncio.run(store.update_agent_status(target.agent_id, AgentStatus.IDLE))
+    console.print(f"[green]Resumed[/green] {target.name}")
+
+
+@app.command()
+def history(
+    agent: str = typer.Argument(help="Agent name or ID"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Number of entries"),
+) -> None:
+    """Show an agent's goal history."""
+    from hive.memory.store import HiveStore
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    store = HiveStore(hive_dir / "hive.db")
+    agents = asyncio.run(store.list_agents())
+    target = None
+    for a in agents:
+        if a.agent_id == agent or a.name == agent or a.agent_id.startswith(agent):
+            target = a
+            break
+    if not target:
+        console.print(f"[red]Agent not found: {agent}[/red]")
+        raise typer.Exit(1)
+
+    goals = asyncio.run(store.list_agent_goals(target.agent_id, limit=limit))
+    if not goals:
+        console.print(f"[dim]No goal history for {target.name}.[/dim]")
+        return
+
+    table = Table(title=f"History: {target.name} ({target.agent_id})")
+    table.add_column("Goal ID", style="dim")
+    table.add_column("Status", style="bold")
+    table.add_column("Objective", max_width=60)
+
+    status_icons = {
+        "completed": "[green]✓[/green]",
+        "abandoned": "[red]✗[/red]",
+        "in_progress": "[yellow]⟳[/yellow]",
+        "pending": "[dim]·[/dim]",
+    }
+
+    for g in goals:
+        icon = status_icons.get(g.get("status", ""), "?")
+        obj = (g.get("objective", "") or "")[:80]
+        table.add_row(g.get("goal_id", "?"), icon, obj)
+
+    console.print(table)
+
+
+@app.command()
 def nudge(
     agent: str = typer.Argument(help="Agent name or ID"),
     message: str = typer.Argument(help="Direction to give the agent"),
@@ -248,6 +783,9 @@ def nudge(
 
     nudge_id = f"nudge-{uuid4().hex[:8]}"
     asyncio.run(store.save_nudge(nudge_id, target.agent_id, message))
+    from hive.daemon.wakeup import touch_nudge_wake_file
+
+    touch_nudge_wake_file(hive_dir, nudge_id)
     console.print(f"[blue]→ Nudged[/blue] {target.name}: {message}")
 
 
@@ -305,6 +843,7 @@ def watch(
             "idle": "[dim]idle[/dim]",
             "working": "[bold yellow]working[/bold yellow]",
             "waiting_approval": "[magenta]waiting approval[/magenta]",
+            "paused": "[blue]paused[/blue]",
             "error": "[red]error[/red]",
         }
 
@@ -531,6 +1070,222 @@ def watch(
 
 
 @app.command()
+def config(
+    key: str = typer.Argument("", help="Config key to show/set (e.g. daemon.heartbeat)"),
+    value: str = typer.Argument("", help="Value to set (omit to show current)"),
+    validate_only: bool = typer.Option(False, "--validate", help="Validate config only"),
+    effective: bool = typer.Option(False, "--effective", help="Show effective config (disk + env)"),
+    persisted: bool = typer.Option(False, "--persisted", help="Show persisted YAML only"),
+    live: bool = typer.Option(False, "--live", help="Show in-process live config cache"),
+) -> None:
+    """View, set, or validate Hive configuration.
+
+    Examples:
+        hive config                          # Show persisted config
+        hive config --effective              # Disk + env overrides
+        hive config --live                   # In-process cache (when daemon ran)
+        hive config daemon.heartbeat         # Show a specific key
+        hive config daemon.heartbeat 30      # Set a value
+        hive config --validate               # Validate config
+    """
+    import yaml
+
+    from hive.config import (
+        apply_config_patch,
+        config_truth_views,
+        load_config,
+    )
+
+    hive_dir = Path.cwd() / ".hive"
+    if not hive_dir.exists():
+        console.print("[red]No .hive directory. Run `hive init` first.[/red]")
+        raise typer.Exit(1)
+
+    config_path = hive_dir / "config.yaml"
+
+    if validate_only:
+        try:
+            from hive.config import load_config
+
+            cfg = load_config(hive_dir)
+            console.print("[green]Config is valid.[/green]")
+            if (
+                cfg.daemon.warn_unlimited_budget
+                and cfg.daemon.budget_usd <= 0
+                and cfg.daemon.budget_tokens <= 0
+            ):
+                console.print(
+                    "[yellow]Warning: daemon budget is unlimited "
+                    "(budget_usd=0 and budget_tokens=0). "
+                    "Set non-zero limits for production kill-switch.[/yellow]"
+                )
+        except Exception as e:
+            console.print(f"[red]Config error: {e}[/red]")
+            raise typer.Exit(1)
+        return
+
+    if effective or persisted or live:
+        views = config_truth_views(hive_dir)
+        if effective:
+            payload = views["effective"]
+            title = "Effective Configuration (disk + env)"
+        elif persisted:
+            payload = views["persisted"]
+            title = "Persisted Configuration (YAML only)"
+        else:
+            payload = views["live"]
+            title = "Live Configuration (in-process cache)"
+            if payload is None:
+                console.print(
+                    "[yellow]No live config cache in this process. "
+                    "Use --effective for disk+env values.[/yellow]"
+                )
+                raise typer.Exit(0)
+        console.print(
+            Panel(
+                yaml.dump(payload, default_flow_style=False).strip(),
+                title=title,
+                border_style="blue",
+            )
+        )
+        restart_fields = views["restart_required_fields"]
+        if restart_fields:
+            console.print(
+                "[dim]Restart-required prefixes: "
+                + ", ".join(restart_fields[:8])
+                + ("..." if len(restart_fields) > 8 else "")
+                + "[/dim]"
+            )
+        return
+
+    # Load current config
+    data: dict[str, Any] = {}
+    if config_path.exists():
+        with open(config_path) as f:
+            data = yaml.safe_load(f) or {}
+
+    if not key:
+        # Show all config
+        console.print(
+            Panel(
+                yaml.dump(data, default_flow_style=False).strip(),
+                title="Hive Configuration",
+                border_style="blue",
+            )
+        )
+        return
+
+    # Navigate to the key
+    parts = key.split(".")
+    if not value:
+        # Show specific key
+        current = data
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                console.print(f"[red]Key not found: {key}[/red]")
+                raise typer.Exit(1)
+        console.print(f"[bold]{key}[/bold]: {current}")
+        return
+
+    # Set value via shared patch helper (same logic as REST PATCH /config)
+    patch: dict[str, Any] = {}
+    current_patch = patch
+    for part in parts[:-1]:
+        current_patch[part] = {}
+        current_patch = current_patch[part]
+
+    cast_value: Any = value
+    if value.lower() in ("true", "false"):
+        cast_value = value.lower() == "true"
+    elif value.isdigit():
+        cast_value = int(value)
+    else:
+        try:
+            cast_value = float(value)
+        except ValueError:
+            pass
+
+    current_patch[parts[-1]] = cast_value
+
+    try:
+        _, reload_status = apply_config_patch(hive_dir, patch)
+        load_config(hive_dir)
+    except Exception as e:
+        console.print(f"[red]Invalid config: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Set {key} = {cast_value}[/green]")
+    restart_keys = [k for k, status in reload_status.items() if status == "restart_required"]
+    if restart_keys:
+        console.print(
+            "[yellow]Restart required for: "
+            + ", ".join(restart_keys)
+            + " — run `hive restart`.[/yellow]"
+        )
+    applied_keys = [k for k, status in reload_status.items() if status == "applied"]
+    if applied_keys:
+        console.print(
+            "[dim]Hot-reload on next daemon heartbeat: " + ", ".join(applied_keys) + "[/dim]"
+        )
+
+
+@app.command()
+def profiles(
+    name: str = typer.Argument("", help="Profile name to inspect"),
+) -> None:
+    """List available agent profiles or inspect one."""
+    from hive.agents.profile import resolve_profiles_dir
+
+    hive_dir = Path.cwd() / ".hive"
+    profiles_dir = resolve_profiles_dir(hive_dir if hive_dir.exists() else None)
+    if not profiles_dir.exists():
+        console.print("[yellow]No profiles directory found.[/yellow]")
+        raise typer.Exit(1)
+
+    if name:
+        # Show specific profile (name only -- reject path separators)
+        if "/" in name or "\\" in name or name.startswith("."):
+            console.print(f"[red]Invalid profile name: {name}[/red]")
+            raise typer.Exit(1)
+        profile_path = profiles_dir / f"{name}.yaml"
+        if not profile_path.exists():
+            console.print(f"[red]Profile not found: {name}[/red]")
+            raise typer.Exit(1)
+        console.print(
+            Panel(
+                profile_path.read_text(),
+                title=f"Profile: {name}",
+                border_style="blue",
+            )
+        )
+        return
+
+    # List all profiles
+    yaml_files = sorted(profiles_dir.glob("*.yaml"))
+    if not yaml_files:
+        console.print("[yellow]No profiles found.[/yellow]")
+        return
+
+    table = Table(title="Available Profiles")
+    table.add_column("Name", style="cyan")
+    table.add_column("Role", style="white")
+    table.add_column("Model", style="dim")
+
+    for p in yaml_files:
+        import yaml as _yaml
+
+        data = _yaml.safe_load(p.read_text()) or {}
+        table.add_row(
+            p.stem,
+            data.get("role", "—"),
+            data.get("model", "—"),
+        )
+    console.print(table)
+
+
+@app.command()
 def models() -> None:
     """Show available models."""
     from hive.models.router import detect_models
@@ -558,9 +1313,11 @@ def replay(session_id: str = typer.Argument(help="Session ID to replay")) -> Non
 @app.command()
 def runs() -> None:
     """List all recorded runs with summary stats."""
+    from hive.config import resolve_logs_dir
     from hive.logging.reader import LogReader
 
-    logs_dir = Path.cwd() / "logs"
+    hive_dir = Path.cwd() / ".hive"
+    logs_dir = resolve_logs_dir(hive_dir if hive_dir.exists() else Path.cwd() / ".hive")
     reader = LogReader(logs_dir)
     all_runs = reader.list_runs()
 
@@ -590,9 +1347,11 @@ def runs() -> None:
 @app.command()
 def inspect(run_id: str = typer.Argument(help="Run ID to inspect")) -> None:
     """Show detailed summary of a recorded run."""
+    from hive.config import resolve_logs_dir
     from hive.logging.reader import LogReader
 
-    logs_dir = Path.cwd() / "logs"
+    hive_dir = Path.cwd() / ".hive"
+    logs_dir = resolve_logs_dir(hive_dir if hive_dir.exists() else Path.cwd() / ".hive")
     reader = LogReader(logs_dir)
     summary = reader.get_summary(run_id)
 
@@ -631,6 +1390,229 @@ def inspect(run_id: str = typer.Argument(help="Run ID to inspect")) -> None:
             status_icon = {"generated": "🎯", "completed": "✓", "abandoned": "✗"}.get(g.event, "·")
             obj = (g.objective or "")[:60]
             console.print(f"    {status_icon} [{g.event}] {obj}")
+
+
+@app.command()
+def trace(
+    run_id: str = typer.Argument(help="Run ID to trace"),
+    full: bool = typer.Option(False, "--full", "-f", help="Show all attributes"),
+) -> None:
+    """Display the span-tree trace for a run."""
+    from hive.config import resolve_logs_dir
+    from hive.logging.reader import LogReader
+    from hive.logging.trace import TraceBuilder, format_span_tree
+
+    hive_dir = Path.cwd() / ".hive"
+    logs_dir = resolve_logs_dir(hive_dir if hive_dir.exists() else Path.cwd() / ".hive")
+    reader = LogReader(logs_dir)
+    builder = TraceBuilder(reader)
+    tree = builder.build(run_id)
+
+    if tree is None:
+        console.print(f"[red]Run not found: {run_id}[/red]")
+        raise typer.Exit(1)
+
+    console.print(
+        Panel(
+            f"[bold]Run:[/bold] {tree.run_id}\n  Total spans: {tree.total_spans}",
+            title="Trace",
+            border_style="blue",
+        )
+    )
+    console.print()
+    console.print(format_span_tree(tree.root))
+
+
+@app.command()
+def new(
+    name: str = typer.Argument(help="Project name"),
+    template: str = typer.Option(
+        "minimal", "--template", "-t", help="Template: minimal, team, research"
+    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing .hive directory"),
+) -> None:
+    """Scaffold a new Hive project directory."""
+    from hive.cli.templates import scaffold_project, validate_project_name
+
+    err = validate_project_name(name)
+    if err:
+        console.print(f"[red]{err}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        hive_dir = scaffold_project(name, template, Path.cwd(), force=force)
+        profiles = list((Path.cwd() / "profiles").glob("*.yaml"))
+        console.print(
+            Panel(
+                f"[bold]Project:[/bold] {name}\n"
+                f"  Template: {template}\n"
+                f"  Directory: {hive_dir}\n"
+                f"  Agents: {len(profiles)} profile(s)\n\n"
+                f"[dim]Next steps:[/dim]\n"
+                f"  hive status    # Check agents\n"
+                f"  hive start     # Start daemon",
+                title="hive new",
+                border_style="green",
+            )
+        )
+    except FileExistsError as e:
+        console.print(f"[red]{e}[/red]")
+        console.print("[dim]Use --force to overwrite.[/dim]")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def demo(
+    name: str = typer.Argument("", help="Demo name (omit to list available demos)"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress output"),
+) -> None:
+    """Run an interactive demo. Omit name to see available demos."""
+    from hive.demos.registry import list_demos, run_demo
+
+    demos = list_demos()
+
+    if not name:
+        console.print(Panel("[bold]Available Demos[/bold]", border_style="blue"))
+        for dname, desc in demos.items():
+            console.print(f"  [cyan]{dname}[/cyan]: {desc}")
+        console.print("\n[dim]Usage: hive demo <name>[/dim]")
+        return
+
+    if name not in demos:
+        console.print(f"[red]Unknown demo: {name}[/red]")
+        console.print(f"Available: {', '.join(sorted(demos))}")
+        raise typer.Exit(1)
+
+    try:
+        result = run_demo(name, quiet=quiet)
+        console.print(
+            Panel(
+                f"[bold]Demo:[/bold] {result.name}\n"
+                f"  Agents: {', '.join(result.agents) if result.agents else 'n/a'}\n"
+                f"  Cycles: {result.cycles}\n"
+                f"  {result.summary}",
+                title="Demo Complete",
+                border_style="green",
+            )
+        )
+    except Exception as e:
+        console.print(f"[red]Demo failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+budget_app = typer.Typer(help="Daemon cost budget status and controls.")
+app.add_typer(budget_app, name="budget")
+
+
+def _render_budget_panel(data: dict[str, Any], *, source: str = "") -> None:
+    unlimited = data.get("unlimited") or not data["budget_usd"]
+    if unlimited and not data["budget_tokens"]:
+        budget_usd = "[yellow]unlimited (budget_usd=0)[/yellow]"
+        budget_tok = "[yellow]unlimited (budget_tokens=0)[/yellow]"
+    else:
+        budget_usd = data["budget_usd"] or "unlimited"
+        budget_tok = data["budget_tokens"] or "unlimited"
+    spent_usd = f"${data['spent_usd']:.4f}"
+    spent_tok = f"{data['spent_tokens']:,}"
+    remaining_usd = f"${data['remaining_usd']:.4f}" if data["remaining_usd"] is not None else "n/a"
+    remaining_tok = (
+        f"{data['remaining_tokens']:,}" if data["remaining_tokens"] is not None else "n/a"
+    )
+    reserved_usd = f"${data.get('reserved_usd', 0.0):.4f}"
+    reserved_tok = f"{data.get('reserved_tokens', 0):,}"
+    exceeded = "[red]YES[/red]" if data["exceeded"] else "[green]no[/green]"
+    mode = data.get("mode", "reserve")
+    title = "Budget" + (f" ({source})" if source else "")
+    console.print(
+        Panel(
+            f"[bold]USD:[/bold]  {spent_usd} / {budget_usd}"
+            f"  (remaining: {remaining_usd}, reserved: {reserved_usd})\n"
+            f"[bold]Tokens:[/bold]  {spent_tok} / {budget_tok}"
+            f"  (remaining: {remaining_tok}, reserved: {reserved_tok})\n"
+            f"[bold]Mode:[/bold]  {mode}\n"
+            f"[bold]Exceeded:[/bold]  {exceeded}",
+            title=title,
+            border_style="yellow",
+        )
+    )
+
+
+@budget_app.callback(invoke_without_command=True)
+def budget_status(ctx: typer.Context) -> None:
+    """Show daemon-level cost budget status."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    import httpx
+
+    from hive.daemon.budget import budget_snapshot_to_dict, read_budget_snapshot
+
+    hive_dir = Path.cwd() / ".hive"
+    try:
+        resp = httpx.get(f"{_server_base_url()}/budget", headers=_server_headers(), timeout=5)
+        if resp.status_code == 200:
+            _render_budget_panel(resp.json(), source="REST")
+            return
+    except httpx.ConnectError:
+        pass
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return
+
+    if not hive_dir.exists():
+        console.print(
+            "[yellow]REST server not reachable and no .hive directory. "
+            "Run `hive init` first.[/yellow]"
+        )
+        return
+
+    summary = read_budget_snapshot(hive_dir)
+    _render_budget_panel(budget_snapshot_to_dict(summary), source="standalone ledger")
+    console.print(
+        "[dim]Read-only snapshot from .hive/budget.json + config limits. "
+        "Running daemon may differ until next persist.[/dim]"
+    )
+
+
+@budget_app.command("reset")
+def budget_reset() -> None:
+    """Reset daemon budget spent counters."""
+
+    import httpx
+
+    from hive.daemon.budget import reset_budget_ledger
+
+    hive_dir = Path.cwd() / ".hive"
+    try:
+        resp = httpx.post(
+            f"{_server_base_url()}/budget/reset",
+            headers=_server_headers(),
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            console.print("[green]Budget counters reset (REST).[/green]")
+            return
+    except httpx.ConnectError:
+        pass
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return
+
+    if not hive_dir.exists():
+        console.print(
+            "[yellow]REST server not reachable and no .hive directory. "
+            "Run `hive init` first.[/yellow]"
+        )
+        return
+
+    reset_budget_ledger(hive_dir)
+    console.print(
+        "[green]Budget ledger reset (.hive/budget.json).[/green]\n"
+        "[dim]If a standalone daemon is running, restart it to reload in-memory counters.[/dim]"
+    )
 
 
 @app.command()
@@ -756,10 +1738,11 @@ def export(
     output: str = typer.Option("", "--output", "-o", help="Output file path"),
 ) -> None:
     """Export a run as a standalone HTML report."""
+    from hive.config import resolve_logs_dir
     from hive.export.html import export_html_report
 
-    logs_dir = Path.cwd() / "logs"
     hive_dir = Path.cwd() / ".hive"
+    logs_dir = resolve_logs_dir(hive_dir if hive_dir.exists() else Path.cwd() / ".hive")
     if not logs_dir.exists():
         console.print("[red]No logs directory found.[/red]")
         raise typer.Exit(1)
@@ -812,8 +1795,8 @@ def doctor() -> None:
     fails = sum(1 for c in checks if c.status == "fail")
     if fails:
         console.print(f"\n[red]{fails} critical issue(s) found.[/red]")
-    else:
-        console.print("\n[green]All checks passed or optional.[/green]")
+        raise typer.Exit(1)
+    console.print("\n[green]All checks passed or optional.[/green]")
 
 
 @app.command()
@@ -1294,11 +2277,20 @@ def serve(
     try:
         import uvicorn
 
+        from hive.config import load_config
         from hive.server.app import create_app
+        from hive.server.security import validate_serve_bind
     except ImportError as e:
         from hive.errors import MissingDependencyError
 
         raise MissingDependencyError("api") from e
+
+    hive_config = load_config(hive_dir)
+    try:
+        validate_serve_bind(host, hive_config)
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
 
     console.print(
         f"[green]Hive AgentOS[/green] on http://{host}:{port}  "

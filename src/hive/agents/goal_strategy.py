@@ -13,10 +13,12 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class Goal:
-    goal_id: str
-    objective: str
-    reasoning: str | None = None
+class GeneratedGoal:
+    """Result of a goal-generation call — always carries spend metadata."""
+
+    objective: str | None
+    cost_usd: float = 0.0
+    tokens: int = 0
 
 
 @dataclass
@@ -33,9 +35,13 @@ class GoalContext:
     notepad_content: str = ""
     economy_enabled: bool = True
     agent_stats: AgentStats | None = None
+    # Relevant semantic-memory snippets for goal generation (daemon-filled).
+    memory_snippets: list[str] = field(default_factory=list)
+    # When True, daemon skips ExistenceLoop-style validation before saving.
+    skip_validation: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 @runtime_checkable
 class GoalStrategy(Protocol):
-    async def generate_goal(self, context: GoalContext) -> Goal | None: ...
+    async def generate_goal(self, context: GoalContext) -> GeneratedGoal: ...
