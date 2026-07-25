@@ -176,9 +176,7 @@ class TestSSRFGuard:
     def test_web_fetch_refuses_internal_redirect(self, mock_client_cls: MagicMock):
         # A public URL that redirects to an internal address must be refused at
         # the second hop, not followed.
-        fake_resp = _FakeStreamResp(
-            is_redirect=True, location="http://169.254.169.254/"
-        )
+        fake_resp = _FakeStreamResp(is_redirect=True, location="http://169.254.169.254/")
         mock_client = MagicMock()
         mock_client.__enter__.return_value = mock_client
         mock_client.__exit__.return_value = False
