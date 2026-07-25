@@ -74,6 +74,18 @@ def validate_url(url: str) -> tuple[str | None, str | None]:
     return None, validated_ip
 
 
+def _pinned_netloc(validated_ip: str, port: int | None) -> str:
+    """Format a pinned IP for URL netloc (bracket IPv6 literals)."""
+    try:
+        ip = ipaddress.ip_address(validated_ip)
+    except ValueError:
+        ip = None
+    host = f"[{validated_ip}]" if isinstance(ip, ipaddress.IPv6Address) else validated_ip
+    if port:
+        return f"{host}:{port}"
+    return host
+
+
 def build_pinned_request(
     url: str,
     validated_ip: str | None,
@@ -90,10 +102,7 @@ def build_pinned_request(
         if parsed.port:
             host_header = f"{host_header}:{parsed.port}"
         headers["Host"] = host_header
-        netloc_ip = validated_ip
-        if parsed.port:
-            netloc_ip = f"{validated_ip}:{parsed.port}"
-        request_url = parsed._replace(netloc=netloc_ip).geturl()
+        request_url = parsed._replace(netloc=_pinned_netloc(validated_ip, parsed.port)).geturl()
         if parsed.scheme == "https" and parsed.hostname:
             extensions["sni_hostname"] = parsed.hostname.encode("idna")
     return request_url, headers, extensions

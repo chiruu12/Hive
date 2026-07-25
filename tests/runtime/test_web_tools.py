@@ -172,6 +172,18 @@ class TestSSRFGuard:
         assert headers["Host"] == "example.com"
         assert extensions["sni_hostname"] == b"example.com"
 
+    def test_https_ipv6_pins_bracketed_netloc(self):
+        from hive.tools.url_safety import build_pinned_request
+
+        ipv6 = "2606:2800:220:1:248:1893:25c8:1946"
+        request_url, headers, extensions = build_pinned_request(
+            "https://example.com:8443/path",
+            ipv6,
+        )
+        assert request_url.startswith(f"https://[{ipv6}]:8443/")
+        assert headers["Host"] == "example.com:8443"
+        assert extensions["sni_hostname"] == b"example.com"
+
     @patch("hive.tools.url_safety.httpx.Client")
     def test_web_fetch_refuses_internal_redirect(self, mock_client_cls: MagicMock):
         # A public URL that redirects to an internal address must be refused at

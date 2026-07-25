@@ -211,6 +211,18 @@ class TestSSRFDNSRebinding:
         if error is None:
             assert ip == "1.1.1.1"
 
+    def test_ipv6_pinned_netloc_is_bracketed(self):
+        """IPv6 pinning must bracket the address so URL parsing stays unambiguous."""
+        from hive.tools.url_safety import build_pinned_request
+
+        ipv6 = "2606:2800:220:1:248:1893:25c8:1946"
+        request_url, headers, _extensions = build_pinned_request(
+            "https://example.com/path",
+            ipv6,
+        )
+        assert request_url.startswith(f"https://[{ipv6}]/")
+        assert headers["Host"] == "example.com"
+
 
 # ── LinkToolkit SSRF Guard ───────────────────────────────────────────────────
 
